@@ -35,23 +35,25 @@ export function AppTopNav() {
     return (
         <>
             {!hideHeader ? (
-                <header className="sticky top-0 z-20 h-14 shrink-0 border-b border-stone-200 bg-background/90 backdrop-blur-xl dark:border-stone-800">
-                    <div className="mx-auto flex h-full max-w-7xl items-stretch justify-between gap-5 px-6">
+                <header className="sticky top-0 z-20 h-16 shrink-0 border-b border-stone-200/80 bg-background/85 backdrop-blur-xl dark:border-stone-800/80">
+                    <div className="mx-auto flex h-full max-w-[1480px] items-stretch justify-between gap-5 px-5 lg:px-7">
                         <div className="flex min-w-0 items-center">
-                            <Link to="/" className="flex h-full shrink-0 items-center gap-2 text-sm font-semibold leading-none tracking-tight text-stone-950 transition hover:text-stone-600 dark:text-stone-100 dark:hover:text-stone-300">
+                            <Link to="/" className="flex h-full shrink-0 items-center gap-2.5 text-sm font-semibold leading-none tracking-tight text-stone-950 transition hover:opacity-65 dark:text-stone-100">
                                 <span
-                                    className="size-5 shrink-0 bg-current"
+                                    className="size-[18px] shrink-0 bg-current"
                                     style={{
                                         mask: "url(/logo.svg) center / contain no-repeat",
                                         WebkitMask: "url(/logo.svg) center / contain no-repeat",
                                     }}
                                 />
-                                <span className="text-base font-medium">{t("meta.title")}</span>
+                                <span className="text-[15px] font-semibold">{t("meta.title")}</span>
                             </Link>
+
+                            <span className="mx-5 h-5 w-px shrink-0 bg-stone-200 dark:bg-stone-800" />
 
                             <button
                                 type="button"
-                                className="ml-3 inline-flex size-8 shrink-0 items-center justify-center text-stone-600 transition hover:text-stone-950 md:hidden dark:text-stone-300 dark:hover:text-white"
+                                className="-ml-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-stone-600 transition hover:bg-black/5 hover:text-stone-950 md:hidden dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white"
                                 onClick={() => setMobileNavOpen(true)}
                                 aria-label={t("topNav.openMenu")}
                                 title={t("topNav.menu")}
@@ -59,7 +61,7 @@ export function AppTopNav() {
                                 <Menu className="size-5" />
                             </button>
 
-                            <nav className="hide-scrollbar ml-8 hidden h-14 min-w-0 items-center gap-7 overflow-x-auto md:flex">
+                            <nav className="hide-scrollbar hidden h-16 min-w-0 items-center gap-1 overflow-x-auto md:flex">
                                 {navigationTools.map((tool) => {
                                     const Icon = tool.icon;
                                     const active = tool.slug === activeToolSlug;
@@ -67,14 +69,15 @@ export function AppTopNav() {
                                         <Link
                                             key={tool.slug}
                                             to={`/${tool.slug}`}
+                                            aria-current={active ? "page" : undefined}
                                             className={cn(
-                                                "relative flex h-14 shrink-0 items-center gap-2 text-sm leading-6 transition after:absolute after:inset-x-0 after:bottom-0 after:h-px",
+                                                "relative flex h-16 shrink-0 items-center gap-2 px-3 text-[13px] leading-5 transition after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:transition-colors",
                                                 active
-                                                    ? "font-medium text-stone-950 after:bg-stone-950 dark:text-stone-100 dark:after:bg-stone-100"
-                                                    : "text-stone-500 after:bg-transparent hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100",
+                                                    ? "font-semibold text-stone-950 after:bg-stone-950 dark:text-stone-100 dark:after:bg-stone-100"
+                                                    : "font-medium text-stone-500 after:bg-transparent hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100",
                                             )}
                                         >
-                                            <Icon className="size-4" />
+                                            <Icon className={cn("size-4 transition-colors", active ? "opacity-100" : "opacity-70")} />
                                             <span className="truncate">{t(`navigation.${tool.slug}`)}</span>
                                         </Link>
                                     );
@@ -82,11 +85,21 @@ export function AppTopNav() {
                             </nav>
                         </div>
 
-                        <div className="my-auto flex h-9 min-w-0 items-center justify-end gap-2 justify-self-end whitespace-nowrap">
+                        <div className="my-auto flex h-9 min-w-0 items-center justify-end gap-1.5 justify-self-end whitespace-nowrap">
                             <Tooltip title={t(panelOpen ? "topNav.closeAgent" : "topNav.openAgent")}>
-                                <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8" icon={<Bot className="size-4" />} onClick={togglePanel} aria-label={t(panelOpen ? "topNav.closeAgent" : "topNav.openAgent")} />
+                                <Button
+                                    type="text"
+                                    shape="circle"
+                                    className="!h-8 !w-8 !min-w-8 !text-stone-600 hover:!text-stone-950 dark:!text-stone-300 dark:hover:!text-white"
+                                    icon={<Bot className="size-4" />}
+                                    onClick={togglePanel}
+                                    aria-label={t(panelOpen ? "topNav.closeAgent" : "topNav.openAgent")}
+                                />
                             </Tooltip>
-                            <UserStatusActions />
+                            <span className="mx-1 hidden h-4 w-px shrink-0 bg-stone-200 sm:block dark:bg-stone-800" />
+                            <div className="hidden sm:flex">
+                                <UserStatusActions showConfig={false} />
+                            </div>
                         </div>
                     </div>
                 </header>

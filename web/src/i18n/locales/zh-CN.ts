@@ -181,6 +181,11 @@ export default {
     },
     imageWorkbench: {
         title: "生图工作台",
+        stageHint: "把想法变成画面",
+        heroEyebrow: "Start creating with",
+        heroTitle: "开始创作",
+        heroDescription: "描述场景、角色、氛围或风格，让模型把它变成画面。上传参考图可继续编辑与变体。",
+        imageCount: "{{count}} 张",
         promptPlaceholder: "描述画面主体、风格、构图、光线和用途",
         references: "参考图",
         removeReference: "移除参考图",

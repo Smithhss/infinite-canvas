@@ -181,6 +181,11 @@ export default {
     },
     imageWorkbench: {
         title: "Image Studio",
+        stageHint: "Turn ideas into images",
+        heroEyebrow: "Start creating with",
+        heroTitle: "Create something",
+        heroDescription: "Describe a scene, character, mood, or style and turn it into an image. Add references to edit and create variations.",
+        imageCount: "{{count}} images",
         promptPlaceholder: "Describe the subject, style, composition, lighting, and intended use",
         references: "Reference images",
         removeReference: "Remove reference image",

@@ -8,7 +8,9 @@ import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import { imageSizePresets, inferMediaScale } from "@/lib/media-size";
+import { selectTextModel } from "@/lib/model-selection";
 import type { ReferenceImage } from "@/types/image";
+import { notifyRequestId } from "./request";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -95,7 +97,7 @@ type GeminiPayload = {
     promptFeedback?: { blockReason?: string };
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
-type RequestOptions = { signal?: AbortSignal };
+type RequestOptions = { signal?: AbortSignal; onRequestId?: (requestId: string) => void };
 
 const IMAGE_QUALITY_VALUES = ["low", "medium", "high", "xhigh", "max"];
 const DEFAULT_IMAGE_SHORT_SIDE = 1024;
@@ -476,6 +478,7 @@ async function requestStreamingResponse(config: AiConfig, body: Record<string, u
         body: JSON.stringify({ ...body, stream: true }),
         signal: options?.signal,
     });
+    notifyRequestId(options?.onRequestId, response.headers);
     if (!response.ok) throw new Error(await readFetchError(response, apiText("requestFailed")));
     if (!response.body) {
         const payload = (await response.json()) as ResponseApiPayload;
@@ -583,6 +586,7 @@ async function requestGeminiStreamingResponse(config: AiConfig, body: Record<str
         body: JSON.stringify(body),
         signal: options?.signal,
     });
+    notifyRequestId(options?.onRequestId, response.headers);
     if (!response.ok) throw new Error(await readFetchError(response, apiText("requestFailed")));
     if (!response.body) {
         const payload = (await response.json()) as GeminiPayload;
@@ -672,6 +676,7 @@ async function requestGeminiImagesOnce(config: AiConfig, prompt: string, referen
         },
         { headers: geminiHeaders(config), signal: options?.signal, timeout: IMAGE_REQUEST_TIMEOUT_MS },
     );
+    notifyRequestId(options?.onRequestId, response.headers);
     return parseGeminiImagePayload(response.data);
 }
 
@@ -744,6 +749,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 timeout: IMAGE_REQUEST_TIMEOUT_MS,
             },
         );
+        notifyRequestId(options?.onRequestId, response.headers);
         const images = await parseImagePayload(response.data);
         return images;
     } catch (error) {
@@ -811,6 +817,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
 
     try {
         const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal, timeout: IMAGE_REQUEST_TIMEOUT_MS });
+        notifyRequestId(options?.onRequestId, response.headers);
         const images = await parseImagePayload(response.data);
         return images;
     } catch (error) {
@@ -819,8 +826,10 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
 }
 
 export async function requestImageQuestion(config: AiConfig, messages: AiTextMessage[], onDelta: (text: string) => void, options?: RequestOptions) {
-    const requestConfig = resolveModelRequestConfig(config, config.model || config.textModel);
-    const script = resolveModelScript(config, config.model || config.textModel);
+    const selectedModel = selectTextModel(config);
+    if (!selectedModel) throw new Error(apiText("textModelRequired"));
+    const requestConfig = resolveModelRequestConfig(config, selectedModel);
+    const script = resolveModelScript(config, selectedModel);
     if (script) {
         try {
             const answer = await runModelPlugin<string>({

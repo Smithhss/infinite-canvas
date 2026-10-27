@@ -790,6 +790,16 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.resolution}p</Tag>
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.seconds}s</Tag>
                     </div>
+                    {log.task?.id ? (
+                        <div className="mt-1 truncate text-[11px] text-stone-500 dark:text-stone-400" title={log.task.id}>
+                            {t("workbench.taskId")}: {log.task.id}
+                        </div>
+                    ) : null}
+                    {log.task?.requestId ? (
+                        <div className="mt-1 truncate text-[11px] text-stone-500 dark:text-stone-400" title={log.task.requestId}>
+                            {t("workbench.requestId")}: {log.task.requestId}
+                        </div>
+                    ) : null}
                 </div>
                 <div className="grid justify-items-end gap-2">
                     <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color={log.status === "success" ? "blue" : log.status === "pending" ? "processing" : "red"}>

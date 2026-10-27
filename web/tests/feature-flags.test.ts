@@ -49,3 +49,22 @@ test("runtime configuration overrides disabled defaults", () => {
 
     expect(isFeatureEnabled("quickCreate")).toBe(true);
 });
+
+test("creative workflow remains off unless explicitly enabled", () => {
+    Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: {
+            location: { search: "" },
+            __RUNTIME_CONFIG__: { FEATURE_FLAGS: {} },
+        },
+    });
+    expect(isFeatureEnabled("creativeWorkflow")).toBe(false);
+    Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: {
+            location: { search: "?ff_creativeWorkflow=1" },
+            __RUNTIME_CONFIG__: { FEATURE_FLAGS: {} },
+        },
+    });
+    expect(isFeatureEnabled("creativeWorkflow")).toBe(true);
+});

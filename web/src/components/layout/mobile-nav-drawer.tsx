@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { changeAppLocale, type AppLocale } from "@/i18n";
-import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
+import { isNavigationToolEnabled, navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
 import { DOCS_URL } from "@/constant/env";
 import { cn } from "@/lib/utils";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
@@ -29,7 +29,7 @@ export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDraw
     return (
         <Drawer title={t("topNav.navigation")} placement="left" size={280} open={open} onClose={onClose} className="md:hidden">
             <div className="space-y-1">
-                {navigationTools.map((tool) => {
+                {navigationTools.filter(isNavigationToolEnabled).map((tool) => {
                     const Icon = tool.icon;
                     const active = tool.slug === activeToolSlug;
                     return (

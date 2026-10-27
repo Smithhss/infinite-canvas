@@ -3,7 +3,7 @@ import { Button, Tooltip } from "antd";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
+import { isNavigationToolEnabled, navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
 import { AppConfigModal } from "@/components/layout/app-config-modal";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
@@ -62,7 +62,7 @@ export function AppTopNav() {
                             </button>
 
                             <nav className="hide-scrollbar hidden h-16 min-w-0 items-center gap-1 overflow-x-auto md:flex">
-                                {navigationTools.map((tool) => {
+                                {navigationTools.filter(isNavigationToolEnabled).map((tool) => {
                                     const Icon = tool.icon;
                                     const active = tool.slug === activeToolSlug;
                                     return (

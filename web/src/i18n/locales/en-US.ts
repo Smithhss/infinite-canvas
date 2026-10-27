@@ -209,6 +209,9 @@ export default {
     },
     videoWorkbench: {
         title: "Video Studio",
+        heroEyebrow: "Start creating with",
+        heroTitle: "Start creating",
+        heroDescription: "Describe camera movement, subject action, and atmosphere, then turn it into video. Add reference images to guide frames or visual style.",
         promptPlaceholder: "Describe camera movement, subject action, atmosphere, and visual style",
         references: "Reference images",
         videoReferences: "Reference videos",

@@ -209,6 +209,9 @@ export default {
     },
     videoWorkbench: {
         title: "视频创作台",
+        heroEyebrow: "Start creating with",
+        heroTitle: "开始创作",
+        heroDescription: "描述镜头运动、主体动作和氛围，让模型把它变成视频。上传参考图可控制首尾帧或画面风格。",
         promptPlaceholder: "描述镜头运动、主体动作、场景氛围和画面风格",
         references: "参考图",
         videoReferences: "参考视频",

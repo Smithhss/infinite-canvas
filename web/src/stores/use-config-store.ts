@@ -70,6 +70,7 @@ export type ConfigTabKey = "channels" | "local-proxy" | "preferences" | "prompt-
 export type ChannelCredentialsImportResult = {
     status: "created" | "updated" | "missing-base-url" | "invalid-base-url";
     channelName?: string;
+    channelId?: string;
 };
 
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
@@ -150,13 +151,13 @@ type ConfigStore = {
     clearPromptContinue: () => void;
 };
 
-const VIDEO_KEYWORDS = ["video", "sora", "veo", "kling", "wan", "hailuo"];
+const VIDEO_KEYWORDS = ["video", "sora", "veo", "kling", "wan", "hailuo", "seedance", "minimax-h3"];
 
 export function boolConfig(value: string, fallback: boolean) {
     return value ? value === "true" : fallback;
 }
 const AUDIO_KEYWORDS = ["audio", "tts", "speech", "voice", "music", "sound"];
-const IMAGE_KEYWORDS = ["seedream", "gpt-image", "image", "dall-e", "dalle", "imagen", "flux", "sdxl", "stable-diffusion", "midjourney"];
+const IMAGE_KEYWORDS = ["seedream", "gpt-image", "image", "dall-e", "dalle", "imagen", "flux", "sdxl", "stable-diffusion", "midjourney", "nano-banana"];
 
 /** Best-effort default capability for a freshly fetched model name; user can override in the channel editor. */
 export function guessCapability(name: string): ModelCapability {
@@ -338,11 +339,11 @@ export function upsertChannelCredentials(
     if (matchingIndex >= 0) {
         const existing = config.channels[matchingIndex];
         if (existing.baseUrl === baseUrl && (!apiKey || existing.apiKey === apiKey)) {
-            return { status: "updated", channelName: existing.name, config };
+            return { status: "updated", channelName: existing.name, channelId: existing.id, config };
         }
         const updated = { ...existing, baseUrl, ...(apiKey ? { apiKey } : {}) };
         const channels = config.channels.map((channel, index) => (index === matchingIndex ? updated : channel));
-        return { status: "updated", channelName: existing.name, config: { ...config, channels } };
+        return { status: "updated", channelName: existing.name, channelId: existing.id, config: { ...config, channels } };
     }
 
     const channel = createModelChannel({
@@ -352,7 +353,7 @@ export function upsertChannelCredentials(
         apiFormat: "openai",
         models: [],
     });
-    return { status: "created", channelName: channel.name, config: { ...config, channels: [...config.channels, channel] } };
+    return { status: "created", channelName: channel.name, channelId: channel.id, config: { ...config, channels: [...config.channels, channel] } };
 }
 
 function isHttpBaseUrl(baseUrl: string) {

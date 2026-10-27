@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { ModelPicker } from "@/components/model-picker";
 import { videoResolutionOptions } from "@/components/video-settings-panel";
 import { ChannelEditorDrawer } from "@/components/layout/channel-editor-drawer";
+import { ConfigFyt } from "@/components/layout/config-fyt";
 import { ConfigLocalProxy } from "@/components/layout/config-local-proxy";
 import { ConfigPromptSources } from "@/components/layout/config-prompt-sources";
 import { ConfigLocalStorage } from "@/components/layout/config-local-storage";
@@ -16,7 +17,22 @@ import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent }
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
 import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
 import { computeMediaSize, inferMediaRatio, inferMediaScale, mediaScaleOptions, parseVideoResolution } from "@/lib/media-size";
-import { createModelChannel, modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import {
+    createModelChannel,
+    encodeChannelModel,
+    modelOptionsFromChannels,
+    normalizeChannelModels,
+    normalizeModelOptionValue,
+    selectableModelsByCapability,
+    upsertChannelCredentials,
+    useConfigStore,
+    type AiConfig,
+    type ApiCallFormat,
+    type ChannelModel,
+    type ConfigTabKey,
+    type ModelCapability,
+    type ModelChannel,
+} from "@/stores/use-config-store";
 
 type ModelGroup = {
     capability: ModelCapability;
@@ -115,6 +131,30 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
         updateChannels(config.channels.map((item) => (item.id === channel.id ? channel : item)));
     };
 
+    const connectFyt = ({ baseUrl, apiKey, models }: { baseUrl: string; apiKey: string; models: string[] }) => {
+        const imported = upsertChannelCredentials(config, { baseUrl, apiKey });
+        if (!imported.channelId) {
+            throw new Error(t(imported.status === "invalid-base-url" ? "config.fyt.baseUrlInvalid" : "config.fyt.saveFailed"));
+        }
+        const fetchedModels = normalizeChannelModels(models);
+        const channels = imported.config.channels.map((channel) => (channel.id === imported.channelId ? { ...channel, apiKey, models: mergeChannelModels(channel, fetchedModels) } : channel));
+        const next = withChannels(imported.config, channels);
+        const connected = next.channels.find((channel) => channel.id === imported.channelId);
+        saveConfig(connected ? preferChannelDefaults(next, connected) : next);
+    };
+
+    const clearFytKey = (baseUrl: string) => {
+        const channel = config.channels.find((item) => sameBaseUrl(item.baseUrl, baseUrl));
+        if (!channel) {
+            message.warning(t("config.fyt.channelNotFound"));
+            return;
+        }
+        const nextChannels = config.channels.map((item) => (item.id === channel.id ? { ...item, apiKey: "" } : item));
+        const nextConfig = config.channels[0]?.id === channel.id ? { ...config, apiKey: "" } : config;
+        saveConfig(withChannels(nextConfig, nextChannels));
+        message.success(t("config.fyt.keyCleared"));
+    };
+
     const testWebdav = async () => {
         if (!webdavReady) {
             message.error(t("config.webdav.missingUrl"));
@@ -188,6 +228,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         label: t("config.tabs.channels"),
                         children: (
                             <div>
+                                <ConfigFyt config={config} onSave={connectFyt} onClearKey={clearFytKey} />
                                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                                     <div className="text-xs text-stone-500">{t("config.channels.description")}</div>
                                     <Button type="primary" icon={<Plus className="size-4" />} onClick={addChannel}>
@@ -405,6 +446,39 @@ function withChannels(config: AiConfig, channels: ModelChannel[]): AiConfig {
         textModel: pickDefaultModel(next, "text", config.textModel),
         audioModel: pickDefaultModel(next, "audio", config.audioModel),
     };
+}
+
+function mergeChannelModels(channel: ModelChannel, fetched: ChannelModel[]) {
+    const incoming = new Map(fetched.map((model) => [model.name, model]));
+    const existing = channel.models.map((model) => {
+        const next = incoming.get(model.name);
+        if (!next) return model;
+        incoming.delete(model.name);
+        return { ...next, capability: model.capability, script: model.script };
+    });
+    return [...existing, ...incoming.values()];
+}
+
+function preferChannelDefaults(config: AiConfig, channel: ModelChannel): AiConfig {
+    const firstModel = (capability: ModelCapability) => {
+        const model = channel.models.find((item) => item.capability === capability);
+        return model ? encodeChannelModel(channel.id, model.name) : "";
+    };
+    return {
+        ...config,
+        imageModel: firstModel("image") || config.imageModel,
+        videoModel: firstModel("video") || config.videoModel,
+        textModel: firstModel("text") || config.textModel,
+        audioModel: firstModel("audio") || config.audioModel,
+    };
+}
+
+function sameBaseUrl(left: string, right: string) {
+    return normalizeBaseUrl(left) === normalizeBaseUrl(right);
+}
+
+function normalizeBaseUrl(value: string) {
+    return value.trim().replace(/\/+$/, "").replace(/\/v1$/i, "").toLowerCase();
 }
 
 function pickDefaultModel(config: AiConfig, capability: ModelCapability, current: string) {

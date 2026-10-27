@@ -25,6 +25,7 @@ import i18n from "@/i18n";
 type GeneratedImage = {
     id: string;
     dataUrl: string;
+    requestId?: string;
     storageKey?: string;
     durationMs: number;
     width: number;
@@ -56,6 +57,7 @@ type GenerationLog = {
     size: string;
     quality: string;
     status: "success" | "failed";
+    requestIds: string[];
     images: GeneratedImage[];
 };
 
@@ -318,12 +320,14 @@ export default function ImagePage() {
 
     const runGenerationSlot = async (index: number, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }) => {
         const itemStartedAt = performance.now();
+        let requestId = "";
         try {
-            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references) : await requestGeneration(snapshot.config, snapshot.text);
+            const options = { onRequestId: (value: string) => { requestId = value; } };
+            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references, options) : await requestGeneration(snapshot.config, snapshot.text, options);
             const image = result[0];
             if (!image) throw new Error(t("imageWorkbench.missingResult"));
             const stored = await uploadImage(image.dataUrl);
-            const nextImage: GeneratedImage = { id: image.id, dataUrl: stored.url, ...(stored.storageKey ? { storageKey: stored.storageKey } : {}), durationMs: performance.now() - itemStartedAt, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType };
+            const nextImage: GeneratedImage = { id: image.id, dataUrl: stored.url, ...(requestId ? { requestId } : {}), ...(stored.storageKey ? { storageKey: stored.storageKey } : {}), durationMs: performance.now() - itemStartedAt, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType };
             setResults((value) => updateResultAt(value, index, { status: "success", image: nextImage }));
             return nextImage;
         } catch (error) {
@@ -856,6 +860,11 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                                 ))}
                             </div>
                         ) : null}
+                        {log.requestIds?.length ? (
+                            <div className="mt-1 truncate text-[11px] text-stone-500 dark:text-stone-400" title={log.requestIds.join(", ")}>
+                                {t("workbench.requestId")}: {log.requestIds.join(", ")}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
                 <div className="grid justify-items-end gap-2">
@@ -928,6 +937,7 @@ async function normalizeLog(log: Partial<GenerationLog>): Promise<GenerationLog>
         size: log.size || config.size || "",
         quality: log.quality || config.quality || "",
         status: log.status || "success",
+        requestIds: Array.isArray(log.requestIds) ? log.requestIds : [],
         images,
     };
 }
@@ -1012,6 +1022,7 @@ function buildLog({
         size: logConfig.size,
         quality: logConfig.quality,
         status,
+        requestIds: images.flatMap((image) => (image.requestId ? [image.requestId] : [])),
         images,
     };
 }

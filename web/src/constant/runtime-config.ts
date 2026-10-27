@@ -5,9 +5,12 @@
 // Each analytics provider has its own variable; configured providers are enabled independently and all are disabled by default.
 // Only GA4 and Baidu are supported. Both accept IDs only, and script URLs are assembled in code without arbitrary scripts or inline JavaScript.
 
+import type { FeatureFlagKey } from "@/constant/feature-flags";
+
 type RuntimeConfig = {
     ANALYTICS_GA4_ID?: string; // GA4 measurement ID (G-XXXX)
     ANALYTICS_BAIDU_ID?: string; // Baidu Analytics site ID
+    FEATURE_FLAGS?: Partial<Record<FeatureFlagKey, string>>;
 };
 
 declare global {

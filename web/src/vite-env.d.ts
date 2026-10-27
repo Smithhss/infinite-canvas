@@ -11,4 +11,10 @@ interface ImportMetaEnv {
     readonly VITE_ANALYTICS_GA4_ID?: string;
     // Baidu Analytics site ID
     readonly VITE_ANALYTICS_BAIDU_ID?: string;
+    readonly VITE_FEATURE_CREATIVEWORKFLOW?: string;
+    readonly VITE_FEATURE_BUILTINCANVASAGENT?: string;
+    readonly VITE_FEATURE_DIRECTOR3D?: string;
+    readonly VITE_FEATURE_PANORAMA?: string;
+    readonly VITE_FEATURE_QUICKCREATE?: string;
+    readonly VITE_FEATURE_FYTBACKEND?: string;
 }

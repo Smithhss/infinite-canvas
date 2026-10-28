@@ -32,6 +32,7 @@ type VideoTaskBodyInput = {
     videos?: File[];
     audios?: File[];
 };
+type PluginVideoConfig = Pick<AiConfig, "videoSeconds" | "size" | "vquality" | "videoGenerateAudio" | "videoWatermark" | "videoMode" | "videoNegativePrompt" | "videoMultiShot" | "videoMultiPrompt">;
 type GeminiInlineData = { bytesBase64Encoded: string; mimeType: string };
 type GeminiVideoOperation = {
     name?: string;
@@ -119,18 +120,7 @@ async function createPluginVideoTask(config: AiConfig, model: string, script: st
             images: refs,
             videos,
             audios,
-            params: {
-                seconds: normalizeVideoSeconds(config.videoSeconds),
-                size: normalizeVideoSize(config.size, config.vquality),
-                resolution: normalizeVideoResolution(config.vquality),
-                ratio: videoAspectRatio(config.size),
-                generateAudio: boolConfig(config.videoGenerateAudio, true),
-                watermark: boolConfig(config.videoWatermark, false),
-                mode: resolveVideoMode(config.videoMode, refs.length, capabilities) || "frames",
-                negativePrompt: capabilities.supportsNegativePrompt ? config.videoNegativePrompt.trim() : "",
-                multiShot: capabilities.supportsMultiShot && config.videoMultiShot === "true",
-                multiPrompt: capabilities.supportsMultiShot ? parseMultiShotPrompts(config.videoMultiPrompt) : [],
-            },
+            params: buildPluginVideoParams(config, refs.length, capabilities),
             signal: options?.signal,
         }),
     );
@@ -224,15 +214,7 @@ async function createGeminiVideoTask(config: AiConfig, model: string, prompt: st
     try {
         const response = await axios.post<ApiEnvelope<GeminiVideoOperation>>(geminiVideoUrl(config, model, "predictLongRunning"), {
             instances: [instance],
-            parameters: {
-                aspectRatio: videoAspectRatio(config.size),
-                durationSeconds: Number(normalizeVideoSeconds(config.videoSeconds)) || 8,
-                resolution: normalizeVideoResolution(config.vquality),
-                ...(capabilities.supportsAudio ? { generateAudio: boolConfig(config.videoGenerateAudio, true) } : {}),
-                ...(capabilities.supportsWatermark ? { addWatermark: boolConfig(config.videoWatermark, false) } : {}),
-                ...(capabilities.supportsNegativePrompt && config.videoNegativePrompt.trim() ? { negativePrompt: config.videoNegativePrompt.trim() } : {}),
-                ...(capabilities.supportsMultiShot && config.videoMultiShot === "true" ? { multiShot: true, multiPrompt: parseMultiShotPrompts(config.videoMultiPrompt) } : {}),
-            },
+            parameters: buildGeminiVideoParameters(config, capabilities),
         }, { headers: geminiVideoHeaders(config), signal: options?.signal });
         notifyRequestId(options?.onRequestId, response.headers);
         const created = unwrapEnvelope(response.data, apiText("noVideoTask"));
@@ -397,6 +379,35 @@ function resolveVideoMode(mode: string | undefined, imageCount: number, capabili
     if (!imageCount) return null;
     if (mode === "reference" || imageCount > 2) return supportsReference ? "reference" : supportsFrames ? "frames" : null;
     return supportsFrames ? "frames" : supportsReference ? "reference" : null;
+}
+
+export function buildPluginVideoParams(config: PluginVideoConfig, imageCount: number, capabilities: VideoModelCapabilities) {
+    const mode = resolveVideoMode(config.videoMode, imageCount, capabilities);
+    const negativePrompt = config.videoNegativePrompt.trim();
+    return {
+        seconds: String(Math.min(capabilities.maxSeconds, Number(normalizeVideoSeconds(config.videoSeconds)))),
+        size: normalizeVideoSize(config.size, config.vquality),
+        resolution: normalizeVideoResolution(config.vquality),
+        ratio: videoAspectRatio(config.size),
+        ...(capabilities.supportsAudio ? { generateAudio: boolConfig(config.videoGenerateAudio, true) } : {}),
+        ...(capabilities.supportsWatermark ? { watermark: boolConfig(config.videoWatermark, false) } : {}),
+        ...(mode ? { mode } : {}),
+        ...(capabilities.supportsNegativePrompt && negativePrompt ? { negativePrompt } : {}),
+        ...(capabilities.supportsMultiShot ? { multiShot: config.videoMultiShot === "true" } : {}),
+        ...(capabilities.supportsMultiShot ? { multiPrompt: parseMultiShotPrompts(config.videoMultiPrompt) } : {}),
+    };
+}
+
+export function buildGeminiVideoParameters(config: PluginVideoConfig, capabilities: VideoModelCapabilities) {
+    return {
+        aspectRatio: videoAspectRatio(config.size),
+        durationSeconds: Number(Math.min(capabilities.maxSeconds, Number(normalizeVideoSeconds(config.videoSeconds)))),
+        resolution: normalizeVideoResolution(config.vquality),
+        ...(capabilities.supportsAudio ? { generateAudio: boolConfig(config.videoGenerateAudio, true) } : {}),
+        ...(capabilities.supportsWatermark ? { addWatermark: boolConfig(config.videoWatermark, false) } : {}),
+        ...(capabilities.supportsNegativePrompt && config.videoNegativePrompt.trim() ? { negativePrompt: config.videoNegativePrompt.trim() } : {}),
+        ...(capabilities.supportsMultiShot && config.videoMultiShot === "true" ? { multiShot: true, multiPrompt: parseMultiShotPrompts(config.videoMultiPrompt) } : {}),
+    };
 }
 
 function parseMultiShotPrompts(value: string) {

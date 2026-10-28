@@ -5,7 +5,7 @@ import localforage from "localforage";
 import { nanoid } from "nanoid";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { StudioModelPicker } from "@/components/studio-model-picker";
@@ -16,12 +16,13 @@ import { clampVideoSeconds } from "@/lib/media-size";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import { resolveVideoCapabilities } from "@/lib/video-model-capabilities";
-import { readQuickCreateDraft } from "@/lib/quick-create";
+import { clearQuickCreateDraft, readQuickCreateDraft } from "@/lib/quick-create";
 import { deleteStoredMedia, resolveMediaUrl } from "@/services/file-storage";
 import { resolveImageUrl, ensureImagePreview, getImagePreviewRevision, previewUrlFor, subscribeImagePreviews, uploadImage } from "@/services/image-storage";
 import { createVideoGenerationTask, pollVideoGenerationTask, storeGeneratedVideo, type VideoGenerationTask } from "@/services/api/video";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import { boolConfig, modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { ReferenceImage } from "@/types/image";
@@ -74,8 +75,7 @@ const logStore = localforage.createInstance({ name: "infinite-canvas", storeName
 export default function VideoPage() {
     const { message } = App.useApp();
     const { t } = useTranslation();
-    const [searchParams] = useSearchParams();
-    const quickCreateQuery = searchParams.toString();
+    const location = useLocation();
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const dragDepthRef = useRef(0);
@@ -110,6 +110,10 @@ export default function VideoPage() {
     const model = effectiveConfig.videoModel || effectiveConfig.model;
     const capabilities = resolveVideoCapabilities(effectiveConfig, model);
     const canGenerate = Boolean(prompt.trim());
+    const updatePrompt = (value: string) => {
+        clearQuickCreateDraft("video");
+        setPrompt(value);
+    };
 
     useEffect(() => {
         if (!running || !startedAt) return;
@@ -122,11 +126,16 @@ export default function VideoPage() {
     }, []);
 
     useEffect(() => {
-        const draft = readQuickCreateDraft(new URLSearchParams(quickCreateQuery));
+        const quickCreateNavigation = (location.state as { quickCreate?: boolean } | null)?.quickCreate === true;
+        if (!isFeatureEnabled("quickCreate") && !quickCreateNavigation) {
+            clearQuickCreateDraft("video");
+            return;
+        }
+        const draft = readQuickCreateDraft();
         if (!draft || draft.mode !== "video") return;
         setPrompt(draft.prompt);
         if (draft.model) updateConfig("videoModel", draft.model);
-    }, [quickCreateQuery, updateConfig]);
+    }, [location.state, updateConfig]);
 
     const addReferences = async (files?: FileList | null) => {
         const selectedFiles = Array.from(files || []);
@@ -197,6 +206,7 @@ export default function VideoPage() {
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", error: t("videoWorkbench.invalidParams") });
             return;
         }
+        clearQuickCreateDraft("video");
         setElapsedMs(0);
         setRunning(true);
         if (agentTaskId) updateAgentTask(agentTaskId, { status: "running", error: undefined });
@@ -224,7 +234,7 @@ export default function VideoPage() {
         if (!videoCommand || videoCommand.nonce === processedCommandRef.current) return;
         processedCommandRef.current = videoCommand.nonce;
         clearVideoCommand();
-        if (typeof videoCommand.prompt === "string") setPrompt(videoCommand.prompt);
+        if (typeof videoCommand.prompt === "string") updatePrompt(videoCommand.prompt);
         if (videoCommand.run && running) {
             if (videoCommand.taskId) updateAgentTask(videoCommand.taskId, { status: "failed", error: t("videoWorkbench.busy") });
             return;
@@ -278,7 +288,7 @@ export default function VideoPage() {
 
     const insertPickedAsset = async (payload: InsertAssetPayload) => {
         if (payload.kind === "text") {
-            setPrompt(payload.content);
+            updatePrompt(payload.content);
         } else if (payload.kind === "image") {
             const stored = await uploadImage(payload.dataUrl);
             setReferences((value) => [...value, { id: nanoid(), name: payload.title, type: stored.mimeType, dataUrl: stored.url, storageKey: stored.storageKey }].slice(0, 7));
@@ -287,7 +297,7 @@ export default function VideoPage() {
     };
 
     const createSession = () => {
-        setPrompt("");
+        updatePrompt("");
         setReferences([]);
         setResults([]);
         setElapsedMs(0);
@@ -378,7 +388,7 @@ export default function VideoPage() {
     const previewGenerationLog = (log: GenerationLog) => {
         setPreviewLog(log);
         setLogsOpen(false);
-        setPrompt(log.prompt);
+        updatePrompt(log.prompt);
         setReferences(log.references || []);
         if (log.config.videoModel || log.model) updateConfig("videoModel", log.config.videoModel || log.model);
         if (log.config.size) updateConfig("size", log.config.size);
@@ -426,7 +436,7 @@ export default function VideoPage() {
 
                         <PromptComposer
                             prompt={prompt}
-                            onPromptChange={setPrompt}
+                            onPromptChange={updatePrompt}
                             references={references}
                             referenceDragTarget={referenceDragTarget}
                             dragDepthRef={dragDepthRef}

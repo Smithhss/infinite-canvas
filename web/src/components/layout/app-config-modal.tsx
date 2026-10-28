@@ -454,7 +454,7 @@ function mergeChannelModels(channel: ModelChannel, fetched: ChannelModel[]) {
         const next = incoming.get(model.name);
         if (!next) return model;
         incoming.delete(model.name);
-        return { ...next, capability: model.capability, script: model.script };
+        return { ...next, capability: model.capability, script: model.script, videoCapabilities: model.videoCapabilities };
     });
     return [...existing, ...incoming.values()];
 }

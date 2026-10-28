@@ -8,7 +8,7 @@ import { fetchPrompts, type Prompt } from "@/services/api/prompts";
 import { navigationTools } from "@/constant/navigation-tools";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
-import { buildQuickCreateUrl } from "@/lib/quick-create";
+import { buildQuickCreateUrl, storeQuickCreateDraft } from "@/lib/quick-create";
 import { cn } from "@/lib/utils";
 
 function Highlighter({ action, color, children }: { action: "highlight" | "underline"; color: string; children?: ReactNode }) {
@@ -48,7 +48,12 @@ export default function IndexPage() {
             message.warning(t("home.quickPromptRequired"));
             return;
         }
-        navigate(buildQuickCreateUrl({ mode, prompt, run: false }));
+        const draft = { mode, prompt } as const;
+        if (!storeQuickCreateDraft(draft)) {
+            message.error(t("home.quickStorageFailed"));
+            return;
+        }
+        navigate(buildQuickCreateUrl(mode), { state: { quickCreate: true } });
     };
 
     return (

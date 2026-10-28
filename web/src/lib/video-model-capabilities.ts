@@ -26,7 +26,7 @@ type VideoCapabilityConfig = {
     >;
 };
 
-const VIDEO_MODES: VideoModelMode[] = ["text-to-video", "image-to-video", "first-last-frame", "reference-video", "reference-audio"];
+export const VIDEO_MODES: VideoModelMode[] = ["text-to-video", "image-to-video", "first-last-frame", "reference-video", "reference-audio"];
 const CHANNEL_MODEL_SEPARATOR = "::";
 
 export function defaultVideoModelCapabilities(): VideoModelCapabilities {

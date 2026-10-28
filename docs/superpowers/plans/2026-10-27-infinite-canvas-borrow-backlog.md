@@ -2071,7 +2071,9 @@ git commit -m "test: 完成内置画布 Agent 预发验收"
 
 ## Phase C：3D 导演台与全景（P1）
 
-本阶段先审查来源和许可证。参考仓的 `web/public/director` 在当前 checkout 没有实际文件；没有来源、授权和资产完整性结论时，不得把任何远端构建产物放进本项目。
+本阶段先审查来源和许可证。参考仓的 `web/public/director` 当前存在运行时资产，但没有可复现源码和完整依赖清单；没有来源、授权和资产完整性结论时，不得把任何远端构建产物放进本项目。
+
+执行状态（2026-10-28）：C1 结论为 `BLOCKED`。参考仓导演台受 AGPL-3.0 约束，当前只有压缩构建产物，没有对应源码、构建清单和完整第三方许可证清单，见 `docs/audits/2026-10-27-director-source-audit.md`。C2-C5 不启动，Phase C 保持关闭。
 
 ### Task C1：导演台来源、许可证和资产完整性审查
 
@@ -2085,7 +2087,7 @@ git commit -m "test: 完成内置画布 Agent 预发验收"
 - Consumes: 参考仓文件树、LICENSE、构建产物和静态资源。
 - Produces: 是否允许继续 C2-C5 的书面结论。
 
-- [ ] **Step 1：记录仓库身份和提交**
+- [x] **Step 1：记录仓库身份和提交**
 
 ```bash
 git -C /Users/smith/develop/project/infinite-canvas-moeacgx rev-parse HEAD
@@ -2095,11 +2097,11 @@ find /Users/smith/develop/project/infinite-canvas-moeacgx/web/public/director -m
 
 记录 HEAD、分支、文件列表、总大小和 SHA256；如果目录不存在，明确写“当前 checkout 无运行时资产，不能直接复用”。
 
-- [ ] **Step 2：检查许可证**
+- [x] **Step 2：检查许可证**
 
 记录参考仓根 LICENSE、任何第三方 NOTICE、字体、模型、纹理、HDR、音频和纹理资产的来源。AGPL 代码不能直接移植到 MIT 主仓；第三方素材必须单独列出许可证。
 
-- [ ] **Step 3：检查协议和资产完整性**
+- [x] **Step 3：检查协议和资产完整性**
 
 记录以下协议消息及其 payload 字段：
 
@@ -2115,7 +2117,7 @@ storyai:director-panoramas
 
 只允许借鉴消息语义，不得复制远端的完整 UI、资产包或内嵌脚本。
 
-- [ ] **Step 4：写审查结论**
+- [x] **Step 4：写审查结论**
 
 文档必须是以下三种之一：
 
@@ -3128,8 +3130,8 @@ git commit -m "feat: 完成 creative 后台和回滚演练"
 | 第 2 周 | A4-A8 | 单图/多图 mock 运行、预算、历史、结果入库通过 |
 | 第 3-4 周 | B1-B4 | 内置 Agent 工具白名单、预算、确认和附件通过 |
 | 第 4 周 | B5-B7 | 画布内面板与本地 Agent 并存，零收费验收 |
-| 第 5 周 | C1-C2 | 导演台来源审查和消息协议通过 |
-| 第 5-6 周 | C3-C5 | 截图、全景、性能与回滚通过 |
+| 第 5 周 | C1 | 2026-10-28 审查结论为 `BLOCKED`，C2-C5 不启动 |
+| 第 5-6 周 | C2-C5 | 暂停，等待独立 clean-room 方案 |
 | 第 7 周 | D1-D2 | 视频能力描述和 Kling 字段按模型显示 |
 | 第 7 周 | D3-D4 | 首页快速创作只预填、不扣费 |
 | 第 8 周以后 | E1-E5 | FYT 独立工作树、契约、鉴权、计费和回滚 |

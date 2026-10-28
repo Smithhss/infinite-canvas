@@ -14,6 +14,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { clampVideoSeconds } from "@/lib/media-size";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
+import { resolveVideoCapabilities } from "@/lib/video-model-capabilities";
 import { deleteStoredMedia, resolveMediaUrl } from "@/services/file-storage";
 import { resolveImageUrl, ensureImagePreview, getImagePreviewRevision, previewUrlFor, subscribeImagePreviews, uploadImage } from "@/services/image-storage";
 import { createVideoGenerationTask, pollVideoGenerationTask, storeGeneratedVideo, type VideoGenerationTask } from "@/services/api/video";
@@ -103,6 +104,7 @@ export default function VideoPage() {
     const agentTaskIdRef = useRef<string | undefined>(undefined);
 
     const model = effectiveConfig.videoModel || effectiveConfig.model;
+    const capabilities = resolveVideoCapabilities(effectiveConfig, model);
     const canGenerate = Boolean(prompt.trim());
 
     useEffect(() => {
@@ -117,16 +119,20 @@ export default function VideoPage() {
 
     const addReferences = async (files?: FileList | null) => {
         const selectedFiles = Array.from(files || []);
+        if (!capabilities.maxReferenceImages) {
+            if (selectedFiles.length) message.warning(t("videoWorkbench.referencesUnsupported"));
+            return;
+        }
         const unsupported = selectedFiles.filter((file) => !file.type.startsWith("image/"));
         if (unsupported.length) message.warning(t("videoWorkbench.unsupportedFiles"));
-        const imageFiles = selectedFiles.filter((file) => file.type.startsWith("image/")).slice(0, 7 - references.length);
+        const imageFiles = selectedFiles.filter((file) => file.type.startsWith("image/")).slice(0, capabilities.maxReferenceImages - references.length);
         const nextReferences = await Promise.all(
             imageFiles.map(async (file) => {
                 const image = await uploadImage(file);
                 return { id: nanoid(), name: file.name, type: image.mimeType, dataUrl: image.url, storageKey: image.storageKey };
             }),
         );
-        setReferences((value) => [...value, ...nextReferences].slice(0, 7));
+        setReferences((value) => [...value, ...nextReferences].slice(0, capabilities.maxReferenceImages));
     };
 
     const handleReferenceDragEnter = (event: DragEvent<HTMLDivElement>) => {
@@ -150,6 +156,10 @@ export default function VideoPage() {
 
     const addReferencesFromClipboard = async () => {
         try {
+            if (!capabilities.maxReferenceImages) {
+                message.error(t("videoWorkbench.referencesUnsupported"));
+                return;
+            }
             const items = await navigator.clipboard.read();
             const blobs = await Promise.all(items.flatMap((item) => item.types.filter((type) => type.startsWith("image/")).map((type) => item.getType(type))));
             if (!blobs.length) {
@@ -157,12 +167,12 @@ export default function VideoPage() {
                 return;
             }
             const nextReferences = await Promise.all(
-                blobs.slice(0, 7 - references.length).map(async (blob, index) => {
+                blobs.slice(0, capabilities.maxReferenceImages - references.length).map(async (blob, index) => {
                     const image = await uploadImage(blob);
                     return { id: nanoid(), name: `clipboard-${index + 1}.png`, type: image.mimeType, dataUrl: image.url, storageKey: image.storageKey };
                 }),
             );
-            setReferences((value) => [...value, ...nextReferences].slice(0, 7));
+            setReferences((value) => [...value, ...nextReferences].slice(0, capabilities.maxReferenceImages));
             message.success(t("videoWorkbench.clipboardAdded", { count: nextReferences.length }));
         } catch {
             message.error(t("videoWorkbench.clipboardEmpty"));
@@ -426,6 +436,7 @@ export default function VideoPage() {
                             onClipboard={() => void addReferencesFromClipboard()}
                             onRemoveReference={(id) => setReferences((value) => value.filter((ref) => ref.id !== id))}
                             onMoveReference={(index, offset) => setReferences((value) => moveListItem(value, index, offset))}
+                            referenceLimit={capabilities.maxReferenceImages}
                         />
                     </div>
                 </section>
@@ -503,6 +514,7 @@ function PromptComposer({
     onClipboard,
     onRemoveReference,
     onMoveReference,
+    referenceLimit,
 }: {
     prompt: string;
     onPromptChange: (value: string) => void;
@@ -526,6 +538,7 @@ function PromptComposer({
     onClipboard: () => void;
     onRemoveReference: (id: string) => void;
     onMoveReference: (index: number, offset: number) => void;
+    referenceLimit: number;
 }) {
     const { t } = useTranslation();
 
@@ -546,7 +559,8 @@ function PromptComposer({
                         type="button"
                         className="grid size-9 shrink-0 place-items-center rounded-full border border-stone-200 text-stone-600 transition hover:border-stone-300 hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/5"
                         onClick={onUpload}
-                        title={t("workbench.upload")}
+                        disabled={referenceLimit === 0}
+                        title={referenceLimit === 0 ? t("videoWorkbench.referencesUnsupported") : t("workbench.upload")}
                         aria-label={t("workbench.upload")}
                     >
                         <Plus className="size-4" />
@@ -585,7 +599,7 @@ function PromptComposer({
 
                 <div className="flex flex-wrap items-center gap-1.5 border-t border-stone-100 px-3 py-2.5 sm:px-4 dark:border-white/5">
                     <StudioModelPicker compact config={config} value={model} onChange={(value) => updateConfig("videoModel", value)} capability="video" onMissingConfig={() => openConfigDialog(false)} className="!h-9 !w-auto !min-w-0 !max-w-[13rem] !rounded-full !border-transparent !bg-stone-100 !px-2.5 !text-xs !shadow-none hover:!bg-stone-200/70 dark:!bg-white/[0.06] dark:hover:!bg-white/10" />
-                    <VideoParameterPopover config={config} updateConfig={updateConfig} />
+                    <VideoParameterPopover config={config} model={model} updateConfig={updateConfig} />
                     <span className="mx-1 hidden h-5 w-px bg-stone-200 sm:block dark:bg-white/10" />
                     <Tooltip title={t("workbench.viewPrompts")}>
                         <button type="button" className="grid size-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-white/5 dark:hover:text-white" onClick={onOpenPrompts} aria-label={t("workbench.viewPrompts")}>
@@ -628,13 +642,13 @@ function PromptComposer({
                 <span aria-hidden="true">·</span>
                 <span>{normalizeResolution(config.vquality)}p</span>
                 <span aria-hidden="true">·</span>
-                <VideoParameterPopover config={config} updateConfig={updateConfig} triggerClassName="transition hover:text-stone-700 dark:hover:text-stone-300" triggerContent={t("workbench.adjust")} />
+                <VideoParameterPopover config={config} model={model} updateConfig={updateConfig} triggerClassName="transition hover:text-stone-700 dark:hover:text-stone-300" triggerContent={t("workbench.adjust")} />
             </div>
         </div>
     );
 }
 
-function VideoParameterPopover({ config, updateConfig, triggerClassName, triggerContent }: { config: AiConfig; updateConfig: UpdateAiConfig; triggerClassName?: string; triggerContent?: string }) {
+function VideoParameterPopover({ config, model, updateConfig, triggerClassName, triggerContent }: { config: AiConfig; model: string; updateConfig: UpdateAiConfig; triggerClassName?: string; triggerContent?: string }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [open, setOpen] = useState(false);
@@ -647,7 +661,7 @@ function VideoParameterPopover({ config, updateConfig, triggerClassName, trigger
             placement="topRight"
             content={
                 <div className="w-[min(360px,calc(100vw-24px))] max-h-[min(70vh,620px)] overflow-y-auto p-1">
-                    <VideoSettingsPanel config={config} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" />
+                    <VideoSettingsPanel config={config} model={model} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" />
                 </div>
             }
         >

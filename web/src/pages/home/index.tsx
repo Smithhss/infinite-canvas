@@ -1,12 +1,14 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ImagePlus, Video, Workflow } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { App, Button, Image, Tag } from "antd";
+import { App, Button, Image, Input, Tag } from "antd";
 import { useNavigate } from "react-router-dom";
 import { Trans, useTranslation } from "react-i18next";
 
 import { fetchPrompts, type Prompt } from "@/services/api/prompts";
 import { navigationTools } from "@/constant/navigation-tools";
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
+import { buildQuickCreateUrl } from "@/lib/quick-create";
 import { cn } from "@/lib/utils";
 
 function Highlighter({ action, color, children }: { action: "highlight" | "underline"; color: string; children?: ReactNode }) {
@@ -30,12 +32,24 @@ export default function IndexPage() {
     const [promptShowcase, setPromptShowcase] = useState<Prompt[]>([]);
     const [previewIndex, setPreviewIndex] = useState(0);
     const [previewOpen, setPreviewOpen] = useState(false);
+    const [quickPrompt, setQuickPrompt] = useState("");
+    const quickCreateEnabled = isFeatureEnabled("quickCreate");
+    const workflowEnabled = isFeatureEnabled("creativeWorkflow");
 
     useEffect(() => {
         void fetchPrompts({ pageSize: 12 })
             .then((data) => setPromptShowcase(data.items))
             .catch((error) => message.error(error instanceof Error ? error.message : i18n.t("home.promptError")));
     }, [message]);
+
+    const openQuickCreate = (mode: "image" | "video") => {
+        const prompt = quickPrompt.trim();
+        if (!prompt) {
+            message.warning(t("home.quickPromptRequired"));
+            return;
+        }
+        navigate(buildQuickCreateUrl({ mode, prompt, run: false }));
+    };
 
     return (
         <main className="relative h-full overflow-y-auto bg-background bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] text-stone-950 dark:bg-[radial-gradient(rgba(245,245,244,.18)_1px,transparent_1px)] dark:text-stone-100">
@@ -57,6 +71,43 @@ export default function IndexPage() {
                         </Button>
                     </div>
                 </div>
+
+                {quickCreateEnabled ? (
+                    <section className="relative mx-auto mb-16 max-w-5xl overflow-hidden rounded-[28px] border border-stone-200 bg-white/75 p-5 shadow-[0_24px_80px_-48px_rgba(28,25,23,0.45)] backdrop-blur-xl sm:p-7 dark:border-white/10 dark:bg-white/[0.035]">
+                        <div className="pointer-events-none absolute -right-16 -top-20 size-56 rounded-full bg-cyan-300/20 blur-3xl" />
+                        <div className="relative grid gap-6 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
+                            <div>
+                                <p className="text-xs font-medium uppercase tracking-[0.24em] text-cyan-700 dark:text-cyan-400">{t("home.quickEyebrow")}</p>
+                                <h2 className="mt-3 text-2xl font-semibold text-stone-950 dark:text-stone-100">{t("home.quickTitle")}</h2>
+                                <p className="mt-2 text-sm leading-6 text-stone-500 dark:text-stone-400">{t("home.quickDescription")}</p>
+                            </div>
+                            <div>
+                                <Input.TextArea
+                                    value={quickPrompt}
+                                    onChange={(event) => setQuickPrompt(event.target.value)}
+                                    placeholder={t("home.quickPlaceholder")}
+                                    autoSize={{ minRows: 3, maxRows: 5 }}
+                                    maxLength={600}
+                                    className="!rounded-2xl !bg-white/80 !text-sm dark:!bg-black/20"
+                                />
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <Button type="primary" icon={<ImagePlus className="size-4" />} onClick={() => openQuickCreate("image")}>
+                                        {t("home.quickImage")}
+                                    </Button>
+                                    <Button icon={<Video className="size-4" />} onClick={() => openQuickCreate("video")}>
+                                        {t("home.quickVideo")}
+                                    </Button>
+                                    {workflowEnabled ? (
+                                        <Button type="text" icon={<Workflow className="size-4" />} onClick={() => navigate("/workflows")}>
+                                            {t("home.quickWorkflow")}
+                                        </Button>
+                                    ) : null}
+                                    <span className="ml-auto text-xs text-stone-400 dark:text-stone-500">{t("home.quickNoCharge")}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                ) : null}
 
                 <section className="relative mx-auto mb-20 max-w-6xl border-t border-stone-200 pt-12 dark:border-stone-800">
                     <div className="mb-8 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-start">

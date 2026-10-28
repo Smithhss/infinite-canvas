@@ -4,6 +4,7 @@ import { App, Button, Checkbox, Drawer, Image, Input, Modal, Popover, Tag, Toolt
 import localforage from "localforage";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
 import { StudioModelPicker } from "@/components/studio-model-picker";
@@ -11,6 +12,7 @@ import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
+import { readQuickCreateDraft } from "@/lib/quick-create";
 import { modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { nanoid } from "nanoid";
@@ -71,6 +73,8 @@ const logStore = localforage.createInstance({ name: "infinite-canvas", storeName
 export default function ImagePage() {
     const { message } = App.useApp();
     const { t } = useTranslation();
+    const [searchParams] = useSearchParams();
+    const quickCreateQuery = searchParams.toString();
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const dragDepthRef = useRef(0);
@@ -114,6 +118,13 @@ export default function ImagePage() {
     useEffect(() => {
         void refreshLogs();
     }, []);
+
+    useEffect(() => {
+        const draft = readQuickCreateDraft(new URLSearchParams(quickCreateQuery));
+        if (!draft || draft.mode !== "image") return;
+        setPrompt(draft.prompt);
+        if (draft.model) updateConfig("imageModel", draft.model);
+    }, [quickCreateQuery, updateConfig]);
 
     const addReferences = async (files?: FileList | null) => {
         const imageFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));

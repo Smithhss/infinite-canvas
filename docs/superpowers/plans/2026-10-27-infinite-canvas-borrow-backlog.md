@@ -2412,7 +2412,7 @@ export type VideoModelCapabilities = {
 };
 ```
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -2433,7 +2433,7 @@ test("recognizes capability hints without claiming verification", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/video-model-capabilities.test.ts
@@ -2441,11 +2441,11 @@ bun test tests/video-model-capabilities.test.ts
 
 Expected: FAIL，原因是能力描述模块不存在。
 
-- [ ] **Step 3：实现保守推断**
+- [x] **Step 3：实现保守推断**
 
 模型名只作为“提示”，不能作为真实能力证明。渠道配置中可以显式覆盖；未覆盖的未知模型使用最小能力集，不能默认展示多镜头、参考视频或音频开关。
 
-- [ ] **Step 4：接入表单**
+- [x] **Step 4：接入表单**
 
 `VideoSettingsPanel` 根据 `VideoModelCapabilities` 显示字段：
 
@@ -2460,7 +2460,7 @@ Expected: FAIL，原因是能力描述模块不存在。
 
 模型不支持时隐藏或禁用，并在提交前再次校验，不能只依赖 UI 隐藏。
 
-- [ ] **Step 5：运行测试**
+- [x] **Step 5：运行测试**
 
 ```bash
 bun test tests/video-model-capabilities.test.ts
@@ -2469,7 +2469,7 @@ bun run typecheck
 
 Expected: PASS；未知模型不会出现多镜头默认值。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/lib/video-model-capabilities.ts web/src/stores/use-config-store.ts web/tests/video-model-capabilities.test.ts
@@ -2490,7 +2490,7 @@ git commit -m "feat: 增加视频模型能力描述"
 - Consumes: `VideoModelCapabilities`、现有 `createVideoGenerationTask`。
 - Produces: 根据模型能力构造的首尾帧、参考素材、多镜头和负面提示词参数。
 
-- [ ] **Step 1：先写参数构造测试**
+- [x] **Step 1：先写参数构造测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -2508,7 +2508,7 @@ test("does not send Kling-only fields to a generic video model", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/video-model-capabilities.test.ts
@@ -2516,11 +2516,11 @@ bun test tests/video-model-capabilities.test.ts
 
 Expected: FAIL，原因是 `buildVideoTaskBody` 不存在。
 
-- [ ] **Step 3：实现能力驱动参数**
+- [x] **Step 3：实现能力驱动参数**
 
 视频请求参数必须从 `VideoModelCapabilities` 和用户实际输入生成。没有能力时不得因为模型名包含 `kling` 就无条件发送专用字段。
 
-- [ ] **Step 4：保持异步任务链**
+- [x] **Step 4：保持异步任务链**
 
 保留现有：
 
@@ -2531,7 +2531,7 @@ Expected: FAIL，原因是 `buildVideoTaskBody` 不存在。
 
 多镜头每个任务必须有独立任务 ID；批量任务最多使用现有安全上限，不因新 UI 自动放大并发。
 
-- [ ] **Step 5：零收费验收**
+- [x] **Step 5：零收费验收**
 
 用禁止调用上游的配置验证：
 
@@ -2540,7 +2540,7 @@ Expected: FAIL，原因是 `buildVideoTaskBody` 不存在。
 - 任务创建失败时显示错误，不保留“成功”状态。
 - 重新打开页面能恢复任务 ID 并显示等待/失败状态。
 
-- [ ] **Step 6：运行测试和构建**
+- [x] **Step 6：运行测试和构建**
 
 ```bash
 bun test tests/video-model-capabilities.test.ts
@@ -2550,7 +2550,7 @@ bun run build
 
 Expected: PASS；不新增依赖。
 
-- [ ] **Step 7：提交**
+- [x] **Step 7：提交**
 
 ```bash
 git add web/src/components/video-settings-panel.tsx web/src/pages/video/index.tsx web/src/services/api/video.ts web/src/i18n/locales/zh-CN.ts web/src/i18n/locales/en-US.ts web/tests/video-model-capabilities.test.ts
@@ -2573,7 +2573,7 @@ git commit -m "feat: 增加能力驱动的视频工作台"
   - `buildQuickCreateUrl(draft): string`
   - `readQuickCreateDraft(searchParams): QuickCreateDraft | null`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -2581,9 +2581,9 @@ import { expect, test } from "bun:test";
 import { buildQuickCreateUrl, readQuickCreateDraft } from "../src/lib/quick-create";
 
 test("round-trips a quick create draft through the URL", () => {
-    const url = buildQuickCreateUrl({ mode: "image", prompt: "白色小猫", model: "gpt-image-2" });
+    const url = buildQuickCreateUrl({ mode: "image", prompt: "白色小猫", model: "gpt-image-2", run: false });
     const draft = readQuickCreateDraft(new URLSearchParams(url.split("?")[1]));
-    expect(draft).toEqual({ mode: "image", prompt: "白色小猫", model: "gpt-image-2" });
+    expect(draft).toEqual({ mode: "image", prompt: "白色小猫", model: "gpt-image-2", run: false });
 });
 
 test("does not auto-run a quick create draft", () => {
@@ -2591,7 +2591,7 @@ test("does not auto-run a quick create draft", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/quick-create.test.ts
@@ -2599,11 +2599,11 @@ bun test tests/quick-create.test.ts
 
 Expected: FAIL，原因是 quick-create 模块不存在。
 
-- [ ] **Step 3：实现 URL 草稿**
+- [x] **Step 3：实现 URL 草稿**
 
 query 只允许 `mode=image|video`、`prompt`、`model`、`workflow`；长度和字符集有限制。不得通过 query 传递 API Key、用户 token、余额或渠道密钥。
 
-- [ ] **Step 4：实现首页入口**
+- [x] **Step 4：实现首页入口**
 
 首页增加：
 
@@ -2613,7 +2613,7 @@ query 只允许 `mode=image|video`、`prompt`、`model`、`workflow`；长度和
 
 点击后只 `navigate` 到 `/image`、`/video` 或 `/workflows`，并将草稿显示在对应 composer；不自动点击“开始生成”。
 
-- [ ] **Step 5：运行测试和手验**
+- [x] **Step 5：运行测试和手验**
 
 ```bash
 bun test tests/quick-create.test.ts
@@ -2623,7 +2623,7 @@ bun run build
 
 浏览器验收：输入 prompt 后跳转，页面显示预填内容；刷新后内容可恢复或从 URL 重新读取；没有任何自动请求。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/pages/home/index.tsx web/src/pages/image/index.tsx web/src/pages/video/index.tsx web/src/lib/quick-create.ts web/tests/quick-create.test.ts
@@ -2640,11 +2640,11 @@ git commit -m "feat: 增加首页快速创作入口"
 - Consumes: `quickCreate` 开关。
 - Produces: 默认关闭的首页快速创作能力。
 
-- [ ] **Step 1：验证开关**
+- [x] **Step 1：验证开关**
 
 关闭 `quickCreate` 时首页不出现新入口，`/image?prompt=...` 不自动预填敏感字段，普通生图页面仍可使用。
 
-- [ ] **Step 2：验证 Kling 模型和非 Kling 模型**
+- [x] **Step 2：验证 Kling 模型和非 Kling 模型**
 
 至少准备：
 
@@ -2655,11 +2655,11 @@ git commit -m "feat: 增加首页快速创作入口"
 
 确认 UI 显示、请求体和错误提示一致；不发起真实收费请求。
 
-- [ ] **Step 3：记录结果**
+- [x] **Step 3：记录结果**
 
 在待测试文档中写明“仅代码/预发 mock 验证，未证明生产渠道真实能力”。
 
-- [ ] **Step 4：提交**
+- [x] **Step 4：提交**
 
 ```bash
 git add docs/content/docs/progress/pending-test.mdx web/src/constant/feature-flags.ts

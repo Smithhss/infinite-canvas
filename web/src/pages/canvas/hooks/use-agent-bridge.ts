@@ -40,8 +40,23 @@ export function useAgentBridge(params: AgentBridgeParams) {
     const projectTitle = title || i18n.t("canvas.project.untitled");
 
     const agentSnapshot = useMemo<CanvasAgentSnapshot>(() => ({ projectId, title: projectTitle, nodes, connections, selectedNodeIds: Array.from(selectedNodeIds), viewport }), [connections, projectTitle, nodes, projectId, selectedNodeIds, viewport]);
+    const writeAgentSnapshot = useCallback(
+        (next: CanvasAgentSnapshot) => {
+            nodesRef.current = next.nodes;
+            connectionsRef.current = next.connections;
+            selectedNodeIdsRef.current = new Set(next.selectedNodeIds);
+            viewportRef.current = next.viewport;
+            setNodes(next.nodes);
+            setConnections(next.connections);
+            setSelectedNodeIds(new Set(next.selectedNodeIds));
+            setSelectedConnectionId(null);
+            setViewport(next.viewport);
+            setContextMenu(null);
+        },
+        [setConnections, setContextMenu, setNodes, setSelectedConnectionId, setSelectedNodeIds, setViewport],
+    );
     const applyAgentOps = useCallback(
-        (ops?: CanvasAgentOp[]) => {
+        (ops?: CanvasAgentOp[], options?: { recordUndo?: boolean }) => {
             const safeOps = Array.isArray(ops) ? ops.filter((op) => op?.type) : [];
             const before = { projectId, title: projectTitle, nodes: nodesRef.current, connections: connectionsRef.current, selectedNodeIds: Array.from(selectedNodeIdsRef.current), viewport: viewportRef.current };
             const generationOps = safeOps.filter((op): op is Extract<CanvasAgentOp, { type: "run_generation" }> => op.type === "run_generation" && Boolean(op.nodeId));
@@ -49,17 +64,9 @@ export function useAgentBridge(params: AgentBridgeParams) {
                 before,
                 safeOps.filter((op) => op.type !== "run_generation"),
             );
-            nodesRef.current = next.nodes;
-            connectionsRef.current = next.connections;
-            selectedNodeIdsRef.current = new Set(next.selectedNodeIds);
-            viewportRef.current = next.viewport;
-            setAgentUndoSnapshot(before);
-            setNodes(next.nodes);
-            setConnections(next.connections);
-            setSelectedNodeIds(new Set(next.selectedNodeIds));
-            setSelectedConnectionId(null);
-            setViewport(next.viewport);
-            setContextMenu(null);
+            writeAgentSnapshot(next);
+            if (options?.recordUndo === false) setAgentUndoSnapshot(null);
+            else setAgentUndoSnapshot(before);
             if (generationOps.length) {
                 queueMicrotask(() =>
                     generationOps.forEach((op) => {
@@ -71,28 +78,26 @@ export function useAgentBridge(params: AgentBridgeParams) {
             }
             return { ...next, projectId, title: projectTitle };
         },
-        [projectTitle, projectId],
+        [projectTitle, projectId, writeAgentSnapshot],
+    );
+    const applyAgentSnapshot = useCallback(
+        (next: CanvasAgentSnapshot) => {
+            writeAgentSnapshot(next);
+            return { ...next, projectId, title: projectTitle };
+        },
+        [projectTitle, projectId, writeAgentSnapshot],
     );
     const undoAgentOps = useCallback(() => {
         if (!agentUndoSnapshot) return null;
-        nodesRef.current = agentUndoSnapshot.nodes;
-        connectionsRef.current = agentUndoSnapshot.connections;
-        selectedNodeIdsRef.current = new Set(agentUndoSnapshot.selectedNodeIds);
-        viewportRef.current = agentUndoSnapshot.viewport;
-        setNodes(agentUndoSnapshot.nodes);
-        setConnections(agentUndoSnapshot.connections);
-        setSelectedNodeIds(new Set(agentUndoSnapshot.selectedNodeIds));
-        setSelectedConnectionId(null);
-        setViewport(agentUndoSnapshot.viewport);
-        setContextMenu(null);
+        writeAgentSnapshot(agentUndoSnapshot);
         setAgentUndoSnapshot(null);
         return { ...agentUndoSnapshot, projectId, title: projectTitle };
-    }, [agentUndoSnapshot, projectTitle, projectId]);
+    }, [agentUndoSnapshot, projectTitle, projectId, writeAgentSnapshot]);
 
     useEffect(() => {
         setAgentCanvasContext({ snapshot: agentSnapshot, applyOps: applyAgentOps, undoOps: undoAgentOps, canUndo: Boolean(agentUndoSnapshot) });
         return () => setAgentCanvasContext(null);
     }, [agentSnapshot, applyAgentOps, agentUndoSnapshot, setAgentCanvasContext, undoAgentOps]);
 
-    return { applyAgentOps };
+    return { applyAgentOps, applyAgentSnapshot, snapshot: agentSnapshot };
 }

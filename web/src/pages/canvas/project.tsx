@@ -45,6 +45,7 @@ import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
+import { useBuiltinCanvasAgent } from "@/pages/canvas/hooks/use-builtin-canvas-agent";
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
@@ -74,7 +75,9 @@ import { registerBuiltinNodes } from "@/components/canvas/nodes/builtin-nodes";
 import { CanvasPluginManagerModal } from "@/components/canvas/canvas-plugin-manager-modal";
 import { CanvasRefreshShell } from "@/components/canvas/canvas-refresh-shell";
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
+import { BuiltinAgentPanel } from "@/components/canvas/builtin-agent-panel";
 import { ConnectionCreateMenu, NodeCreateMenu, type PendingConnectionCreate } from "@/components/canvas/canvas-create-menus";
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import {
     CanvasNodeType,
     type CanvasAssistantImage,
@@ -797,7 +800,7 @@ function InfiniteCanvasPage() {
         return map;
     }, [connections, nodeById]);
     const referenceConnectedNodeIds = useMemo(() => new Set([referencePickerNodeId, ...(referencePickerNodeId ? connectedNodesByNodeId.get(referencePickerNodeId)?.flatMap((node) => node.type === CanvasNodeType.Group ? [node.id, ...getGroupResourceNodes(node.id, nodes).map((child) => child.id)] : [node.id]) || [] : [])].filter((id): id is string => Boolean(id))), [connectedNodesByNodeId, nodes, referencePickerNodeId]);
-    const { applyAgentOps } = useAgentBridge({
+    const { applyAgentOps, applyAgentSnapshot, snapshot: agentSnapshot } = useAgentBridge({
         projectId,
         title: currentProject?.title,
         nodes,
@@ -816,6 +819,8 @@ function InfiniteCanvasPage() {
         setViewport,
         setContextMenu,
     });
+    const builtinAgentEnabled = isFeatureEnabled("builtinCanvasAgent");
+    const builtinAgent = useBuiltinCanvasAgent({ snapshot: agentSnapshot, applyAgentOps, applyAgentSnapshot });
 
     const { pluginHost, renderPluginPanel, buildNodeToolbarItems } = usePluginHost({
         effectiveConfig,
@@ -3179,6 +3184,9 @@ function InfiniteCanvasPage() {
                     agentOpen={agentPanelOpen}
                     compactAgentStatus={{ connected: localAgentConnected, enabled: localAgentEnabled, activity: localAgentActivity }}
                     onToggleAgent={toggleAgentPanel}
+                    builtinAgentEnabled={builtinAgentEnabled}
+                    builtinAgentOpen={builtinAgent.open}
+                    onToggleBuiltinAgent={builtinAgent.toggle}
                 />
 
                 <InfiniteCanvas
@@ -3387,6 +3395,7 @@ function InfiniteCanvasPage() {
                 {isMiniMapOpen ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
 
                 <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
+                {builtinAgentEnabled && builtinAgent.open ? <BuiltinAgentPanel controller={builtinAgent} onClose={builtinAgent.close} /> : null}
 
                 {contextMenu ? (
                     <CanvasNodeContextMenu

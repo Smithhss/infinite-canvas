@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Bot, Download, Home, Images, Menu, PanelLeftClose, PanelLeftOpen, Plus, Redo2, Trash2, Undo2, Upload } from "lucide-react";
+import { BookOpen, Bot, Download, Home, Images, Menu, PanelLeftClose, PanelLeftOpen, Plus, Redo2, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
 import { Button, Dropdown, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
@@ -31,6 +31,9 @@ export function CanvasTopBar({
     agentOpen,
     compactAgentStatus,
     onToggleAgent,
+    builtinAgentEnabled,
+    builtinAgentOpen,
+    onToggleBuiltinAgent,
 }: {
     title: string;
     titleDraft: string;
@@ -53,6 +56,9 @@ export function CanvasTopBar({
     agentOpen: boolean;
     compactAgentStatus: { connected: boolean; enabled: boolean; activity: string };
     onToggleAgent: () => void;
+    builtinAgentEnabled: boolean;
+    builtinAgentOpen: boolean;
+    onToggleBuiltinAgent: () => void;
 }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const { t } = useTranslation();
@@ -141,6 +147,19 @@ export function CanvasTopBar({
                 <div className="pointer-events-auto flex items-center gap-1.5">
                     <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
                     <span className="h-6 w-px" style={{ background: theme.toolbar.border }} />
+                    {builtinAgentEnabled ? (
+                        <Tooltip title={t("canvas.builtinAgent.title")}>
+                            <Button
+                                type="text"
+                                className="!h-10 !rounded-xl !px-3 !font-medium"
+                                style={{ background: builtinAgentOpen ? theme.toolbar.activeBg : "transparent", color: theme.node.text }}
+                                icon={<Sparkles className="size-4" />}
+                                onClick={onToggleBuiltinAgent}
+                            >
+                                {t("canvas.builtinAgent.openButton")}
+                            </Button>
+                        </Tooltip>
+                    ) : null}
                     <Button
                         type="text"
                         className="!h-10 !rounded-xl !px-3 !font-medium"

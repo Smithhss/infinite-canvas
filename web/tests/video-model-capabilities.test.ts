@@ -2,6 +2,18 @@ import { expect, test } from "bun:test";
 
 import { defaultVideoModelCapabilities, inferVideoModelCapabilities, resolveVideoCapabilities } from "../src/lib/video-model-capabilities";
 
+if (!globalThis.localStorage) {
+    const storage = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+        value: {
+            getItem: (key: string) => storage.get(key) ?? null,
+            setItem: (key: string, value: string) => storage.set(key, value),
+            removeItem: (key: string) => storage.delete(key),
+        },
+    });
+}
+const { buildVideoTaskBody } = await import("../src/services/api/video");
+
 test("keeps unknown models conservative", () => {
     const caps = inferVideoModelCapabilities("unknown-video");
     expect(caps.modes).toEqual(["text-to-video"]);
@@ -53,4 +65,53 @@ test("channel overrides take precedence for the selected channel only", () => {
     const other = resolveVideoCapabilities(config, "other::custom-video");
     expect(other.modes).toEqual(["text-to-video"]);
     expect(other.maxReferenceImages).toBe(0);
+});
+
+test("does not send unsupported provider-specific fields to a generic video model", () => {
+    const body = buildVideoTaskBody({
+        model: "generic-video",
+        prompt: "走路",
+        capabilities: defaultVideoModelCapabilities(),
+        config: {
+            videoNegativePrompt: "模糊",
+            videoMultiShot: "true",
+            videoMultiPrompt: "近景\n远景",
+        },
+    });
+    expect(body.has("negative_prompt")).toBe(false);
+    expect(body.has("multi_shot")).toBe(false);
+    expect(body.has("multi_prompt")).toBe(false);
+    expect(body.has("generate_audio")).toBe(false);
+    expect(body.has("mode")).toBe(false);
+});
+
+test("sends capability-gated Kling fields and clamps duration", () => {
+    const body = buildVideoTaskBody({
+        model: "kling-v26-pro",
+        prompt: "海边慢镜头",
+        capabilities: inferVideoModelCapabilities("kling-v26-pro"),
+        config: {
+            videoSeconds: "30",
+            videoNegativePrompt: "低清晰度",
+            videoMultiShot: "true",
+            videoMultiPrompt: "近景\n远景",
+        },
+    });
+    expect(body.get("seconds")).toBe("10");
+    expect(body.get("negative_prompt")).toBe("低清晰度");
+    expect(body.get("multi_shot")).toBe("true");
+    expect(body.get("shot_type")).toBe("customize");
+    expect(body.get("multi_prompt")).toContain('"index":1');
+    expect(body.has("generate_audio")).toBe(true);
+});
+
+test("rejects reference images before a request when the model declares no support", () => {
+    expect(() =>
+        buildVideoTaskBody({
+            model: "generic-video",
+            prompt: "走路",
+            capabilities: defaultVideoModelCapabilities(),
+            images: [new File(["image"], "ref.png", { type: "image/png" })],
+        }),
+    ).toThrow();
 });

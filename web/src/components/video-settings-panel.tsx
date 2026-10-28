@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { Slider } from "antd";
+import { Input, Slider } from "antd";
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
@@ -20,7 +20,7 @@ export const videoSecondsRange = { min: VIDEO_SECONDS_MIN, max: VIDEO_SECONDS_MA
 
 type VideoSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode", value: string) => void;
+    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode" | "videoNegativePrompt" | "videoMultiShot" | "videoMultiPrompt", value: string) => void;
     theme: CanvasTheme;
     model?: string;
     showTitle?: boolean;
@@ -106,6 +106,35 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, model, showT
                 ) : null}
                 {capabilities.supportsAudio ? <BooleanSetting title={t("settingsPanels.video.generateAudio")} value={config.videoGenerateAudio} theme={theme} onChange={(value) => onConfigChange("videoGenerateAudio", value)} /> : null}
                 {capabilities.supportsWatermark ? <BooleanSetting title={t("settingsPanels.video.watermark")} value={config.videoWatermark} theme={theme} onChange={(value) => onConfigChange("videoWatermark", value)} /> : null}
+                {capabilities.supportsNegativePrompt ? (
+                    <SettingGroup title={t("settingsPanels.video.negativePrompt")} color={theme.node.muted}>
+                        <Input.TextArea
+                            value={config.videoNegativePrompt}
+                            autoSize={{ minRows: 2, maxRows: 4 }}
+                            className="!rounded-xl !text-sm"
+                            placeholder={t("settingsPanels.video.negativePromptPlaceholder")}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onChange={(event) => onConfigChange("videoNegativePrompt", event.target.value)}
+                        />
+                    </SettingGroup>
+                ) : null}
+                {capabilities.supportsMultiShot ? (
+                    <>
+                        <BooleanSetting title={t("settingsPanels.video.multiShot")} value={config.videoMultiShot} theme={theme} onChange={(value) => onConfigChange("videoMultiShot", value)} />
+                        {config.videoMultiShot === "true" ? (
+                            <SettingGroup title={t("settingsPanels.video.multiPrompt")} color={theme.node.muted}>
+                                <Input.TextArea
+                                    value={config.videoMultiPrompt}
+                                    autoSize={{ minRows: 3, maxRows: 6 }}
+                                    className="!rounded-xl !text-sm"
+                                    placeholder={t("settingsPanels.video.multiPromptPlaceholder")}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                    onChange={(event) => onConfigChange("videoMultiPrompt", event.target.value)}
+                                />
+                            </SettingGroup>
+                        ) : null}
+                    </>
+                ) : null}
             </div>
         </ImageSettingsTheme>
     );

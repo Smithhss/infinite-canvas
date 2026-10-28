@@ -12,7 +12,8 @@ if (!globalThis.localStorage) {
         },
     });
 }
-const { buildVideoTaskBody } = await import("../src/services/api/video");
+const { buildGeminiVideoParameters, buildPluginVideoParams, buildVideoTaskBody } = await import("../src/services/api/video");
+const { normalizeChannelModels } = await import("../src/stores/use-config-store");
 
 test("keeps unknown models conservative", () => {
     const caps = inferVideoModelCapabilities("unknown-video");
@@ -114,4 +115,80 @@ test("rejects reference images before a request when the model declares no suppo
             images: [new File(["image"], "ref.png", { type: "image/png" })],
         }),
     ).toThrow();
+});
+
+test("normalizes saved video capability overrides on channel models", () => {
+    const [model] = normalizeChannelModels([
+        {
+            name: "custom-video",
+            capability: "video",
+            videoCapabilities: { modes: ["text-to-video", "image-to-video"], maxSeconds: 7 },
+        },
+    ]);
+    expect(model.videoCapabilities?.modes).toEqual(["text-to-video", "image-to-video"]);
+    expect(model.videoCapabilities?.maxSeconds).toBe(7);
+});
+
+test("plugin and Gemini requests clamp duration and omit unsupported fields", () => {
+    const plugin = buildPluginVideoParams(
+        {
+            videoSeconds: "30",
+            size: "16:9",
+            vquality: "720",
+            videoGenerateAudio: "true",
+            videoWatermark: "true",
+            videoMode: "frames",
+            videoNegativePrompt: "低清晰度",
+            videoMultiShot: "true",
+            videoMultiPrompt: "近景\n远景",
+        },
+        0,
+        inferVideoModelCapabilities("kling-v26-pro"),
+    );
+    expect(plugin.seconds).toBe("10");
+    expect(plugin.generateAudio).toBe(true);
+    expect(plugin.watermark).toBe(true);
+    expect(plugin.mode).toBeUndefined();
+
+    const generic = buildPluginVideoParams(
+        {
+            videoSeconds: "30",
+            size: "16:9",
+            vquality: "720",
+            videoGenerateAudio: "true",
+            videoWatermark: "true",
+            videoMode: "frames",
+            videoNegativePrompt: "低清晰度",
+            videoMultiShot: "true",
+            videoMultiPrompt: "近景\n远景",
+        },
+        0,
+        defaultVideoModelCapabilities(),
+    );
+    expect(generic.seconds).toBe("6");
+    expect("generateAudio" in generic).toBe(false);
+    expect("watermark" in generic).toBe(false);
+    expect("mode" in generic).toBe(false);
+    expect("negativePrompt" in generic).toBe(false);
+    expect("multiShot" in generic).toBe(false);
+
+    const gemini = buildGeminiVideoParameters(
+        {
+            videoSeconds: "30",
+            size: "16:9",
+            vquality: "720",
+            videoGenerateAudio: "true",
+            videoWatermark: "true",
+            videoMode: "frames",
+            videoNegativePrompt: "低清晰度",
+            videoMultiShot: "true",
+            videoMultiPrompt: "近景\n远景",
+        },
+        inferVideoModelCapabilities("veo-3"),
+    );
+    expect(gemini.durationSeconds).toBe(8);
+    expect("generateAudio" in gemini).toBe(false);
+    expect("addWatermark" in gemini).toBe(false);
+    expect("negativePrompt" in gemini).toBe(false);
+    expect("multiShot" in gemini).toBe(false);
 });

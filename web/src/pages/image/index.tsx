@@ -4,7 +4,7 @@ import { App, Button, Checkbox, Drawer, Image, Input, Modal, Popover, Tag, Toolt
 import localforage from "localforage";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
 import { StudioModelPicker } from "@/components/studio-model-picker";
@@ -12,7 +12,7 @@ import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
-import { readQuickCreateDraft } from "@/lib/quick-create";
+import { clearQuickCreateDraft, readQuickCreateDraft } from "@/lib/quick-create";
 import { modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { nanoid } from "nanoid";
@@ -21,6 +21,7 @@ import { requestEdit, requestGeneration } from "@/services/api/image";
 import { deleteStoredImages, ensureImagePreview, getImagePreviewRevision, previewUrlFor, resolveImageUrl, subscribeImagePreviews, uploadImage } from "@/services/image-storage";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import type { ReferenceImage } from "@/types/image";
 import i18n from "@/i18n";
 
@@ -73,8 +74,7 @@ const logStore = localforage.createInstance({ name: "infinite-canvas", storeName
 export default function ImagePage() {
     const { message } = App.useApp();
     const { t } = useTranslation();
-    const [searchParams] = useSearchParams();
-    const quickCreateQuery = searchParams.toString();
+    const location = useLocation();
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const dragDepthRef = useRef(0);
@@ -108,6 +108,10 @@ export default function ImagePage() {
     const model = effectiveConfig.imageModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
     const generationCount = Math.max(1, Math.min(10, Number(config.count) || 1));
+    const updatePrompt = (value: string) => {
+        clearQuickCreateDraft("image");
+        setPrompt(value);
+    };
 
     useEffect(() => {
         if (!running || !startedAt) return;
@@ -120,11 +124,16 @@ export default function ImagePage() {
     }, []);
 
     useEffect(() => {
-        const draft = readQuickCreateDraft(new URLSearchParams(quickCreateQuery));
+        const quickCreateNavigation = (location.state as { quickCreate?: boolean } | null)?.quickCreate === true;
+        if (!isFeatureEnabled("quickCreate") && !quickCreateNavigation) {
+            clearQuickCreateDraft("image");
+            return;
+        }
+        const draft = readQuickCreateDraft();
         if (!draft || draft.mode !== "image") return;
         setPrompt(draft.prompt);
         if (draft.model) updateConfig("imageModel", draft.model);
-    }, [quickCreateQuery, updateConfig]);
+    }, [location.state, updateConfig]);
 
     const addReferences = async (files?: FileList | null) => {
         const imageFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
@@ -180,6 +189,7 @@ export default function ImagePage() {
             return;
         }
 
+        clearQuickCreateDraft("image");
         setElapsedMs(0);
         setRunning(true);
         if (agentTaskId) updateAgentTask(agentTaskId, { status: "running", error: undefined });
@@ -223,7 +233,7 @@ export default function ImagePage() {
         if (!imageCommand || imageCommand.nonce === processedCommandRef.current) return;
         processedCommandRef.current = imageCommand.nonce;
         clearImageCommand();
-        if (typeof imageCommand.prompt === "string") setPrompt(imageCommand.prompt);
+        if (typeof imageCommand.prompt === "string") updatePrompt(imageCommand.prompt);
         if (imageCommand.run && running) {
             if (imageCommand.taskId) updateAgentTask(imageCommand.taskId, { status: "failed", error: t("imageWorkbench.busy") });
             return;
@@ -266,7 +276,7 @@ export default function ImagePage() {
 
     const insertPickedAsset = async (payload: InsertAssetPayload) => {
         if (payload.kind === "text") {
-            setPrompt(payload.content);
+            updatePrompt(payload.content);
         } else if (payload.kind === "image") {
             const stored = await uploadImage(payload.dataUrl);
             setReferences((value) => [...value, { id: nanoid(), name: payload.title, type: stored.mimeType, dataUrl: stored.url, storageKey: stored.storageKey }]);
@@ -277,7 +287,7 @@ export default function ImagePage() {
     };
 
     const createSession = () => {
-        setPrompt("");
+        updatePrompt("");
         setReferences([]);
         setResults([]);
         setElapsedMs(0);
@@ -306,7 +316,7 @@ export default function ImagePage() {
     const previewGenerationLog = async (log: GenerationLog) => {
         setPreviewLog(log);
         setLogsOpen(false);
-        setPrompt(log.prompt);
+        updatePrompt(log.prompt);
         setReferences(log.references || []);
         if (log.config.imageModel || log.model) updateConfig("imageModel", log.config.imageModel || log.model);
         if (log.config.quality) updateConfig("quality", log.config.quality);
@@ -418,7 +428,7 @@ export default function ImagePage() {
 
                         <PromptComposer
                             prompt={prompt}
-                            onPromptChange={setPrompt}
+                            onPromptChange={updatePrompt}
                             references={references}
                             isReferenceDragActive={isReferenceDragActive}
                             dragDepthRef={dragDepthRef}

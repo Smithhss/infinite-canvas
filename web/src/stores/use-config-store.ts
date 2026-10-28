@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
+import type { VideoModelCapabilitiesOverride } from "@/lib/video-model-capabilities";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -13,6 +14,7 @@ export type ChannelModel = {
     name: string;
     capability: ModelCapability;
     script?: string;
+    videoCapabilities?: VideoModelCapabilitiesOverride;
 };
 
 export type ModelChannel = {
@@ -44,6 +46,9 @@ export type AiConfig = {
     videoGenerateAudio: string;
     videoWatermark: string;
     videoMode: string;
+    videoNegativePrompt: string;
+    videoMultiShot: string;
+    videoMultiPrompt: string;
     systemPrompt: string;
     reasoningEffort: ReasoningEffort;
     models: string[];
@@ -114,6 +119,9 @@ export const defaultConfig: AiConfig = {
     videoGenerateAudio: "true",
     videoWatermark: "false",
     videoMode: "frames",
+    videoNegativePrompt: "",
+    videoMultiShot: "false",
+    videoMultiPrompt: "",
     systemPrompt: "",
     reasoningEffort: "auto",
     models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
@@ -280,6 +288,9 @@ export const useConfigStore = create<ConfigStore>()(
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",
                         videoMode: config.videoMode === "reference" ? "reference" : "frames",
+                        videoNegativePrompt: config.videoNegativePrompt || "",
+                        videoMultiShot: config.videoMultiShot === "true" ? "true" : "false",
+                        videoMultiPrompt: config.videoMultiPrompt || "",
                         canvasImageCount: config.canvasImageCount || "3",
                         proxyEnabled: Boolean(config.proxyEnabled),
                         proxyUrl: config.proxyUrl || DEFAULT_LOCAL_PROXY_URL,
@@ -307,7 +318,8 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         seen.add(name);
         const capability = typeof item === "string" ? guessCapability(name) : item.capability || guessCapability(name);
         const script = typeof item === "string" ? undefined : item.script?.trim() || undefined;
-        result.push({ name, capability, script });
+        const videoCapabilities = typeof item === "string" ? undefined : item.videoCapabilities;
+        result.push({ name, capability, script, videoCapabilities });
     }
     return result;
 }

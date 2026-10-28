@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { dataUrlToFile, readFileAsDataUrl } from "@/lib/image-utils";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio } from "@/lib/media-size";
+import { resolveVideoCapabilities, type VideoModelCapabilities } from "@/lib/video-model-capabilities";
 import { getMediaBlob, resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { boolConfig, buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig } from "@/stores/use-config-store";
@@ -21,6 +22,16 @@ const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiE
 
 export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string };
 export type VideoGenerationTask = { id: string; provider: "openai" | "gemini" | "plugin"; model: string; requestId?: string };
+type VideoTaskBodyConfig = Pick<AiConfig, "videoSeconds" | "size" | "vquality" | "videoGenerateAudio" | "videoWatermark" | "videoMode" | "videoNegativePrompt" | "videoMultiShot" | "videoMultiPrompt">;
+type VideoTaskBodyInput = {
+    model: string;
+    prompt: string;
+    capabilities: VideoModelCapabilities;
+    config?: Partial<VideoTaskBodyConfig>;
+    images?: File[];
+    videos?: File[];
+    audios?: File[];
+};
 type GeminiInlineData = { bytesBase64Encoded: string; mimeType: string };
 type GeminiVideoOperation = {
     name?: string;
@@ -73,11 +84,13 @@ function videoTaskFailed(message: string) {
 export async function createVideoGenerationTask(config: AiConfig, prompt: string, references: ReferenceImage[] = [], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     const selectedModel = (config.model || config.videoModel).trim();
     const requestConfig = resolveModelRequestConfig(config, selectedModel);
+    const capabilities = resolveVideoCapabilities(config, selectedModel);
+    assertVideoMediaCapabilities(capabilities, references.length, Boolean(options?.videos?.length), Boolean(options?.audios?.length), requestConfig.videoMode);
     const script = resolveModelScript(config, selectedModel);
-    if (script) return createPluginVideoTask(requestConfig, selectedModel, script, prompt, references, options);
+    if (script) return createPluginVideoTask(requestConfig, selectedModel, script, prompt, references, options, capabilities);
     assertVideoConfig(requestConfig, requestConfig.model);
-    if (requestConfig.apiFormat === "gemini") return createGeminiVideoTask(requestConfig, selectedModel, prompt, references, options);
-    return createOpenAIVideoTask(requestConfig, selectedModel, prompt, references, options);
+    if (requestConfig.apiFormat === "gemini") return createGeminiVideoTask(requestConfig, selectedModel, prompt, references, options, capabilities);
+    return createOpenAIVideoTask(requestConfig, selectedModel, prompt, references, options, capabilities);
 }
 
 export async function pollVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: RequestOptions): Promise<VideoGenerationTaskState> {
@@ -91,7 +104,7 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
     return pollOpenAIVideoTask(requestConfig, task, options);
 }
 
-async function createPluginVideoTask(config: AiConfig, model: string, script: string, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
+async function createPluginVideoTask(config: AiConfig, model: string, script: string, prompt: string, references: ReferenceImage[], options: VideoMediaOptions | undefined, capabilities: VideoModelCapabilities): Promise<VideoGenerationTask> {
     if (!config.baseUrl.trim()) throw new Error(apiText("baseUrlRequired"));
     if (!config.apiKey.trim()) throw new Error(apiText("apiKeyRequired"));
     const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
@@ -113,7 +126,10 @@ async function createPluginVideoTask(config: AiConfig, model: string, script: st
                 ratio: videoAspectRatio(config.size),
                 generateAudio: boolConfig(config.videoGenerateAudio, true),
                 watermark: boolConfig(config.videoWatermark, false),
-                mode: resolveVideoMode(config.videoMode, refs.length),
+                mode: resolveVideoMode(config.videoMode, refs.length, capabilities) || "frames",
+                negativePrompt: capabilities.supportsNegativePrompt ? config.videoNegativePrompt.trim() : "",
+                multiShot: capabilities.supportsMultiShot && config.videoMultiShot === "true",
+                multiPrompt: capabilities.supportsMultiShot ? parseMultiShotPrompts(config.videoMultiPrompt) : [],
             },
             signal: options?.signal,
         }),
@@ -147,41 +163,11 @@ export async function storeGeneratedVideo(result: VideoGenerationResult): Promis
     throw new Error(apiText("noPlayableVideo"));
 }
 
-async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
+async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], options: VideoMediaOptions | undefined, capabilities: VideoModelCapabilities): Promise<VideoGenerationTask> {
     const images = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
     const videos = await Promise.all((options?.videos || []).map((video) => referenceMediaToFile(video, "ref.mp4", "invalidReferenceVideo", options)));
     const audios = await Promise.all((options?.audios || []).map((audio) => referenceMediaToFile(audio, "ref.mp3", "invalidReferenceAudio", options)));
-    const mode = resolveVideoMode(config.videoMode, images.length);
-    const ratio = inferVideoRatio(config.size || "16:9");
-    const body = new FormData();
-    body.append("model", modelOptionName(model));
-    body.append("prompt", prompt);
-    body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
-    body.append("size", normalizeVideoSize(config.size, config.vquality) || "1280x720");
-    if (ratio && ratio !== "auto") {
-        body.append("ratio", ratio);
-    }
-    body.append("resolution_name", normalizeVideoResolution(config.vquality));
-    body.append("generate_audio", String(boolConfig(config.videoGenerateAudio, true)));
-    body.append("watermark", String(boolConfig(config.videoWatermark, false)));
-    body.append("mode", mode);
-    if (mode === "frames") {
-        if (images[0]) {
-            body.append("first_frame", images[0], "first.png");
-            body.append("images", images[0], "first.png");
-        }
-        if (images[1]) {
-            body.append("last_frame", images[1], "last.png");
-            body.append("images", images[1], "last.png");
-        }
-    } else {
-        images.forEach((file, idx) => {
-            body.append("image[]", file, `ref_${idx + 1}.png`);
-            body.append("images", file, `ref_${idx + 1}.png`);
-        });
-    }
-    videos.forEach((file) => body.append("video[]", file));
-    audios.forEach((file) => body.append("audio[]", file));
+    const body = buildVideoTaskBody({ model, prompt, config, capabilities, images, videos, audios });
     try {
         const response = await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal });
         notifyRequestId(options?.onRequestId, response.headers);
@@ -221,16 +207,16 @@ async function videoResultFromUrl(url: string, options?: RequestOptions): Promis
     }
 }
 
-async function createGeminiVideoTask(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
+async function createGeminiVideoTask(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], options: VideoMediaOptions | undefined, capabilities: VideoModelCapabilities): Promise<VideoGenerationTask> {
     const images = await Promise.all(references.map((image) => imageToDataUrl(image)));
     const videos = await Promise.all((options?.videos || []).map((video) => referenceMediaToFile(video, "ref.mp4", "invalidReferenceVideo", options)));
     const audios = await Promise.all((options?.audios || []).map((audio) => referenceMediaToFile(audio, "ref.mp3", "invalidReferenceAudio", options)));
-    const mode = resolveVideoMode(config.videoMode, images.length);
+    const mode = resolveVideoMode(config.videoMode, images.length, capabilities);
     const instance: Record<string, unknown> = { prompt };
     if (mode === "frames") {
         if (images[0]) instance.image = parseDataUrlInline(images[0]);
         if (images[1]) instance.lastFrame = parseDataUrlInline(images[1]);
-    } else {
+    } else if (mode === "reference") {
         instance.referenceImages = images.map((dataUrl) => ({ image: parseDataUrlInline(dataUrl), referenceType: "asset" }));
     }
     if (videos[0]) instance.video = await fileToGeminiInline(videos[0]);
@@ -242,8 +228,10 @@ async function createGeminiVideoTask(config: AiConfig, model: string, prompt: st
                 aspectRatio: videoAspectRatio(config.size),
                 durationSeconds: Number(normalizeVideoSeconds(config.videoSeconds)) || 8,
                 resolution: normalizeVideoResolution(config.vquality),
-                generateAudio: boolConfig(config.videoGenerateAudio, true),
-                addWatermark: boolConfig(config.videoWatermark, false),
+                ...(capabilities.supportsAudio ? { generateAudio: boolConfig(config.videoGenerateAudio, true) } : {}),
+                ...(capabilities.supportsWatermark ? { addWatermark: boolConfig(config.videoWatermark, false) } : {}),
+                ...(capabilities.supportsNegativePrompt && config.videoNegativePrompt.trim() ? { negativePrompt: config.videoNegativePrompt.trim() } : {}),
+                ...(capabilities.supportsMultiShot && config.videoMultiShot === "true" ? { multiShot: true, multiPrompt: parseMultiShotPrompts(config.videoMultiPrompt) } : {}),
             },
         }, { headers: geminiVideoHeaders(config), signal: options?.signal });
         notifyRequestId(options?.onRequestId, response.headers);
@@ -273,6 +261,82 @@ function assertVideoConfig(config: AiConfig, model: string) {
     if (!model) throw new Error(apiText("videoModelRequired"));
     if (!config.baseUrl.trim()) throw new Error(apiText("baseUrlRequired"));
     if (!config.apiKey.trim()) throw new Error(apiText("apiKeyRequired"));
+}
+
+function assertVideoMediaCapabilities(capabilities: VideoModelCapabilities, imageCount: number, hasVideos: boolean, hasAudios: boolean, requestedMode: string) {
+    if (imageCount > capabilities.maxReferenceImages) {
+        throw new Error(apiText("videoReferenceLimit", { max: capabilities.maxReferenceImages }));
+    }
+    if (imageCount > 0 && !capabilities.modes.some((mode) => mode === "image-to-video" || mode === "first-last-frame" || mode === "reference-video")) {
+        throw new Error(apiText("videoReferenceUnsupported"));
+    }
+    if (hasVideos && !capabilities.modes.includes("reference-video")) {
+        throw new Error(apiText("videoReferenceVideoUnsupported"));
+    }
+    if (hasAudios && !capabilities.modes.includes("reference-audio")) {
+        throw new Error(apiText("videoReferenceAudioUnsupported"));
+    }
+    if (requestedMode === "reference" && imageCount > 0 && !capabilities.modes.some((mode) => mode === "reference-video" || mode === "reference-audio")) {
+        throw new Error(apiText("videoReferenceModeUnsupported"));
+    }
+}
+
+export function buildVideoTaskBody(input: VideoTaskBodyInput) {
+    const config = {
+        videoSeconds: input.config?.videoSeconds || "6",
+        size: input.config?.size || "16:9",
+        vquality: input.config?.vquality || "720",
+        videoGenerateAudio: input.config?.videoGenerateAudio || "true",
+        videoWatermark: input.config?.videoWatermark || "false",
+        videoMode: input.config?.videoMode === "reference" ? "reference" : "frames",
+        videoNegativePrompt: input.config?.videoNegativePrompt || "",
+        videoMultiShot: input.config?.videoMultiShot || "false",
+        videoMultiPrompt: input.config?.videoMultiPrompt || "",
+    };
+    const images = input.images || [];
+    const videos = input.videos || [];
+    const audios = input.audios || [];
+    assertVideoMediaCapabilities(input.capabilities, images.length, videos.length > 0, audios.length > 0, config.videoMode);
+
+    const body = new FormData();
+    body.append("model", modelOptionName(input.model));
+    body.append("prompt", input.prompt);
+    body.append("seconds", String(Math.min(input.capabilities.maxSeconds, Number(normalizeVideoSeconds(config.videoSeconds)))));
+    body.append("size", normalizeVideoSize(config.size, config.vquality) || "1280x720");
+    const ratio = inferVideoRatio(config.size);
+    if (ratio && ratio !== "auto") body.append("ratio", ratio);
+    body.append("resolution_name", normalizeVideoResolution(config.vquality));
+    if (input.capabilities.supportsAudio) body.append("generate_audio", String(boolConfig(config.videoGenerateAudio, false)));
+    if (input.capabilities.supportsWatermark) body.append("watermark", String(boolConfig(config.videoWatermark, false)));
+    if (input.capabilities.supportsNegativePrompt && config.videoNegativePrompt.trim()) body.append("negative_prompt", config.videoNegativePrompt.trim());
+    if (input.capabilities.supportsMultiShot && config.videoMultiShot === "true") {
+        const prompts = parseMultiShotPrompts(config.videoMultiPrompt);
+        if (!prompts.length) throw new Error(apiText("videoMultiPromptRequired"));
+        body.append("multi_shot", "true");
+        body.append("shot_type", "customize");
+        body.append("multi_prompt", JSON.stringify(prompts.map((prompt, index) => ({ index, prompt }))));
+    }
+
+    const mode = resolveVideoMode(config.videoMode, images.length, input.capabilities);
+    if (mode) body.append("mode", mode);
+    if (mode === "frames") {
+        if (images[0]) {
+            body.append("first_frame", images[0], "first.png");
+            body.append("images", images[0], "first.png");
+        }
+        if (images[1]) {
+            body.append("last_frame", images[1], "last.png");
+            body.append("images", images[1], "last.png");
+        }
+    } else if (mode === "reference") {
+        images.forEach((file, index) => {
+            body.append("image[]", file, `ref_${index + 1}.png`);
+            body.append("images", file, `ref_${index + 1}.png`);
+        });
+    }
+    if (input.capabilities.modes.includes("reference-video")) videos.forEach((file) => body.append("video[]", file));
+    if (input.capabilities.modes.includes("reference-audio")) audios.forEach((file) => body.append("audio[]", file));
+    return body;
 }
 
 function geminiVideoBaseUrl(config: Pick<AiConfig, "baseUrl">) {
@@ -327,9 +391,20 @@ function normalizeVideoSeconds(value: string) {
     return clampVideoSeconds(value);
 }
 
-function resolveVideoMode(mode: string | undefined, imageCount: number) {
-    if (mode === "reference" || imageCount > 2) return "reference";
-    return "frames";
+function resolveVideoMode(mode: string | undefined, imageCount: number, capabilities: VideoModelCapabilities) {
+    const supportsFrames = capabilities.modes.some((item) => item === "image-to-video" || item === "first-last-frame");
+    const supportsReference = capabilities.modes.some((item) => item === "reference-video" || item === "reference-audio");
+    if (!imageCount) return null;
+    if (mode === "reference" || imageCount > 2) return supportsReference ? "reference" : supportsFrames ? "frames" : null;
+    return supportsFrames ? "frames" : supportsReference ? "reference" : null;
+}
+
+function parseMultiShotPrompts(value: string) {
+    return value
+        .split(/\r?\n/)
+        .map((prompt) => prompt.trim())
+        .filter(Boolean)
+        .slice(0, 20);
 }
 
 function normalizeVideoSize(value: string, resolution?: string) {

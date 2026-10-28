@@ -1,11 +1,12 @@
 import { type ReactNode } from "react";
-import { Slider } from "antd";
+import { Input, Slider } from "antd";
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
 import { ImageSettingsTheme } from "@/components/image-settings-panel";
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/lib/media-size";
+import { resolveVideoCapabilities } from "@/lib/video-model-capabilities";
 import { type AiConfig } from "@/stores/use-config-store";
 
 const resolutionOptions = [
@@ -13,27 +14,28 @@ const resolutionOptions = [
     { value: "720", label: "720p" },
     { value: "1080", label: "1080p" },
 ];
-const videoModeOptions = [
-    { value: "frames", labelKey: "frames" },
-    { value: "reference", labelKey: "reference" },
-];
-
 export const videoResolutionOptions = resolutionOptions.map((item) => ({ value: item.value, label: item.label }));
 export const videoSizeOptions = videoRatioOptions.map((item) => ({ value: item.value, get label() { return item.value === "auto" ? i18n.t("settingsPanels.common.auto") : item.value; } }));
 export const videoSecondsRange = { min: VIDEO_SECONDS_MIN, max: VIDEO_SECONDS_MAX };
 
 type VideoSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode", value: string) => void;
+    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode" | "videoNegativePrompt" | "videoMultiShot" | "videoMultiPrompt", value: string) => void;
     theme: CanvasTheme;
+    model?: string;
     showTitle?: boolean;
     className?: string;
 };
 
-export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: VideoSettingsPanelProps) {
+export function VideoSettingsPanel({ config, onConfigChange, theme, model, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: VideoSettingsPanelProps) {
     const { t } = useTranslation();
-    const seconds = Number(clampVideoSeconds(config.videoSeconds || "6"));
+    const capabilities = resolveVideoCapabilities(config, model || config.videoModel || config.model);
+    const seconds = Math.min(capabilities.maxSeconds, Number(clampVideoSeconds(config.videoSeconds || "6")));
     const videoMode = normalizeVideoModeValue(config.videoMode);
+    const videoModeOptions = [
+        capabilities.modes.some((mode) => mode === "image-to-video" || mode === "first-last-frame") ? { value: "frames", labelKey: "frames" } : null,
+        capabilities.modes.some((mode) => mode === "reference-video" || mode === "reference-audio") ? { value: "reference", labelKey: "reference" } : null,
+    ].filter((item): item is { value: string; labelKey: string } => Boolean(item));
     const resolution = parseVideoResolution(config.vquality);
     const selectedRatio = inferVideoRatio(config.size || "auto");
     const dimensions = readVideoDimensions(config.size || "auto", resolution, selectedRatio);
@@ -86,20 +88,53 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.seconds")} color={theme.node.muted}>
                     <div className="flex items-center gap-3" onMouseDown={(event) => event.stopPropagation()}>
-                        <Slider className="min-w-0 flex-1" min={VIDEO_SECONDS_MIN} max={VIDEO_SECONDS_MAX} step={1} value={seconds} onChange={(value) => onConfigChange("videoSeconds", String(Array.isArray(value) ? value[0] : value))} />
+                        <Slider className="min-w-0 flex-1" min={VIDEO_SECONDS_MIN} max={Math.min(VIDEO_SECONDS_MAX, capabilities.maxSeconds)} step={1} value={seconds} onChange={(value) => onConfigChange("videoSeconds", String(Array.isArray(value) ? value[0] : value))} />
                         <SecondsInput value={seconds} theme={theme} onCommit={(value) => onConfigChange("videoSeconds", String(value))} />
                         <span className="shrink-0 text-sm" style={{ color: theme.node.muted }}>s</span>
                     </div>
                 </SettingGroup>
-                <SettingGroup title={t("settingsPanels.video.mode")} color={theme.node.muted}>
-                    <div className="grid grid-cols-2 gap-2.5">
-                        {videoModeOptions.map((item) => (
-                            <OptionPill key={item.value} selected={videoMode === item.value} theme={theme} onClick={() => onConfigChange("videoMode", item.value)}>
-                                {t(`settingsPanels.video.modes.${item.labelKey}`)}
-                            </OptionPill>
-                        ))}
-                    </div>
-                </SettingGroup>
+                {videoModeOptions.length ? (
+                    <SettingGroup title={t("settingsPanels.video.mode")} color={theme.node.muted}>
+                        <div className="grid grid-cols-2 gap-2.5">
+                            {videoModeOptions.map((item) => (
+                                <OptionPill key={item.value} selected={videoMode === item.value} theme={theme} onClick={() => onConfigChange("videoMode", item.value)}>
+                                    {t(`settingsPanels.video.modes.${item.labelKey}`)}
+                                </OptionPill>
+                            ))}
+                        </div>
+                    </SettingGroup>
+                ) : null}
+                {capabilities.supportsAudio ? <BooleanSetting title={t("settingsPanels.video.generateAudio")} value={config.videoGenerateAudio} theme={theme} onChange={(value) => onConfigChange("videoGenerateAudio", value)} /> : null}
+                {capabilities.supportsWatermark ? <BooleanSetting title={t("settingsPanels.video.watermark")} value={config.videoWatermark} theme={theme} onChange={(value) => onConfigChange("videoWatermark", value)} /> : null}
+                {capabilities.supportsNegativePrompt ? (
+                    <SettingGroup title={t("settingsPanels.video.negativePrompt")} color={theme.node.muted}>
+                        <Input.TextArea
+                            value={config.videoNegativePrompt}
+                            autoSize={{ minRows: 2, maxRows: 4 }}
+                            className="!rounded-xl !text-sm"
+                            placeholder={t("settingsPanels.video.negativePromptPlaceholder")}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onChange={(event) => onConfigChange("videoNegativePrompt", event.target.value)}
+                        />
+                    </SettingGroup>
+                ) : null}
+                {capabilities.supportsMultiShot ? (
+                    <>
+                        <BooleanSetting title={t("settingsPanels.video.multiShot")} value={config.videoMultiShot} theme={theme} onChange={(value) => onConfigChange("videoMultiShot", value)} />
+                        {config.videoMultiShot === "true" ? (
+                            <SettingGroup title={t("settingsPanels.video.multiPrompt")} color={theme.node.muted}>
+                                <Input.TextArea
+                                    value={config.videoMultiPrompt}
+                                    autoSize={{ minRows: 3, maxRows: 6 }}
+                                    className="!rounded-xl !text-sm"
+                                    placeholder={t("settingsPanels.video.multiPromptPlaceholder")}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                    onChange={(event) => onConfigChange("videoMultiPrompt", event.target.value)}
+                                />
+                            </SettingGroup>
+                        ) : null}
+                    </>
+                ) : null}
             </div>
         </ImageSettingsTheme>
     );
@@ -159,6 +194,23 @@ function SettingGroup({ title, color, children }: { title: string; color: string
             </div>
             {children}
         </div>
+    );
+}
+
+function BooleanSetting({ title, value, theme, onChange }: { title: string; value: string; theme: CanvasTheme; onChange: (value: string) => void }) {
+    const { t } = useTranslation();
+    const enabled = value === "true";
+    return (
+        <SettingGroup title={title} color={theme.node.muted}>
+            <div className="grid grid-cols-2 gap-2.5">
+                <OptionPill selected={enabled} theme={theme} onClick={() => onChange("true")}>
+                    {t("settingsPanels.common.yes")}
+                </OptionPill>
+                <OptionPill selected={!enabled} theme={theme} onClick={() => onChange("false")}>
+                    {t("settingsPanels.common.no")}
+                </OptionPill>
+            </div>
+        </SettingGroup>
     );
 }
 

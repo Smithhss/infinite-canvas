@@ -1,19 +1,8 @@
 import { afterAll, expect, test } from "bun:test";
+import { installTestLocalStorage } from "./test-local-storage";
 
-const values = new Map<string, string>();
-const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-Object.defineProperty(globalThis, "localStorage", {
-    configurable: true,
-    value: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-    },
-});
-afterAll(() => {
-    if (originalStorage) Object.defineProperty(globalThis, "localStorage", originalStorage);
-    else Reflect.deleteProperty(globalThis, "localStorage");
-});
+const restoreStorage = installTestLocalStorage();
+afterAll(restoreStorage);
 
 const { buildBuiltinAgentRequest, requestBuiltinCanvasAgentTurn, selectBuiltinAgentModel } = await import("../src/services/api/builtin-canvas-agent");
 

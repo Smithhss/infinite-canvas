@@ -1,4 +1,12 @@
 export default {
+    providerPolicy: {
+        blocked: "External providers are disabled by the administrator. Use this site’s FYT provider or contact the administrator.",
+        unavailable: "Provider policy is unavailable. New model requests are paused; please try again.",
+        enabled: "Official and third-party providers are enabled. Their charges are billed by the provider.",
+        disabled: "External providers are disabled. Saved settings are retained; new external calls and custom scripts are blocked.",
+        loading: "Loading provider policy…",
+        refresh: "Refresh provider policy",
+    },
     meta: {
         title: "Infinite Canvas",
         description: "An infinite canvas creation tool",

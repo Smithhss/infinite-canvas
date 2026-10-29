@@ -8,6 +8,7 @@
 import type { FeatureFlagKey } from "@/constant/feature-flags";
 
 type RuntimeConfig = {
+    FYT_MANAGED?: string;
     ANALYTICS_GA4_ID?: string; // GA4 measurement ID (G-XXXX)
     ANALYTICS_BAIDU_ID?: string; // Baidu Analytics site ID
     FEATURE_FLAGS?: Partial<Record<FeatureFlagKey, string>>;

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { useConfigStore } from "@/stores/use-config-store";
 import { usePromptSourceScheduler } from "@/hooks/use-prompt-source-scheduler";
+import { assertProviderAccess, isManagedCanvas, refreshProviderPolicy } from "@/services/api/provider-policy";
 
 export function ClientRootInit({ children }: { children: ReactNode }) {
     const { message } = App.useApp();
@@ -14,6 +15,14 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
 
     usePromptSourceScheduler();
+
+    useEffect(() => {
+        if (!isManagedCanvas()) return;
+        const refresh = () => { void refreshProviderPolicy().catch(() => undefined); };
+        refresh();
+        window.addEventListener("focus", refresh);
+        return () => window.removeEventListener("focus", refresh);
+    }, []);
 
     useEffect(() => {
         if (handledConfigParams.current) return;
@@ -27,12 +36,19 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         searchParams.delete("apiKey");
         searchParams.delete("apikey");
         window.history.replaceState(null, "", `${window.location.pathname}${searchParams.size ? `?${searchParams}` : ""}${window.location.hash}`);
-        const result = importChannelCredentials({ baseUrl, apiKey });
         openConfigDialog(false, "channels");
-        if (result.status === "created") message.success(t("config.importedChannelCreated", { name: result.channelName }));
-        else if (result.status === "updated") message.success(t("config.importedChannelUpdated", { name: result.channelName }));
-        else if (result.status === "missing-base-url") message.error(t("config.importedChannelBaseUrlRequired"));
-        else message.error(t("config.importedChannelBaseUrlInvalid"));
+        const importCredentials = () => {
+            const result = importChannelCredentials({ baseUrl, apiKey });
+            if (result.status === "created") message.success(t("config.importedChannelCreated", { name: result.channelName }));
+            else if (result.status === "updated") message.success(t("config.importedChannelUpdated", { name: result.channelName }));
+            else if (result.status === "missing-base-url") message.error(t("config.importedChannelBaseUrlRequired"));
+            else message.error(t("config.importedChannelBaseUrlInvalid"));
+        };
+        if (!baseUrl) {
+            importCredentials();
+            return;
+        }
+        void assertProviderAccess(baseUrl).then(importCredentials).catch((error: Error) => message.error(error.message));
     }, [importChannelCredentials, message, openConfigDialog, t]);
 
     return <>{children}</>;

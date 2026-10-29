@@ -1,3 +1,4 @@
+import { assertProviderAccess } from "./provider-policy";
 import axios from "axios";
 import { nanoid } from "nanoid";
 
@@ -88,6 +89,7 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
     const capabilities = resolveVideoCapabilities(config, selectedModel);
     assertVideoMediaCapabilities(capabilities, references.length, Boolean(options?.videos?.length), Boolean(options?.audios?.length), requestConfig.videoMode);
     const script = resolveModelScript(config, selectedModel);
+    await assertProviderAccess(requestConfig.baseUrl, Boolean(script));
     if (script) return createPluginVideoTask(requestConfig, selectedModel, script, prompt, references, options, capabilities);
     assertVideoConfig(requestConfig, requestConfig.model);
     if (requestConfig.apiFormat === "gemini") return createGeminiVideoTask(requestConfig, selectedModel, prompt, references, options, capabilities);

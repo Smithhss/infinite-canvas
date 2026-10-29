@@ -60,3 +60,19 @@ services:
 ```
 
 SPA route changes automatically report page views to enabled providers. Only configure analytics IDs on sites you control, and do not commit them to the repository.
+
+## Managed FYT access policy
+
+| Variable | Description |
+| --- | --- |
+| `FYT_MANAGED` | Set to `1` only when the Canvas origin also proxies `GET /api/creative/config`, `/v1/` and `/v1beta/` to the matching FYT deployment. |
+
+The config endpoint exposes only the boolean administrator policy. The API paths must preserve their original path, `Authorization` header, request body and response headers.
+
+With the policy off, the same-origin FYT provider at the Canvas origin, `/v1` or `/v1beta` remains usable. Canvas checks every external provider or custom-script operation against a fresh policy response. If that response is missing, malformed or unavailable, those external and custom-script requests stay blocked while the same-origin non-script FYT provider remains available.
+
+The root administrator configures the policy in FYT under System Settings → Security & Limits → Canvas provider access. Turning the policy off preserves browser-local provider settings and API keys, blocks new external calls, and leaves existing video tasks available for status checks and downloads. Standalone deployments omit `FYT_MANAGED` and keep their existing provider behavior.
+
+Do not proxy only `/api/creative/config`: without the matching `/v1/` and `/v1beta/` routes, the browser can read the policy but cannot use the same-origin FYT provider while external providers are disabled.
+
+This setting controls the application's provider workflow. A page user who runs their own scripts or modified client can still access the network directly, so deployments that require hard network isolation must also enforce browser CSP and egress controls at the proxy or network layer.

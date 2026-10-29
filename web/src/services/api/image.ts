@@ -1,3 +1,4 @@
+import { assertProviderAccess } from "./provider-policy";
 import axios from "axios";
 
 import i18n from "@/i18n";
@@ -700,6 +701,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const script = resolveModelScript(config, config.model || config.imageModel);
+    await assertProviderAccess(requestConfig.baseUrl, Boolean(script));
     if (script) {
         const quality = normalizeQuality(config.quality);
         const requestSize = resolveRequestSize(config.size);
@@ -762,6 +764,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestPrompt = buildImageReferencePromptText(prompt, references);
     const script = resolveModelScript(config, config.model || config.imageModel);
+    await assertProviderAccess(requestConfig.baseUrl, Boolean(script));
     if (script) {
         const quality = normalizeQuality(config.quality);
         const requestSize = resolveRequestSize(config.size);
@@ -830,6 +833,7 @@ export async function requestImageQuestion(config: AiConfig, messages: AiTextMes
     if (!selectedModel) throw new Error(apiText("textModelRequired"));
     const requestConfig = resolveModelRequestConfig(config, selectedModel);
     const script = resolveModelScript(config, selectedModel);
+    await assertProviderAccess(requestConfig.baseUrl, Boolean(script));
     if (script) {
         try {
             const answer = await runModelPlugin<string>({
@@ -866,6 +870,7 @@ export async function requestImageQuestion(config: AiConfig, messages: AiTextMes
 }
 
 export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKey" | "apiFormat">) {
+    await assertProviderAccess(config.baseUrl);
     try {
         if (config.apiFormat === "gemini") {
             const response = await axios.get<GeminiPayload>(geminiApiUrl({ ...defaultGeminiConfig, ...config }), { headers: geminiHeaders({ ...defaultGeminiConfig, ...config }) });

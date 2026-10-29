@@ -1,3 +1,4 @@
+import { assertProviderAccess } from "./provider-policy";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig } from "@/stores/use-config-store";
 
 import { BUILTIN_CANVAS_AGENT_TOOL_DEFINITIONS, isBuiltinCanvasAgentToolName, parseBuiltinCanvasAgentJson, type BuiltinCanvasAgentToolCall } from "@/lib/canvas/builtin-canvas-agent/tools";
@@ -86,6 +87,7 @@ export async function requestBuiltinCanvasAgentTurn(input: {
     if (resolveModelScript(input.config, selectedModel)) throw new Error("builtin-agent-model-script-unsupported");
 
     const requestConfig = resolveModelRequestConfig(input.config, selectedModel);
+    await assertProviderAccess(requestConfig.baseUrl);
     const first = requestConfig.apiFormat === "gemini" ? await requestGeminiTurn(requestConfig, input, false) : await requestOpenAITurn(requestConfig, input, false);
     const hasToolResults = input.messages.some((message) => message.role === "tool");
     if (first.toolCalls.length || hasToolResults) return first;

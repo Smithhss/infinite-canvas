@@ -13,9 +13,12 @@ sanitize_id() {
 
 GA4_ID=$(sanitize_id "${ANALYTICS_GA4_ID:-}")
 BAIDU_ID=$(sanitize_id "${ANALYTICS_BAIDU_ID:-}")
+MANAGED_CANVAS=0
+case "${FYT_MANAGED:-0}" in 1|true) MANAGED_CANVAS=1 ;; esac
 
 cat > /usr/share/nginx/html/config.js <<EOF
 window.__RUNTIME_CONFIG__ = {
+  FYT_MANAGED: "${MANAGED_CANVAS}",
   ANALYTICS_GA4_ID: "${GA4_ID}",
   ANALYTICS_BAIDU_ID: "${BAIDU_ID}"
 };

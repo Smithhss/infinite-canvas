@@ -11,6 +11,7 @@ import { ConfigFyt } from "@/components/layout/config-fyt";
 import { ConfigLocalProxy } from "@/components/layout/config-local-proxy";
 import { ConfigPromptSources } from "@/components/layout/config-prompt-sources";
 import { ConfigLocalStorage } from "@/components/layout/config-local-storage";
+import { isManagedCanvas, isProviderCurrentlyAllowed, refreshProviderPolicy, useProviderPolicyStore } from "@/services/api/provider-policy";
 import type { AppLocale } from "@/i18n";
 import { exportAppConfig, importAppConfig } from "@/services/config-file";
 import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
@@ -68,6 +69,7 @@ function createWebdavDomainProgress(): Record<AppSyncDomainKey, WebdavDomainProg
 export function AppConfigPanel({ showDoneButton = false, initialTab = "channels" }: { showDoneButton?: boolean; initialTab?: ConfigTabKey }) {
     const { message } = App.useApp();
     const { i18n, t } = useTranslation();
+    const providerPolicy = useProviderPolicyStore();
     const configInputRef = useRef<HTMLInputElement>(null);
     const [activeTab, setActiveTab] = useState<ConfigTabKey>(initialTab);
     const [editingChannelId, setEditingChannelId] = useState("");
@@ -114,6 +116,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const updateChannels = (channels: ModelChannel[]) => saveConfig(withChannels(config, channels));
 
     const addChannel = () => {
+        if (isManagedCanvas() && !providerPolicy.allowExternalProviders) return;
         const channel = createModelChannel({ name: t("config.channels.numberedName", { count: config.channels.length + 1 }) });
         updateChannels([...config.channels, channel]);
         setEditingChannelId(channel.id);
@@ -228,10 +231,16 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         label: t("config.tabs.channels"),
                         children: (
                             <div>
+                                {isManagedCanvas() ? (
+                                    <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+                                        <span>{t(providerPolicy.status === "error" ? "providerPolicy.unavailable" : providerPolicy.status === "loading" ? "providerPolicy.loading" : providerPolicy.allowExternalProviders ? "providerPolicy.enabled" : "providerPolicy.disabled")}</span>
+                                        <Button onClick={() => void refreshProviderPolicy().catch((error: Error) => message.error(error.message))}>{t("providerPolicy.refresh")}</Button>
+                                    </div>
+                                ) : null}
                                 <ConfigFyt config={config} onSave={connectFyt} onClearKey={clearFytKey} />
                                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                                     <div className="text-xs text-stone-500">{t("config.channels.description")}</div>
-                                    <Button type="primary" icon={<Plus className="size-4" />} onClick={addChannel}>
+                                    <Button type="primary" icon={<Plus className="size-4" />} onClick={addChannel} disabled={isManagedCanvas() && !providerPolicy.allowExternalProviders}>
                                         {t("config.channels.add")}
                                     </Button>
                                 </div>
@@ -240,6 +249,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                         <div key={channel.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
                                             <div className="min-w-0">
                                                 <div className="truncate text-sm font-semibold">{channel.name || t("config.channels.unnamed")}</div>
+                                                {!isProviderCurrentlyAllowed(channel.baseUrl, channel.models.some((model) => Boolean(model.script))) ? <div className="text-xs">{t("providerPolicy.disabled")}</div> : null}
                                                 <div className="mt-1 truncate text-xs text-stone-500">
                                                     {apiFormatLabel(channel.apiFormat)} · {t("config.channels.modelCount", { count: channel.models.length })} · {channel.baseUrl || t("config.channels.missingUrl")}
                                                 </div>

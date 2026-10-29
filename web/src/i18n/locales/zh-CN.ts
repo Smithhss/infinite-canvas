@@ -1,4 +1,12 @@
 export default {
+    providerPolicy: {
+        blocked: "管理员尚未允许外部渠道接入。请使用本站 FYT 渠道，或联系管理员开启。",
+        unavailable: "暂时无法读取管理员接入策略，已暂停新的模型请求，请稍后重试。",
+        enabled: "管理员已允许接入官方或第三方中转站，费用由对应服务商收取。",
+        disabled: "管理员尚未开启外部渠道接入。已有配置会保留，新的外部调用和自定义脚本已停用。",
+        loading: "正在读取管理员接入策略…",
+        refresh: "刷新接入策略",
+    },
     meta: {
         title: "无限画布",
         description: "一个无限画布创作工具",

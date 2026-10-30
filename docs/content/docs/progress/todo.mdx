@@ -5,10 +5,10 @@ description: Planned follow-up work
 
 # TODO
 
-- Prepare and validate the next release candidate with the merged clean-room director/panorama code while both feature flags remain off. Production deployment and enabling either feature require separate acceptance.
+- Decide whether to tag and release the merged `v0.23.0` release candidate while `director3d` and `panorama` remain off by default. Production deployment and enabling either feature require separate acceptance.
 - Continue the remote capability backlog after the fixed-template creative workflow and built-in Canvas Agent are accepted. Keep generic DAG workflows, cross-device workflow/history synchronization and cloud Agent sessions deferred until the FYT server-side contract is implemented.
 - Validate the clean-room director and panorama viewer on real desktop and mobile WebGL hardware. Color editing, simulated touch isolation, context-loss fallback, a 40-prop stress pass and repeated saved-project recovery now have browser evidence; sustained GPU-memory behavior, real hardware pressure, long-session rendering and browser compatibility still need acceptance. The reference implementation remains blocked for direct reuse.
-- Validate real supplier capabilities for Kling, first/last frames, reference video/audio, multi-shot generation and Gemini video. Use mocks, unconfigured channels or zero-charge paths unless a paid call is explicitly approved.
+- Validate real supplier capabilities for Kling, first/last frames, reference video/audio, multi-shot generation and Gemini video. Before any paid call, the user must identify the provider, channel, model, required capabilities and spend cap. Use mocks, unconfigured channels or zero-charge paths until then.
 - Replace the Claude Code CLI adapter with a Claude Agent SDK adapter and improve the tool queue, following the [Local Agent Integration Plan](/docs/progress/local-agent-integration-plan).
 - Add Skill installation from web search, Skill resource-file management, and controlled local-memory persistence.
 - Implement FYT Phase E only after freezing the server contract: identity, model permissions, quotes, billing, refunds, server-side tasks, assets and rollback. The current product still keeps canvas data, assets and generation history primarily in browser storage.

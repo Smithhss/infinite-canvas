@@ -114,3 +114,7 @@ Phase C 不得进入 C2-C5。当前导演台是可运行的前端构建产物，
 | 默认状态 | `director3d=false`、`panorama=false` |
 
 本次只完成代码与零收费预发验收，不证明真实移动设备长期 WebGL 性能、GPU 内存表现或生产浏览器兼容性。
+
+## 交付状态（2026-10-30）
+
+clean-room 实现提交 `80dba98`，测试兼容修复提交 `41e729b`，PR #11 已通过 Quality CI，当前为 OPEN、非 Draft、`mergeable_state=clean`。尚未合并到 `dev`，生产 `create.aicos.ink` 仍为 `v0.22.0`，`director3d` 与 `panorama` 仍默认关闭。

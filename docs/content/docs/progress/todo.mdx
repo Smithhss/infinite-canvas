@@ -5,8 +5,10 @@ description: Planned follow-up work
 
 # TODO
 
+- Complete user acceptance and the merge decision for the open clean-room director/panorama PR. The implementation and Quality CI are complete, but both feature flags remain off and production still runs `v0.22.0`.
 - Continue the remote capability backlog after the fixed-template creative workflow and built-in Canvas Agent are accepted. Keep generic DAG workflows, cross-device workflow/history synchronization and cloud Agent sessions deferred until the FYT server-side contract is implemented.
 - Validate the clean-room director and panorama viewer on real desktop and mobile WebGL hardware. Color editing, simulated touch isolation, context-loss fallback, a 40-prop stress pass and repeated saved-project recovery now have browser evidence; sustained GPU-memory behavior, real hardware pressure, long-session rendering and browser compatibility still need acceptance. The reference implementation remains blocked for direct reuse.
+- Validate real supplier capabilities for Kling, first/last frames, reference video/audio, multi-shot generation and Gemini video. Use mocks, unconfigured channels or zero-charge paths unless a paid call is explicitly approved.
 - Replace the Claude Code CLI adapter with a Claude Agent SDK adapter and improve the tool queue, following the [Local Agent Integration Plan](/docs/progress/local-agent-integration-plan).
 - Add Skill installation from web search, Skill resource-file management, and controlled local-memory persistence.
-- Add optional FYT server-side sessions, balance and quota display, subscription management, and asset synchronization. The current FYT connection only uses the user's own API key and keeps usage accounting in the FYT console.
+- Implement FYT Phase E only after freezing the server contract: identity, model permissions, quotes, billing, refunds, server-side tasks, assets and rollback. The current product still keeps canvas data, assets and generation history primarily in browser storage.

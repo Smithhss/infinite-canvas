@@ -93,7 +93,7 @@
 | Phase 0 | 完成 | 随相关功能进入 `dev` | 全部关闭 | 单元测试 | 无 |
 | Phase A | A1-A8 完成 | PR #4 已合并，代码随 `v0.22.0` 部署 | `creativeWorkflow=false` | 固定模板、运行、历史、系列生成的零收费 mock 浏览器验收 | 真实图片渠道能力验收 |
 | Phase B | B1-B7 完成 | PR #5 已合并，代码随 `v0.22.0` 部署 | `builtinCanvasAgent=false` | 工具白名单、预算、取消、确认和 mock 路径验收 | 真实文本与图片渠道验收 |
-| Phase C | clean-room 导演台与全景完成 | PR #11 已通过 Quality CI，尚未合并 | `director3d=false`、`panorama=false` | 颜色、保存恢复、截图、40 道具、上下文丢失、触控模拟和 390px 浏览器验收 | 用户预览、合并、真实设备 WebGL 验收 |
+| Phase C | clean-room 导演台与全景完成 | PR #11 已普通合并 `dev`（merge `81e3c02`），合并后 Quality CI 成功；未部署生产 | `director3d=false`、`panorama=false` | 颜色、保存恢复、截图、40 道具上限、重复开关资源释放、上下文丢失、全景拖动和 390px 浏览器验收 | 真实设备 WebGL 验收、生产发布审批 |
 | Phase D | D1-D4 完成 | PR #7 已合并，代码随 `v0.22.0` 部署 | `quickCreate=false` | 零收费 mock 和能力字段筛选 | Kling、Gemini、参考视频/音频、多镜头等真实能力验收 |
 | Phase E | 未开始 | 无 | `fytBackend=false` | 仅完成外部渠道访问策略与同源代理边界 | 冻结 FYT 契约后实施账号、计费、素材和服务端任务 |
 
@@ -2088,7 +2088,7 @@ git commit -m "test: 完成内置画布 Agent 预发验收"
 
 ## Phase C：3D 导演台与全景（P1）
 
-> 当前状态：采用 clean-room 实现，导演台与全景代码已完成，PR #11 已通过 Quality CI，等待用户预览、合并和真实设备验收。尚未部署生产。
+> 当前状态：采用 clean-room 实现，导演台与全景代码已通过 PR #11 合并到 `dev`，合并后 Quality CI 成功；ego-browser 零收费验收已覆盖核心桌面与 390px 路径。尚未部署生产，真实设备 WebGL 验收仍需完成。
 
 本阶段先审查来源和许可证。参考仓的 `web/public/director` 当前存在运行时资产，但没有可复现源码和完整依赖清单；没有来源、授权和资产完整性结论时，不得把任何远端构建产物放进本项目。
 
@@ -3171,7 +3171,7 @@ git commit -m "feat: 完成 creative 后台和回滚演练"
 | 第 2 周 | A4-A8 | 单图/多图 mock 运行、预算、历史、结果入库通过 |
 | 第 3-4 周 | B1-B4 | 内置 Agent 工具白名单、预算、确认和附件通过 |
 | 第 4 周 | B5-B7 | 画布内面板与本地 Agent 并存，零收费验收 |
-| 第 5 周 | C1-C5 | 参考仓维持 `BLOCKED`，改走 clean-room；当前代码等待 PR #11 用户预览与真实设备验收 |
+| 第 5 周 | C1-C5 | 参考仓维持 `BLOCKED`，clean-room 已通过 PR #11 合并；生产发布前完成真实设备 WebGL 验收 |
 | 第 7 周 | D1-D2 | 视频能力描述和 Kling 字段按模型显示 |
 | 第 7 周 | D3-D4 | 首页快速创作只预填、不扣费 |
 | 第 8 周以后 | E1-E5 | 尚未开始；先冻结 FYT 契约，再实施鉴权、计费、素材和回滚 |

@@ -117,4 +117,4 @@ Phase C 不得进入 C2-C5。当前导演台是可运行的前端构建产物，
 
 ## 交付状态（2026-10-30）
 
-clean-room 实现提交 `80dba98`，测试兼容修复提交 `41e729b`，PR #11 已通过 Quality CI，当前为 OPEN、非 Draft、`mergeable_state=clean`。尚未合并到 `dev`，生产 `create.aicos.ink` 仍为 `v0.22.0`，`director3d` 与 `panorama` 仍默认关闭。
+clean-room 实现提交 `80dba98`，测试兼容修复提交 `41e729b`，状态文档提交 `5e9689a`。PR #11 已普通合并到 `dev`，merge commit 为 `81e3c0215231f9c505342d0da81e2e4493ac48ee`，合并后 Quality CI `40989445330` 成功。ego-browser 零收费验收覆盖默认关闭、颜色编辑、保存恢复、截图回画布、40 道具上限、重复开关资源释放、全景拖动、WebGL 上下文丢失降级和 390px 布局；未发现运行时报错。生产 `create.aicos.ink` 仍为 `v0.22.0`，`director3d` 与 `panorama` 仍默认关闭，真实移动设备长期 WebGL 性能和跨浏览器兼容性仍需验收。

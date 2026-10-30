@@ -1,22 +1,11 @@
 import { afterAll, expect, test } from "bun:test";
 import type { AiConfig, ModelCapability } from "../src/stores/use-config-store";
 import type { CanvasNodeData } from "../src/types/canvas";
+import { installTestLocalStorage } from "./test-local-storage";
 
 // Config and i18n use browser storage during module initialization.
-const values = new Map<string, string>();
-const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-Object.defineProperty(globalThis, "localStorage", {
-    configurable: true,
-    value: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-    },
-});
-afterAll(() => {
-    if (originalStorage) Object.defineProperty(globalThis, "localStorage", originalStorage);
-    else Reflect.deleteProperty(globalThis, "localStorage");
-});
+const restoreStorage = installTestLocalStorage();
+afterAll(restoreStorage);
 
 const { defaultConfig, resolveModelForCapability, useConfigStore } = await import("../src/stores/use-config-store");
 const { buildGenerationConfig } = await import("../src/lib/canvas/canvas-generation-helpers");

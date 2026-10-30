@@ -84,6 +84,21 @@
 
 阶段不得跨越验收门槛。Phase B 可以依赖 Phase A 的 feature flag 和测试基础设施，但不得修改 Phase A 的模板存储格式；Phase E 只能消费前面阶段稳定的 `requestId`、`taskId` 和运行记录接口。
 
+## 实施状态快照（2026-10-30）
+
+> 本节以当前代码、PR 和 CI 为准。下方任务步骤记录当时的执行顺序；阶段状态与验收边界以本节为准。
+
+| 阶段 | 代码状态 | 合并/发布 | 默认开关 | 已验证 | 下一门禁 |
+|---|---|---|---|---|---|
+| Phase 0 | 完成 | 随相关功能进入 `dev` | 全部关闭 | 单元测试 | 无 |
+| Phase A | A1-A8 完成 | PR #4 已合并，代码随 `v0.22.0` 部署 | `creativeWorkflow=false` | 固定模板、运行、历史、系列生成的零收费 mock 浏览器验收 | 真实图片渠道能力验收 |
+| Phase B | B1-B7 完成 | PR #5 已合并，代码随 `v0.22.0` 部署 | `builtinCanvasAgent=false` | 工具白名单、预算、取消、确认和 mock 路径验收 | 真实文本与图片渠道验收 |
+| Phase C | clean-room 导演台与全景完成 | PR #11 已通过 Quality CI，尚未合并 | `director3d=false`、`panorama=false` | 颜色、保存恢复、截图、40 道具、上下文丢失、触控模拟和 390px 浏览器验收 | 用户预览、合并、真实设备 WebGL 验收 |
+| Phase D | D1-D4 完成 | PR #7 已合并，代码随 `v0.22.0` 部署 | `quickCreate=false` | 零收费 mock 和能力字段筛选 | Kling、Gemini、参考视频/音频、多镜头等真实能力验收 |
+| Phase E | 未开始 | 无 | `fytBackend=false` | 仅完成外部渠道访问策略与同源代理边界 | 冻结 FYT 契约后实施账号、计费、素材和服务端任务 |
+
+代码存在不等于生产已启用。当前所有本计划新增功能开关仍默认关闭。
+
 ---
 
 ## Phase 0：共享基础设施
@@ -291,7 +306,7 @@ git commit -m "fix: 文本请求只使用文本模型"
 
 ## Phase A：创意工作流（P0）
 
-> 状态：A1-A8 已实现并通过零收费浏览器验收；功能开关仍默认关闭。通用 DAG 编辑器和跨设备同步不属于本阶段。
+> 状态：A1-A8 已实现，经 PR #4 合并并随 `v0.22.0` 部署；固定模板、运行、历史和系列生成通过零收费浏览器验收，功能开关仍默认关闭。通用 DAG 编辑器和跨设备同步不属于本阶段。真实图片渠道能力仍需验收。
 
 本阶段先做“固定模板工作流”，不做任意 DAG 编辑器。可运行模板包含单图生成和多图系列两种模式；通用 DAG、分支和任意重试策略放到后续独立计划。
 
@@ -311,7 +326,7 @@ git commit -m "fix: 文本请求只使用文本模型"
   - `renderWorkflowPrompt(template: WorkflowTemplate, values: Record<string, string>): string`
   - `validateWorkflowInputs(template: WorkflowTemplate, values: Record<string, string>): WorkflowValidation`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -357,7 +372,7 @@ test("renders variables and reports required values", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 cd /Users/smith/develop/project/infinite-canvas/web
@@ -366,7 +381,7 @@ bun test tests/creative-workflow.test.ts
 
 Expected: FAIL，原因是 `creative-workflow.ts` 和类型未定义。
 
-- [ ] **Step 3：实现纯类型和纯函数**
+- [x] **Step 3：实现纯类型和纯函数**
 
 `web/src/lib/creative-workflow.ts` 至少包含以下完整形状：
 
@@ -497,7 +512,7 @@ export function createWorkflowBudget(template: WorkflowTemplate, generatedCount:
 }
 ```
 
-- [ ] **Step 4：运行测试**
+- [x] **Step 4：运行测试**
 
 ```bash
 bun test tests/creative-workflow.test.ts
@@ -506,7 +521,7 @@ bun run typecheck
 
 Expected: PASS；若在浏览器不支持 `crypto.randomUUID` 的测试环境中出现错误，使用 `nanoid` 替换，但不要在运行时引入新的依赖，因为项目已包含 `nanoid`。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add web/src/lib/creative-workflow.ts web/tests/creative-workflow.test.ts
@@ -528,7 +543,7 @@ git commit -m "feat: 增加工作流模型和变量校验"
   - `serializeWorkflowExport(workflows: WorkflowTemplate[]): string`
   - `parseWorkflowExport(text: string): WorkflowTemplate[]`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -555,7 +570,7 @@ test("rejects unknown versions and duplicate ids", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/creative-workflow-storage.test.ts
@@ -563,7 +578,7 @@ bun test tests/creative-workflow-storage.test.ts
 
 Expected: FAIL，原因是 storage 模块不存在。
 
-- [ ] **Step 3：实现导入导出**
+- [x] **Step 3：实现导入导出**
 
 `web/src/lib/creative-workflow-storage.ts`：
 
@@ -602,7 +617,7 @@ export function parseWorkflowExport(text: string) {
 }
 ```
 
-- [ ] **Step 4：运行测试**
+- [x] **Step 4：运行测试**
 
 ```bash
 bun test tests/creative-workflow-storage.test.ts
@@ -611,7 +626,7 @@ bun test tests/creative-workflow.test.ts
 
 Expected: 两个测试文件均 PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add web/src/lib/creative-workflow.ts web/src/lib/creative-workflow-storage.ts web/tests/creative-workflow-storage.test.ts
@@ -638,7 +653,7 @@ git commit -m "feat: 增加工作流导入导出边界"
   - `useWorkflowStore.replaceWorkflows(workflows: WorkflowTemplate[]): void`
   - `createBlankWorkflow(): WorkflowTemplate`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -660,7 +675,7 @@ test("normalization does not mutate the input", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/creative-workflow-store.test.ts
@@ -668,7 +683,7 @@ bun test tests/creative-workflow-store.test.ts
 
 Expected: FAIL，原因是 `createBlankWorkflow` 未定义。
 
-- [ ] **Step 3：增加空白模板和 store**
+- [x] **Step 3：增加空白模板和 store**
 
 在 `web/src/lib/creative-workflow.ts` 增加：
 
@@ -746,7 +761,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
 );
 ```
 
-- [ ] **Step 4：增加页面和路由**
+- [x] **Step 4：增加页面和路由**
 
 `web/src/pages/workflows/index.tsx` 只负责组合列表、编辑表单和运行器，不把业务逻辑塞进页面：
 
@@ -805,7 +820,7 @@ export function WorkflowTemplateCard({
 
 在 `web/src/constant/navigation-tools.ts` 增加 `Workflow` 图标和 `slug: "workflows"`；导航是否实际展示由 `isFeatureEnabled("creativeWorkflow")` 控制。
 
-- [ ] **Step 5：运行测试和类型检查**
+- [x] **Step 5：运行测试和类型检查**
 
 ```bash
 bun test tests/creative-workflow-store.test.ts
@@ -815,7 +830,7 @@ bun run typecheck
 
 Expected: 测试 PASS；页面路由能被 Vite 编译；不新增未声明依赖。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/stores/use-workflow-store.ts web/src/components/workflows/workflow-template-form.tsx web/src/components/workflows/workflow-template-card.tsx web/src/pages/workflows/index.tsx web/src/router.tsx web/src/constant/navigation-tools.ts web/src/lib/creative-workflow.ts web/tests/creative-workflow-store.test.ts
@@ -875,7 +890,7 @@ export type WorkflowRun = {
 };
 ```
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -914,7 +929,7 @@ test("respects cancellation before starting a request", async () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/creative-workflow-runner.test.ts
@@ -922,7 +937,7 @@ bun test tests/creative-workflow-runner.test.ts
 
 Expected: FAIL，原因是 `executeWorkflow` 未定义。
 
-- [ ] **Step 3：实现不依赖 UI 的执行器**
+- [x] **Step 3：实现不依赖 UI 的执行器**
 
 `web/src/lib/creative-workflow-runner.ts` 的核心行为：
 
@@ -987,7 +1002,7 @@ export async function executeWorkflow(input: {
 {budget.estimatedQuota === undefined ? <p>当前未取得服务端报价，不显示金额。</p> : <p>服务端预扣上限：{budget.estimatedQuota} quota</p>}
 ```
 
-- [ ] **Step 4：接入真实 adapter，但先用 mock 验收**
+- [x] **Step 4：接入真实 adapter，但先用 mock 验收**
 
 在 `workflow-template-form.tsx` 中构造 `WorkflowExecutionAdapter`：
 
@@ -1013,7 +1028,7 @@ const adapter: WorkflowExecutionAdapter = {
 
 验收时先将 adapter 替换为 mock，不发起真实请求；用户确认 UI 后才切换到真实 adapter。
 
-- [ ] **Step 5：运行测试**
+- [x] **Step 5：运行测试**
 
 ```bash
 bun test tests/creative-workflow-runner.test.ts
@@ -1023,7 +1038,7 @@ bun run typecheck
 
 Expected: PASS；取消测试不会发起 adapter 调用。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/lib/creative-workflow-runner.ts web/src/components/workflows/workflow-budget-summary.tsx web/src/components/workflows/workflow-template-form.tsx web/tests/creative-workflow-runner.test.ts
@@ -1045,7 +1060,7 @@ git commit -m "feat: 增加工作流预算预览和执行器"
   - `normalizeWorkflowRuns(input: unknown): WorkflowRun[]`
   - `appendWorkflowRun(runs: WorkflowRun[], run: WorkflowRun): WorkflowRun[]`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -1071,7 +1086,7 @@ test("keeps newest runs and drops damaged records", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/creative-workflow-history.test.ts
@@ -1079,7 +1094,7 @@ bun test tests/creative-workflow-history.test.ts
 
 Expected: FAIL，原因是 history 模块不存在。
 
-- [ ] **Step 3：实现历史规范化**
+- [x] **Step 3：实现历史规范化**
 
 只持久化运行摘要、输入、请求 ID、任务 ID、状态、错误和时间，不把图片 base64 写入运行摘要；图片仍然进入素材/对象存储或现有本地图片存储。
 
@@ -1112,7 +1127,7 @@ export function appendWorkflowRun(runs: WorkflowRun[], run: WorkflowRun) {
 }
 ```
 
-- [ ] **Step 4：接入 store 和重试**
+- [x] **Step 4：接入 store 和重试**
 
 在 `use-workflow-store.ts` 增加 `runs: WorkflowRun[]` 和 `appendRun`；运行器完成后调用 `appendRun`。重试只允许创建新的 run，不覆盖旧记录：
 
@@ -1123,7 +1138,7 @@ void executeWorkflow({ ...input, runId }).then((run) => appendRun(run));
 
 重试按钮必须重新执行 `validateWorkflowInputs`，不能直接复用旧的 `run.status`。
 
-- [ ] **Step 5：运行测试和构建**
+- [x] **Step 5：运行测试和构建**
 
 ```bash
 bun test tests/creative-workflow-history.test.ts
@@ -1133,7 +1148,7 @@ bun run build
 
 Expected: PASS；不出现新的构建错误。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/lib/creative-workflow-history.ts web/src/stores/use-workflow-store.ts web/src/components/workflows/workflow-run-history.tsx web/tests/creative-workflow-history.test.ts
@@ -1156,7 +1171,7 @@ git commit -m "feat: 增加工作流运行历史和重试"
   - `parseSeriesPromptDrafts(...)`
   - `runSeriesDrafts(...)`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -1180,7 +1195,7 @@ test("falls back to a single safe draft when model output is invalid", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/creative-workflow-series.test.ts
@@ -1188,7 +1203,7 @@ bun test tests/creative-workflow-series.test.ts
 
 Expected: FAIL，原因是 series 模块不存在。
 
-- [ ] **Step 3：实现系列解析和并发执行**
+- [x] **Step 3：实现系列解析和并发执行**
 
 `parseSeriesPromptDrafts` 只接受 `{"items":[{"title":"...","prompt":"..."}]}`；最多 20 条；单条 prompt 最长 30,000 字符；不能执行模型返回的 HTML、命令或任意工具。
 
@@ -1217,11 +1232,11 @@ export async function runSeriesDrafts(input: {
 
 系列提示词请求必须调用 Task 0.2 的文本模型路径；不能把图片模型传给 `requestImageQuestion`。
 
-- [ ] **Step 4：接入审核后生成**
+- [x] **Step 4：接入审核后生成**
 
 默认 `reviewRequired = true`：模型生成草稿后，用户必须看到标题、完整 prompt 和预估张数，点击“确认生成”才调用图片 adapter。用户取消时保留草稿，不自动扣费。
 
-- [ ] **Step 5：运行测试和构建**
+- [x] **Step 5：运行测试和构建**
 
 ```bash
 bun test tests/creative-workflow-series.test.ts
@@ -1231,7 +1246,7 @@ bun run build
 
 Expected: PASS；并发测试最多观察到 3 个同时运行的 fake 任务。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/lib/creative-workflow-series.ts web/src/lib/creative-workflow-runner.ts web/src/components/workflows/workflow-template-form.tsx web/tests/creative-workflow-series.test.ts
@@ -1252,7 +1267,7 @@ git commit -m "feat: 增加多图工作流系列"
   - `workflowResultToAsset(...)`
   - `addWorkflowResultToCanvas(...)`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -1276,7 +1291,7 @@ test("maps a workflow result to a local image asset", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/creative-workflow-assets.test.ts
@@ -1284,7 +1299,7 @@ bun test tests/creative-workflow-assets.test.ts
 
 Expected: FAIL，原因是结果映射函数不存在。
 
-- [ ] **Step 3：实现映射和动作**
+- [x] **Step 3：实现映射和动作**
 
 `workflowResultToAsset` 只处理 image/video；图片必须有 `dataUrl` 或 `storageKey`，视频必须有 URL 或 `storageKey`。来源字段记录 `workflow:<runId>`，不把 API Key、完整渠道 URL 或请求头写入素材 metadata。
 
@@ -1294,7 +1309,7 @@ Expected: FAIL，原因是结果映射函数不存在。
 - 设置 `metadata.storageKey` 或 `metadata.images`，不要只把临时 blob URL 写入项目。
 - 插入失败时保留素材库来源，并显示错误。
 
-- [ ] **Step 4：运行测试和浏览器验收**
+- [x] **Step 4：运行测试和浏览器验收**
 
 ```bash
 bun test tests/creative-workflow-assets.test.ts
@@ -1303,7 +1318,7 @@ bun test tests/image-thumbnail.test.ts
 
 浏览器验收：mock 生成一张图片 → 加入素材 → 打开画布 → 添加为节点 → 刷新页面后仍能看到图片缩略图。整个过程禁止调用收费模型。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add web/src/components/workflows/workflow-result-actions.tsx web/src/lib/creative-workflow-runner.ts web/src/stores/use-asset-store.ts web/tests/creative-workflow-assets.test.ts
@@ -1324,7 +1339,7 @@ git commit -m "feat: 让工作流结果进入素材和画布"
 - Consumes: `isFeatureEnabled("creativeWorkflow")`。
 - Produces: 可关闭的 `/workflows` 入口和阶段验收记录。
 
-- [ ] **Step 1：写开关测试**
+- [x] **Step 1：写开关测试**
 
 在 `web/tests/feature-flags.test.ts` 增加：
 
@@ -1335,7 +1350,7 @@ test("creative workflow remains off unless explicitly enabled", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试**
+- [x] **Step 2：运行测试**
 
 ```bash
 bun test tests/feature-flags.test.ts
@@ -1343,13 +1358,13 @@ bun test tests/feature-flags.test.ts
 
 Expected: PASS。
 
-- [ ] **Step 3：接入导航和移动端**
+- [x] **Step 3：接入导航和移动端**
 
 桌面导航和移动端抽屉都必须使用同一个 `isFeatureEnabled("creativeWorkflow")` 判断；功能关闭时 `/workflows` 直接渲染现有 `NotFound` 或一个明确的“功能未开启”页面，不能留下空白页面。
 
 页面标题、列表空状态、变量表单、预算摘要、取消、重试、历史、加入素材和加入画布都使用中文文案；英文文件同步补键。
 
-- [ ] **Step 4：零收费验收**
+- [x] **Step 4：零收费验收**
 
 记录以下结果到 `docs/content/docs/progress/pending-test.mdx`：
 
@@ -1361,7 +1376,7 @@ Expected: PASS。
 - 刷新页面后模板和运行摘要恢复。
 - 输入 API Key 不会出现在运行摘要、导出文件或浏览器控制台。
 
-- [ ] **Step 5：运行完整检查**
+- [x] **Step 5：运行完整检查**
 
 ```bash
 cd /Users/smith/develop/project/infinite-canvas/web
@@ -1372,7 +1387,7 @@ git diff --check
 
 Expected: 测试和构建通过；`typecheck` 只允许出现任务开始前已存在的错误。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/router.tsx web/src/constant/navigation-tools.ts web/src/components/layout/mobile-nav-drawer.tsx web/src/i18n/locales/zh-CN.ts web/src/i18n/locales/en-US.ts web/tests/feature-flags.test.ts docs/content/docs/progress/pending-test.mdx
@@ -1382,6 +1397,8 @@ git commit -m "feat: 完成创意工作流预发验收"
 ---
 
 ## Phase B：内置画布 Agent（P0）
+
+> 状态：B1-B7 已实现，经 PR #5 合并并随 `v0.22.0` 部署；工具白名单、预算、取消、确认和附件路径通过零收费验收，功能开关仍默认关闭。真实文本与图片渠道仍未验证。
 
 本阶段的内置 Agent 与现有本地 Codex Agent 并存，不替换 `/agent` 连接、本地 `canvas-agent` 进程或 MCP。内置 Agent 只操作当前画布，不允许执行任意命令、读取任意本地文件或发起任意 HTTP 请求。
 
@@ -1400,7 +1417,7 @@ git commit -m "feat: 完成创意工作流预发验收"
   - `parseBuiltinCanvasAgentJson(text: string): ParsedBuiltinCanvasAgentJson`
   - `selectBuiltinAgentModel(config): string`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -1416,7 +1433,7 @@ test("built-in agent uses only the configured text model", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/builtin-canvas-agent-tools.test.ts
@@ -1424,7 +1441,7 @@ bun test tests/builtin-canvas-agent-tools.test.ts
 
 Expected: FAIL，原因是服务模块不存在。
 
-- [ ] **Step 3：实现工具白名单**
+- [x] **Step 3：实现工具白名单**
 
 工具只允许以下集合：
 
@@ -1453,7 +1470,7 @@ export const BUILTIN_CANVAS_AGENT_TOOLS = [
 - 直接写 localforage 原始 JSON。
 - 任意 `update_node` 字段覆盖。
 
-- [ ] **Step 4：实现文本传输**
+- [x] **Step 4：实现文本传输**
 
 `requestBuiltinCanvasAgentTurn` 必须：
 
@@ -1480,7 +1497,7 @@ test("unknown tool names are rejected", () => {
 });
 ```
 
-- [ ] **Step 5：运行测试**
+- [x] **Step 5：运行测试**
 
 ```bash
 bun test tests/builtin-canvas-agent-tools.test.ts
@@ -1489,7 +1506,7 @@ bun run typecheck
 
 Expected: PASS；不发起真实网络请求。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/services/api/builtin-canvas-agent.ts web/src/lib/canvas/builtin-canvas-agent/tools.ts web/tests/builtin-canvas-agent-tools.test.ts
@@ -1515,7 +1532,7 @@ git commit -m "feat: 增加内置画布 Agent 工具协议"
   - `executeBuiltinCanvasMediaAction(action, executor, signal)`
   - `buildBuiltinCanvasContext(snapshot): BuiltinCanvasContext`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -1542,7 +1559,7 @@ test("normalizes a safe create action", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/builtin-canvas-agent-actions.test.ts
@@ -1550,7 +1567,7 @@ bun test tests/builtin-canvas-agent-actions.test.ts
 
 Expected: FAIL，原因是 actions 模块不存在。
 
-- [ ] **Step 3：实现动作转换**
+- [x] **Step 3：实现动作转换**
 
 动作到现有 `CanvasAgentOp` 的映射必须显式：
 
@@ -1629,7 +1646,7 @@ export async function executeBuiltinCanvasMediaAction(
 
 `buildBuiltinCanvasContext` 只发送必要字段：项目标题、选中节点、节点摘要、连线、视口和当前模型能力；不发送 API Key、完整 data URL 和本地路径。
 
-- [ ] **Step 4：运行测试**
+- [x] **Step 4：运行测试**
 
 ```bash
 bun test tests/builtin-canvas-agent-actions.test.ts
@@ -1648,7 +1665,7 @@ test("media actions are routed to the media executor, not canvas ops", () => {
 });
 ```
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add web/src/lib/canvas/builtin-canvas-agent/actions.ts web/src/lib/canvas/builtin-canvas-agent/context.ts web/src/lib/canvas/builtin-canvas-agent/media.ts web/src/lib/canvas/canvas-agent-ops.ts web/tests/builtin-canvas-agent-actions.test.ts
@@ -1684,7 +1701,7 @@ export type BuiltinCanvasBudgetLimits = {
 };
 ```
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -1718,7 +1735,7 @@ test("does not repeat the same failed action in one turn", async () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/builtin-canvas-agent-runtime.test.ts
@@ -1726,7 +1743,7 @@ bun test tests/builtin-canvas-agent-runtime.test.ts
 
 Expected: FAIL，原因是 runtime 模块不存在。
 
-- [ ] **Step 3：实现预算和停止原因**
+- [x] **Step 3：实现预算和停止原因**
 
 必须固定以下限制：
 
@@ -1753,11 +1770,11 @@ export type BuiltinCanvasStopReason =
 
 `runBuiltinCanvasAgent` 本身不直接发网络请求。它只负责在预算内调用注入的 `executeAction`；媒体动作的 `executeAction` 实现必须先经过 B4 的确认，再调用 `executeBuiltinCanvasMediaAction`，并复用 B2 的 `BuiltinCanvasMediaExecutor`。未确认、预算超限或 `signal.aborted` 时不得进入 executor。
 
-- [ ] **Step 4：实现撤销边界**
+- [x] **Step 4：实现撤销边界**
 
 Agent 修改前保存当前 `CanvasAgentSnapshot`；用户点击撤销时只恢复 Agent 最近一轮快照，不回滚用户自己之后的独立修改。若 Agent 修改和用户修改交叉，必须先禁用撤销并提示。
 
-- [ ] **Step 5：运行测试**
+- [x] **Step 5：运行测试**
 
 ```bash
 bun test tests/builtin-canvas-agent-runtime.test.ts
@@ -1766,7 +1783,7 @@ bun run typecheck
 
 Expected: PASS；预算超限时不会调用第 7 个媒体执行器。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/lib/canvas/builtin-canvas-agent/runtime.ts web/tests/builtin-canvas-agent-runtime.test.ts
@@ -1787,7 +1804,7 @@ git commit -m "feat: 增加内置 Agent 预算和取消"
   - `builtinActionNeedsMaterialization(action)`
   - `requestBuiltinActionConfirmation(action, budget)`
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -1800,7 +1817,7 @@ test("read-only actions never materialize attachments", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/builtin-canvas-agent-attachments.test.ts
@@ -1808,11 +1825,11 @@ bun test tests/builtin-canvas-agent-attachments.test.ts
 
 Expected: FAIL，原因是 attachments 模块不存在。
 
-- [ ] **Step 3：实现附件懒物化**
+- [x] **Step 3：实现附件懒物化**
 
 附件在聊天记录中只保存引用和摘要；第一次被写动作引用时，才转成画布节点并记录 `origin: "attachment"`。同一附件只能物化一次，网络失败不能留下半节点。
 
-- [ ] **Step 4：实现确认弹窗**
+- [x] **Step 4：实现确认弹窗**
 
 写入节点、删除节点、创建连线、生成图片、生成视频、生成音频都必须确认；只读查询不需要确认。确认内容至少包含：
 
@@ -1822,7 +1839,7 @@ Expected: FAIL，原因是 attachments 模块不存在。
 - 是否会调用收费模型。
 - “取消”和“确认执行”按钮。
 
-- [ ] **Step 5：运行测试**
+- [x] **Step 5：运行测试**
 
 ```bash
 bun test tests/builtin-canvas-agent-attachments.test.ts
@@ -1831,7 +1848,7 @@ bun test tests/builtin-canvas-agent-runtime.test.ts
 
 Expected: PASS；未确认的媒体动作不会调用 adapter。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/lib/canvas/builtin-canvas-agent/attachments.ts web/src/components/canvas/builtin-agent-confirm-dialog.tsx web/tests/builtin-canvas-agent-attachments.test.ts
@@ -1852,7 +1869,7 @@ git commit -m "feat: 增加内置 Agent 附件确认"
 - Consumes: `useAgentBridge` 的 `applyAgentOps`、当前快照、`runBuiltinCanvasAgent`。
 - Produces: 可打开/关闭的内置 Agent 面板；现有 `AgentPanel` 不变。
 
-- [ ] **Step 1：写组件行为测试的小型纯函数**
+- [x] **Step 1：写组件行为测试的小型纯函数**
 
 为了避免依赖 React 测试环境，先抽出：
 
@@ -1874,7 +1891,7 @@ expect(canSendBuiltinAgentMessage("  ", false)).toBe(false);
 expect(canSendBuiltinAgentMessage("生成一张图", false)).toBe(true);
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/builtin-canvas-agent-panel.test.ts
@@ -1882,7 +1899,7 @@ bun test tests/builtin-canvas-agent-panel.test.ts
 
 Expected: FAIL，原因是函数不存在。
 
-- [ ] **Step 3：实现 hook**
+- [x] **Step 3：实现 hook**
 
 `use-builtin-canvas-agent.ts` 负责：
 
@@ -1893,7 +1910,7 @@ Expected: FAIL，原因是函数不存在。
 - 用户点击停止时 abort controller。
 - 面板关闭不取消正在运行的 turn；只有“停止”才取消。
 
-- [ ] **Step 4：实现 UI**
+- [x] **Step 4：实现 UI**
 
 面板采用画布主题，不硬编码黑白；包含：
 
@@ -1907,11 +1924,11 @@ Expected: FAIL，原因是函数不存在。
 
 现有 `AgentPanel` 仍负责本地 Codex；新面板不能复用它的 `localStorage` token 或连接状态。
 
-- [ ] **Step 5：接入画布顶部按钮**
+- [x] **Step 5：接入画布顶部按钮**
 
 在 `canvas-top-bar.tsx` 增加按钮，但只有 `isFeatureEnabled("builtinCanvasAgent")` 为 true 时渲染。`project.tsx` 的 `useAgentBridge` 继续作为画布状态桥接，不能复制一套节点更新逻辑。
 
-- [ ] **Step 6：手动验收**
+- [x] **Step 6：手动验收**
 
 使用一个禁用或不存在的模型验证：
 
@@ -1920,7 +1937,7 @@ Expected: FAIL，原因是函数不存在。
 3. 关闭再打开面板不丢失本地会话。
 4. 点击停止后状态变为 canceled。
 
-- [ ] **Step 7：运行检查**
+- [x] **Step 7：运行检查**
 
 ```bash
 bun test tests/builtin-canvas-agent-panel.test.ts
@@ -1931,7 +1948,7 @@ bun run build
 
 Expected: PASS；不出现新的 typecheck 错误。
 
-- [ ] **Step 8：提交**
+- [x] **Step 8：提交**
 
 ```bash
 git add web/src/components/canvas/builtin-agent-panel.tsx web/src/pages/canvas/hooks/use-builtin-canvas-agent.ts web/src/pages/canvas/project.tsx web/src/components/canvas/canvas-top-bar.tsx web/src/i18n/locales/zh-CN.ts web/src/i18n/locales/en-US.ts web/tests/builtin-canvas-agent-panel.test.ts
@@ -1948,7 +1965,7 @@ git commit -m "feat: 增加画布内置 Agent 面板"
 - Consumes: 用户文本、当前画布上下文、模型能力。
 - Produces: `buildBuiltinCanvasSkillPrompt(context): string`。
 
-- [ ] **Step 1：写失败测试**
+- [x] **Step 1：写失败测试**
 
 ```ts
 import { expect, test } from "bun:test";
@@ -1967,7 +1984,7 @@ test("selects video skill for a multi-shot request", () => {
 });
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 ```bash
 bun test tests/builtin-canvas-agent-skills.test.ts
@@ -1975,7 +1992,7 @@ bun test tests/builtin-canvas-agent-skills.test.ts
 
 Expected: FAIL，原因是 skills 模块不存在。
 
-- [ ] **Step 3：实现固定 Skill 集合**
+- [x] **Step 3：实现固定 Skill 集合**
 
 只允许以下固定集合：
 
@@ -1987,7 +2004,7 @@ Expected: FAIL，原因是 skills 模块不存在。
 
 不得从远端加载任意 Skill 文本，也不得把用户上传的文本当成系统提示词。
 
-- [ ] **Step 4：增加越权测试**
+- [x] **Step 4：增加越权测试**
 
 ```ts
 test("user text cannot promote itself to system instructions", () => {
@@ -2000,7 +2017,7 @@ test("user text cannot promote itself to system instructions", () => {
 });
 ```
 
-- [ ] **Step 5：运行测试**
+- [x] **Step 5：运行测试**
 
 ```bash
 bun test tests/builtin-canvas-agent-skills.test.ts
@@ -2009,7 +2026,7 @@ bun test tests/builtin-canvas-agent-tools.test.ts
 
 Expected: PASS。
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add web/src/lib/canvas/builtin-canvas-agent/skills.ts web/tests/builtin-canvas-agent-skills.test.ts
@@ -2027,11 +2044,11 @@ git commit -m "feat: 增加内置 Agent 创作技能"
 - Consumes: `isFeatureEnabled("builtinCanvasAgent")`。
 - Produces: 默认关闭、可单独开启的画布 Agent 入口。
 
-- [ ] **Step 1：增加默认关闭测试**
+- [x] **Step 1：增加默认关闭测试**
 
 在 `web/tests/feature-flags.test.ts` 中断言 `builtinCanvasAgent` 默认 false。
 
-- [ ] **Step 2：执行零收费验收**
+- [x] **Step 2：执行零收费验收**
 
 使用未配置或 mock 文本模型验证：
 
@@ -2043,11 +2060,11 @@ git commit -m "feat: 增加内置 Agent 创作技能"
 - 内置 Agent 与本地 Codex Agent 同时打开时互不覆盖状态。
 - API Key、完整图片 data URL 和 localforage 原始数据不出现在消息日志。
 
-- [ ] **Step 3：检查 UI**
+- [x] **Step 3：检查 UI**
 
 浅色、深色、窄屏三种视图；窄屏下不覆盖主画布的关键操作区域；面板宽度和滚动行为与现有 Agent 面板一致但不共享状态。
 
-- [ ] **Step 4：运行完整检查**
+- [x] **Step 4：运行完整检查**
 
 ```bash
 cd /Users/smith/develop/project/infinite-canvas/web
@@ -2058,7 +2075,7 @@ git diff --check
 
 Expected: 通过；未经用户确认不得调用真实收费模型。
 
-- [ ] **Step 5：记录预发结果并提交**
+- [x] **Step 5：记录预发结果并提交**
 
 在 `docs/content/docs/progress/pending-test.mdx` 写明“默认关闭、零收费 mock 验收通过、真实渠道未测试”。提交：
 
@@ -2071,9 +2088,23 @@ git commit -m "test: 完成内置画布 Agent 预发验收"
 
 ## Phase C：3D 导演台与全景（P1）
 
+> 当前状态：采用 clean-room 实现，导演台与全景代码已完成，PR #11 已通过 Quality CI，等待用户预览、合并和真实设备验收。尚未部署生产。
+
 本阶段先审查来源和许可证。参考仓的 `web/public/director` 当前存在运行时资产，但没有可复现源码和完整依赖清单；没有来源、授权和资产完整性结论时，不得把任何远端构建产物放进本项目。
 
-执行状态（2026-10-28）：C1 结论为 `BLOCKED`。参考仓导演台受 AGPL-3.0 约束，当前只有压缩构建产物，没有对应源码、构建清单和完整第三方许可证清单，见 `docs/audits/2026-10-27-director-source-audit.md`。C2-C5 不启动，Phase C 保持关闭。
+执行状态（2026-10-28）：C1 结论为 `BLOCKED`。参考仓导演台受 AGPL-3.0 约束，当前只有压缩构建产物，没有对应源码、构建清单和完整第三方许可证清单，见 `docs/audits/2026-10-27-director-source-audit.md`。
+
+执行状态（2026-10-29）：用户要求继续 3D 导演台后，改走独立 clean-room 路线。下方 C2 的 iframe 协议和 C4 的 `@photo-sphere-viewer` 依赖属于原始候选方案，当前不执行，也不得据此加载参考仓产物。实际实现直接使用 MIT 的 `three` 动态懒加载、自有程序化场景和现有本地图片存储，功能开关保持默认关闭。
+
+| 能力 | 当前状态 |
+|---|---|
+| 导演台数据白名单、数量与数值边界 | 已实现，单测覆盖 |
+| 3D 场景、道具编辑、相机和背景预设 | 已实现，等待真实浏览器与设备验收 |
+| 项目保存恢复、PNG 截图回画布 | 已实现，截图不进入项目 JSON |
+| 全景查看器与普通图片降级 | 已实现，仅接受本地图片来源 |
+| `director3d` / `panorama` 独立开关 | 已实现，默认关闭 |
+| 触控、上下文丢失与压力路径 | 零收费浏览器模拟已通过：单指拖动、双指指针隔离、`WEBGL_lose_context` 降级、40 道具、160 步拖动、20 次打开/关闭和连续截图 |
+| 真实设备 WebGL、GPU 内存、长期会话 | 尚未验证 |
 
 ### Task C1：导演台来源、许可证和资产完整性审查
 
@@ -2127,7 +2158,9 @@ storyai:director-panoramas
 
 没有明确结论时，不能执行 C2。
 
-### Task C2：iframe 通信协议和严格消息校验
+### Task C2（历史候选，未执行）：iframe 通信协议和严格消息校验
+
+> 当前 clean-room 实现直接使用 React 组件与 Three.js，不创建 iframe，也不接收跨源消息。以下步骤仅保留为旧候选方案记录，不得据此恢复参考仓构建产物。
 
 **Files:**
 - Create: `web/src/lib/canvas/director-protocol.ts`
@@ -2197,7 +2230,9 @@ git add web/src/lib/canvas/director-protocol.ts web/src/components/canvas/canvas
 git commit -m "feat: 增加导演台通信协议边界"
 ```
 
-### Task C3：导演台项目保存、恢复和截图回画布
+### Task C3（历史执行顺序）：导演台项目保存、恢复和截图回画布
+
+> 当前代码已完成受控项目保存恢复和 PNG 截图回画布，实际实现位于 `web/src/lib/canvas/director-project.ts` 与导演台组件。本节的步骤顺序只用于追溯。
 
 **Files:**
 - Modify: `web/src/stores/canvas/use-canvas-store.ts`
@@ -2268,7 +2303,9 @@ git add web/src/stores/canvas/use-canvas-store.ts web/src/types/canvas.ts web/sr
 git commit -m "feat: 增加导演台项目保存和截图节点"
 ```
 
-### Task C4：全景节点与查看器
+### Task C4（历史候选，未执行）：Photo Sphere 全景节点
+
+> 当前实现直接使用 Three.js 等距柱状全景查看，不引入 `@photo-sphere-viewer`。以下依赖和节点步骤已被 clean-room 实现取代。
 
 **Files:**
 - Modify: `web/src/types/canvas.ts`
@@ -2340,6 +2377,8 @@ git commit -m "feat: 增加全景节点和降级查看器"
 ```
 
 ### Task C5：3D/全景性能和独立回滚
+
+> 当前已完成零收费模拟压力、上下文丢失和独立开关验证；真实桌面/移动 GPU、长时间显存表现、生产回滚演练仍未完成。
 
 **Files:**
 - Modify: `web/src/components/canvas/canvas-director-shell.tsx`
@@ -3124,17 +3163,18 @@ git commit -m "feat: 完成 creative 后台和回滚演练"
 
 ## 建议执行节奏
 
+> 本表保留原计划节奏，供追溯历史排期。当前真实状态以上方“实施状态快照（2026-10-30）”为准。
+
 | 时间 | 目标 | 停止线 |
 |---|---|---|
 | 第 1 周 | Phase 0、A1-A3 | 工作流模板和本地 CRUD 预发可见 |
 | 第 2 周 | A4-A8 | 单图/多图 mock 运行、预算、历史、结果入库通过 |
 | 第 3-4 周 | B1-B4 | 内置 Agent 工具白名单、预算、确认和附件通过 |
 | 第 4 周 | B5-B7 | 画布内面板与本地 Agent 并存，零收费验收 |
-| 第 5 周 | C1 | 2026-10-28 审查结论为 `BLOCKED`，C2-C5 不启动 |
-| 第 5-6 周 | C2-C5 | 暂停，等待独立 clean-room 方案 |
+| 第 5 周 | C1-C5 | 参考仓维持 `BLOCKED`，改走 clean-room；当前代码等待 PR #11 用户预览与真实设备验收 |
 | 第 7 周 | D1-D2 | 视频能力描述和 Kling 字段按模型显示 |
 | 第 7 周 | D3-D4 | 首页快速创作只预填、不扣费 |
-| 第 8 周以后 | E1-E5 | FYT 独立工作树、契约、鉴权、计费和回滚 |
+| 第 8 周以后 | E1-E5 | 尚未开始；先冻结 FYT 契约，再实施鉴权、计费、素材和回滚 |
 
 如果某阶段没有人工验收，不进入下一阶段；不能用“代码已写完”替代阶段验收。
 
@@ -3142,7 +3182,9 @@ git commit -m "feat: 完成 creative 后台和回滚演练"
 
 ## 计划自检
 
-### 需求覆盖
+### 需求覆盖检查（不是实施状态）
+
+> 本节只确认计划已经覆盖这些需求。代码是否实现、是否合并、是否启用，必须查看上方状态快照和对应的 PR/CI 证据。
 
 - [x] P0 创意工作流：A1-A8。
 - [x] P0 内置画布 Agent：B1-B7。

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Bot, Download, Home, Images, Menu, PanelLeftClose, PanelLeftOpen, Plus, Redo2, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
+import { BookOpen, Bot, Clapperboard, Download, Home, Images, Menu, Orbit, PanelLeftClose, PanelLeftOpen, Plus, Redo2, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
 import { Button, Dropdown, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
@@ -34,6 +34,11 @@ export function CanvasTopBar({
     builtinAgentEnabled,
     builtinAgentOpen,
     onToggleBuiltinAgent,
+    directorEnabled,
+    directorOpen,
+    onOpenDirector,
+    panoramaAvailable,
+    onViewPanorama,
 }: {
     title: string;
     titleDraft: string;
@@ -59,6 +64,11 @@ export function CanvasTopBar({
     builtinAgentEnabled: boolean;
     builtinAgentOpen: boolean;
     onToggleBuiltinAgent: () => void;
+    directorEnabled: boolean;
+    directorOpen: boolean;
+    onOpenDirector: () => void;
+    panoramaAvailable: boolean;
+    onViewPanorama: () => void;
 }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const { t } = useTranslation();
@@ -98,6 +108,8 @@ export function CanvasTopBar({
                             items: [
                                 { key: "home", icon: <Home className="size-4" />, label: t("canvas.home"), onClick: onHome },
                                 { key: "docs", icon: <BookOpen className="size-4" />, label: t("canvas.docs"), onClick: () => window.open(DOCS_URL, "_blank", "noopener,noreferrer") },
+                                ...(directorEnabled ? [{ key: "director", icon: <Clapperboard className="size-4" />, label: t("canvas.director.open"), onClick: onOpenDirector }] : []),
+                                ...(panoramaAvailable ? [{ key: "panorama", icon: <Orbit className="size-4" />, label: t("canvas.panorama.openTitle"), onClick: onViewPanorama }] : []),
                                 { key: "projects", icon: <Images className="size-4" />, label: t("canvas.projects"), onClick: onProjects },
                                 { type: "divider" },
                                 { key: "new", icon: <Plus className="size-4" />, label: t("canvas.create"), onClick: onCreateProject },
@@ -147,6 +159,19 @@ export function CanvasTopBar({
                 <div className="pointer-events-auto flex items-center gap-1.5">
                     <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
                     <span className="h-6 w-px" style={{ background: theme.toolbar.border }} />
+                    {directorEnabled ? (
+                        <Tooltip title={t("canvas.director.title")}>
+                            <Button
+                                type="text"
+                                className="!h-10 !rounded-xl !px-3 !font-medium"
+                                style={{ background: directorOpen ? theme.toolbar.activeBg : "transparent", color: theme.node.text }}
+                                icon={<Clapperboard className="size-4" />}
+                                onClick={onOpenDirector}
+                            >
+                                {t("canvas.director.open")}
+                            </Button>
+                        </Tooltip>
+                    ) : null}
                     {builtinAgentEnabled ? (
                         <Tooltip title={t("canvas.builtinAgent.title")}>
                             <Button

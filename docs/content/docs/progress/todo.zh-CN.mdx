@@ -7,5 +7,9 @@ description: 当前项目后续值得处理的事项
 
 本文档用来记录当前项目后续比较值得处理的事项。
 
+- 完成 clean-room 导演台/全景 PR 的用户验收和合并决定。代码与 Quality CI 已完成，但 `director3d`、`panorama` 仍默认关闭，生产仍为 `v0.22.0`。
+- 在真实桌面和手机 WebGL 硬件上验收 clean-room 3D 导演台与全景查看器。颜色编辑、模拟触控指针隔离、上下文丢失降级、40 道具压力和重复保存恢复已有浏览器证据；持续 GPU 内存、真实设备压力、长会话渲染和浏览器兼容性仍需验收。参考实现继续禁止直接复用。
+- 验收 Kling、首尾帧、参考视频/音频、多镜头和 Gemini 视频等真实供应商能力。除用户明确授权付费调用外，只使用 mock、未配置渠道或其他零收费路径。
 - 本地 Agent 接入后续：按[本地 Agent 接入规划](/zh-CN/docs/progress/local-agent-integration-plan)把 Claude Code CLI Adapter 升级为 Claude Agent SDK Adapter，并完善工具队列体验。
 - Agent Skill 后续：补充网络检索安装、Skill 资源文件管理和可控的本地记忆沉淀。
+- 在冻结 FYT 服务端契约后再实施 Phase E：账号、模型权限、报价、计费、退款、服务端任务、素材库和回滚演练。当前画布、素材和生成历史仍主要保存在浏览器本地。

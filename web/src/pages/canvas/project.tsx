@@ -33,6 +33,8 @@ import { CanvasNodeSplitDialog, type CanvasImageSplitParams } from "@/components
 import { CanvasNodeUpscaleDialog, type CanvasImageUpscaleParams } from "@/components/canvas/canvas-node-upscale-dialog";
 import { buildNodeGenerationContext, buildNodeGenerationInputs, buildNodeResponseMessages, hydrateNodeGenerationContext, type NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
 import { CanvasNodeHoverToolbar, CanvasNodeInfoModal } from "@/components/canvas/canvas-node-hover-toolbar";
+import { CanvasDirectorShell } from "@/components/canvas/canvas-director-shell";
+import { CanvasPanoramaViewer } from "@/components/canvas/canvas-panorama-viewer";
 import { CanvasSelectionToolbar } from "@/components/canvas/canvas-selection-toolbar";
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
 import { Minimap } from "@/components/canvas/canvas-mini-map";
@@ -96,6 +98,7 @@ import {
 } from "@/types/canvas";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
+import type { DirectorProjectState } from "@/lib/canvas/director-project";
 
 // Register built-in nodes in the shared registry once when the module loads.
 registerBuiltinNodes();
@@ -257,6 +260,8 @@ function InfiniteCanvasPage() {
     const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
     const [infoNodeId, setInfoNodeId] = useState<string | null>(null);
     const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
+    const [directorOpen, setDirectorOpen] = useState(false);
+    const [panoramaNodeId, setPanoramaNodeId] = useState<string | null>(null);
     const [cropNodeId, setCropNodeId] = useState<string | null>(null);
     const [maskEditNodeId, setMaskEditNodeId] = useState<string | null>(null);
     const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
@@ -732,6 +737,7 @@ function InfiniteCanvasPage() {
     const singleSelectedNodeId = selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null;
     const toolbarNode = (toolbarNodeId ? nodeById.get(toolbarNodeId) || null : null) || (singleSelectedNodeId ? nodeById.get(singleSelectedNodeId) || null : null);
     const infoNode = infoNodeId ? nodeById.get(infoNodeId) || null : null;
+    const panoramaNode = panoramaNodeId ? nodeById.get(panoramaNodeId) || null : null;
     const cropNode = cropNodeId ? nodeById.get(cropNodeId) || null : null;
     const maskEditNode = maskEditNodeId ? nodeById.get(maskEditNodeId) || null : null;
     const splitNode = splitNodeId ? nodeById.get(splitNodeId) || null : null;
@@ -820,6 +826,8 @@ function InfiniteCanvasPage() {
         setContextMenu,
     });
     const builtinAgentEnabled = isFeatureEnabled("builtinCanvasAgent");
+    const directorEnabled = isFeatureEnabled("director3d");
+    const panoramaEnabled = isFeatureEnabled("panorama");
     const builtinAgent = useBuiltinCanvasAgent({ snapshot: agentSnapshot, applyAgentOps, applyAgentSnapshot });
 
     const { pluginHost, renderPluginPanel, buildNodeToolbarItems } = usePluginHost({
@@ -889,6 +897,7 @@ function InfiniteCanvasPage() {
             setMaskEditNodeId((current) => (current && allIds.has(current) ? null : current));
             setAngleNodeId((current) => (current && allIds.has(current) ? null : current));
             setPreviewNodeId((current) => (current && allIds.has(current) ? null : current));
+            setPanoramaNodeId((current) => (current && allIds.has(current) ? null : current));
             setRunningNodeId((current) => (current && allIds.has(current) ? null : current));
             setReferencePickerNodeId((current) => (current && allIds.has(current) ? null : current));
             setExpandedBatchNodeIds((current) => new Set([...current].filter((nodeId) => !allIds.has(nodeId))));
@@ -1504,6 +1513,30 @@ function InfiniteCanvasPage() {
         setDialogNodeId(id);
     }, []);
 
+    const captureDirectorToCanvas = useCallback(
+        async (dataUrl: string, director: DirectorProjectState) => {
+            const image = await uploadImage(dataUrl);
+            const size = fitNodeSize(image.width, image.height, 720, 720);
+            const position = getCanvasCenter();
+            const id = nanoid();
+            const node: CanvasNodeData = {
+                id,
+                type: CanvasNodeType.Image,
+                title: t("canvas.director.captureTitle"),
+                position: { x: position.x - size.width / 2, y: position.y - size.height / 2 },
+                ...size,
+                metadata: imageMetadata(image),
+            };
+            updateProject(projectId, { director });
+            setNodes((prev) => [...prev, node]);
+            setSelectedNodeIds(new Set([id]));
+            setSelectedConnectionId(null);
+            setDialogNodeId(id);
+            setDirectorOpen(false);
+        },
+        [getCanvasCenter, projectId, t, updateProject],
+    );
+
     const createVideoFileNode = useCallback(async (file: File, position: Position) => {
         const video = await uploadMediaFile(file, "video");
         const size = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
@@ -1652,6 +1685,7 @@ function InfiniteCanvasPage() {
             }
 
             if (event.key === "Escape") {
+                if (document.querySelector(".ant-modal-root")) return;
                 setSelectedNodeIds(new Set());
                 setSelectedConnectionId(null);
                 setContextMenu(null);
@@ -3187,6 +3221,13 @@ function InfiniteCanvasPage() {
                     builtinAgentEnabled={builtinAgentEnabled}
                     builtinAgentOpen={builtinAgent.open}
                     onToggleBuiltinAgent={builtinAgent.toggle}
+                    directorEnabled={directorEnabled}
+                    directorOpen={directorOpen}
+                    onOpenDirector={() => setDirectorOpen(true)}
+                    panoramaAvailable={panoramaEnabled && toolbarNode?.type === CanvasNodeType.Image && Boolean(toolbarNode.metadata?.content)}
+                    onViewPanorama={() => {
+                        if (toolbarNode?.type === CanvasNodeType.Image && toolbarNode.metadata?.content) setPanoramaNodeId(toolbarNode.id);
+                    }}
                 />
 
                 <InfiniteCanvas
@@ -3348,6 +3389,7 @@ function InfiniteCanvasPage() {
                     onSuperResolve={(node) => setSuperResolveNodeId(node.id)}
                     onAngle={(node) => setAngleNodeId(node.id)}
                     onViewImage={handleNodeViewImage}
+                    onViewPanorama={(node) => setPanoramaNodeId(node.id)}
                     onReversePrompt={createImageReversePromptNodes}
                     onRetry={(node) => void handleRetryNode(node)}
                     onToggleFreeResize={(node) => toggleNodeFreeResize(node.id)}
@@ -3430,6 +3472,16 @@ function InfiniteCanvasPage() {
 
                 <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
                 <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} />
+                {directorEnabled ? (
+                    <CanvasDirectorShell
+                        open={directorOpen}
+                        initialProject={currentProject?.director}
+                        onClose={() => setDirectorOpen(false)}
+                        onSave={(director) => updateProject(projectId, { director })}
+                        onCapture={captureDirectorToCanvas}
+                    />
+                ) : null}
+                {panoramaEnabled ? <CanvasPanoramaViewer open={Boolean(panoramaNode?.metadata?.content)} source={panoramaNode?.metadata?.content} title={panoramaNode?.title} onClose={() => setPanoramaNodeId(null)} /> : null}
 
                 {cropNode?.metadata?.content ? <CanvasNodeCropDialog dataUrl={cropNode.metadata.content} open={Boolean(cropNode)} onClose={() => setCropNodeId(null)} onConfirm={(crop) => void cropImageNode(cropNode!, crop)} /> : null}
 

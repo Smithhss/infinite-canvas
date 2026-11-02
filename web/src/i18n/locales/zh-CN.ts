@@ -523,7 +523,7 @@ export default {
         controls: { ratio: "比例", duplicate: "复制", delete: "删除", images: "{{count}} 张", texts: "{{count}} 条", generations: "{{count}} 次", reasoning: "推理" },
         generation: { interrupted: "页面刷新后生成已中断，请重新生成。", front: "正面视角", rotateRight: "向右旋转 {{angle}} 度", rotateLeft: "向左旋转 {{angle}} 度", level: "水平视角", topDown: "俯视 {{angle}} 度", lowAngle: "仰视 {{angle}} 度", angleLabel: "AI 多角度：{{horizontal}}，{{pitch}}，镜头距离 {{distance}}，{{lens}}镜头", anglePrompt: "基于参考图重新生成同一主体的新视角，保持主体、颜色、材质和画面风格一致，不要只做透视变形。{{angle}}。" },
         agentOps: { add_node: "新增节点", update_node: "更新节点", delete_node: "删除节点", delete_connections: "删除连线", connect_nodes: "连接", set_viewport: "调整视图", select_nodes: "选择节点", run_generation: "触发生成" },
-        pluginErrors: { invalidExport: "插件未导出有效对象", missingFields: "插件缺少 id 或 nodes", downloadFailed: "下载失败 (HTTP {{status}})", registryFailed: "获取官方插件列表失败 (HTTP {{status}})" },
+        pluginErrors: { invalidExport: "插件未导出有效对象", missingFields: "插件缺少 id、version 或 nodes", downloadFailed: "下载失败 (HTTP {{status}})", registryFailed: "获取官方插件列表失败 (HTTP {{status}})", registryInvalid: "官方插件清单格式无效：{{detail}}", registryDuplicate: "官方插件清单包含重复项：{{detail}}", registryIncompatible: "插件「{{name}}」需要应用 v{{required}}，当前为 v{{current}}", officialIntegrityRequired: "官方插件安装缺少完整性校验信息", integrityFailed: "插件完整性校验失败，已阻止执行下载的代码", sizeMismatch: "插件文件大小与清单不一致（预期 {{expected}} 字节，实际 {{actual}} 字节）", pluginIdMismatch: "插件 ID 与来源清单不一致", pluginVersionMismatch: "插件版本与来源清单不一致", incompatible: "插件「{{name}}」需要应用 v{{required}}，当前为 v{{current}}" },
         shortcut: {
             dragCanvas: "拖动画布",
             pan: "平移视图",

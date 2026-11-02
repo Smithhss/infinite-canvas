@@ -1,10 +1,33 @@
+import { APP_VERSION } from "@/constant/env";
 import { registerNodeDefinitions, unregisterPluginNodes } from "@/lib/canvas/node-registry";
+import { verifySha256 } from "@/lib/canvas/plugin-integrity";
+import { isAppVersionCompatible } from "@/lib/canvas/plugin-manifest";
 import { getPluginRuntime } from "@/lib/canvas/plugin-runtime";
 import { usePluginStore, type InstalledPlugin } from "@/stores/canvas/use-plugin-store";
 import type { CanvasPlugin } from "@/types/canvas-plugin";
 import i18n from "@/i18n";
 
 const cleanups = new Map<string, () => void>();
+
+export type PluginInstallExpectation = {
+    id?: string;
+    version?: string;
+    sha256?: string;
+    size?: number;
+    minAppVersion?: string;
+};
+
+type PluginInstallOptions = {
+    official?: boolean;
+    bustCache?: boolean;
+    expected?: PluginInstallExpectation;
+};
+
+type PluginDownload = {
+    source: string;
+    bytes: Uint8Array;
+    size: number;
+};
 
 // A remote plugin may export CanvasPlugin directly or a factory that receives runtime and returns CanvasPlugin.
 // The factory uses runtime.React so the bundle does not need its own React copy.
@@ -25,7 +48,20 @@ async function evaluatePluginSource(source: string): Promise<CanvasPlugin> {
 function assertPlugin(plugin: unknown): asserts plugin is CanvasPlugin {
     const value = plugin as Partial<CanvasPlugin> | null;
     if (!value || typeof value !== "object") throw new Error(i18n.t("canvas.pluginErrors.invalidExport"));
-    if (!value.id || !Array.isArray(value.nodes) || !value.nodes.length) throw new Error(i18n.t("canvas.pluginErrors.missingFields"));
+    if (!value.id || typeof value.version !== "string" || !value.version || !Array.isArray(value.nodes) || !value.nodes.length) {
+        throw new Error(i18n.t("canvas.pluginErrors.missingFields"));
+    }
+}
+
+function assertPluginCompatibility(plugin: CanvasPlugin, expected?: PluginInstallExpectation) {
+    if (expected?.id && plugin.id !== expected.id) throw new Error(i18n.t("canvas.pluginErrors.pluginIdMismatch"));
+    if (expected?.version && plugin.version.replace(/^v/, "") !== expected.version.replace(/^v/, "")) {
+        throw new Error(i18n.t("canvas.pluginErrors.pluginVersionMismatch"));
+    }
+    const minAppVersion = plugin.minAppVersion || expected?.minAppVersion;
+    if (minAppVersion && !isAppVersionCompatible(APP_VERSION, minAppVersion)) {
+        throw new Error(i18n.t("canvas.pluginErrors.incompatible", { name: plugin.name || plugin.id, required: minAppVersion, current: APP_VERSION }));
+    }
 }
 
 export function activatePlugin(plugin: CanvasPlugin) {
@@ -45,10 +81,29 @@ export function deactivatePlugin(pluginId: string) {
     unregisterPluginNodes(pluginId);
 }
 
-async function fetchPluginSource(url: string) {
+async function fetchPluginSource(url: string): Promise<PluginDownload> {
     const response = await fetch(url);
     if (!response.ok) throw new Error(i18n.t("canvas.pluginErrors.downloadFailed", { status: response.status }));
-    return response.text();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return { source: new TextDecoder().decode(bytes), bytes, size: bytes.byteLength };
+}
+
+async function verifyDownloadedPlugin(download: PluginDownload, opts?: PluginInstallOptions) {
+    const expected = opts?.expected;
+    if (opts?.official && (!expected?.sha256 || expected.size === undefined)) {
+        throw new Error(i18n.t("canvas.pluginErrors.officialIntegrityRequired"));
+    }
+    if (expected?.size !== undefined && download.size !== expected.size) {
+        throw new Error(i18n.t("canvas.pluginErrors.sizeMismatch", { expected: expected.size, actual: download.size }));
+    }
+    if (expected?.sha256 && !(await verifySha256(download.bytes, expected.sha256))) {
+        throw new Error(i18n.t("canvas.pluginErrors.integrityFailed"));
+    }
+}
+
+async function verifyInstalledSource(record: InstalledPlugin, bytes: Uint8Array) {
+    if (record.size !== undefined && bytes.byteLength !== record.size) throw new Error(i18n.t("canvas.pluginErrors.sizeMismatch", { expected: record.size, actual: bytes.byteLength }));
+    if (record.sha256 && !(await verifySha256(bytes, record.sha256))) throw new Error(i18n.t("canvas.pluginErrors.integrityFailed"));
 }
 
 // Add a cache-busting parameter so watch builds load the latest output.
@@ -58,30 +113,48 @@ function withCacheBust(url: string) {
 
 // Install or replace a plugin from a URL and enable it immediately.
 // bustCache bypasses HTTP/CDN caches during upgrades while persisting a clean URL without the timestamp query.
-export async function installPluginFromUrl(url: string, opts?: { official?: boolean; bustCache?: boolean }) {
-    const source = await fetchPluginSource(opts?.bustCache ? withCacheBust(url) : url);
-    const plugin = await evaluatePluginSource(source);
-    deactivatePlugin(plugin.id); // Replace the previous version.
-    usePluginStore.getState().upsert({ id: plugin.id, name: plugin.name || plugin.id, version: plugin.version || "0.0.0", description: plugin.description, url, source, enabled: true, official: opts?.official });
+export async function installPluginFromUrl(url: string, opts?: PluginInstallOptions) {
+    const download = await fetchPluginSource(opts?.bustCache ? withCacheBust(url) : url);
+    await verifyDownloadedPlugin(download, opts);
+    const plugin = await evaluatePluginSource(download.source);
+    assertPluginCompatibility(plugin, opts?.expected);
+
+    deactivatePlugin(plugin.id); // Replace the previous version only after the new artifact has passed validation.
+    usePluginStore.getState().upsert({
+        id: plugin.id,
+        name: plugin.name || plugin.id,
+        version: plugin.version,
+        description: plugin.description,
+        url,
+        source: download.source,
+        enabled: true,
+        official: opts?.official,
+        sha256: opts?.expected?.sha256,
+        size: opts?.expected?.size,
+    });
     activatePlugin(plugin);
     return plugin;
 }
 
-export async function updatePlugin(record: InstalledPlugin) {
+export async function updatePlugin(record: InstalledPlugin, expected?: PluginInstallExpectation) {
     // Upgrades must fetch the latest output and therefore always bypass caches.
-    return installPluginFromUrl(record.url, { official: record.official, bustCache: true });
+    return installPluginFromUrl(record.url, { official: record.official, bustCache: true, expected });
 }
 
 export async function setPluginEnabled(record: InstalledPlugin, enabled: boolean) {
-    usePluginStore.getState().setEnabled(record.id, enabled);
     if (!enabled) {
+        usePluginStore.getState().setEnabled(record.id, false);
         deactivatePlugin(record.id);
         return;
     }
+
     // Reload local plugins from their URL when enabled because the cached source may be stale.
-    const source = record.local ? await fetchPluginSource(withCacheBust(record.url)) : record.source;
-    const plugin = await evaluatePluginSource(source);
+    const download = record.local ? await fetchPluginSource(withCacheBust(record.url)) : { source: record.source, bytes: new TextEncoder().encode(record.source), size: undefined };
+    if (!record.local) await verifyInstalledSource(record, download.bytes);
+    const plugin = await evaluatePluginSource(download.source);
+    assertPluginCompatibility(plugin);
     activatePlugin(plugin);
+    usePluginStore.getState().setEnabled(record.id, true);
 }
 
 export function uninstallPlugin(id: string) {
@@ -101,9 +174,12 @@ export async function ensurePluginsLoaded() {
     await Promise.all(
         records.map(async (record) => {
             try {
-                // Local plugins use the latest output; other plugins use their cached source.
-                const source = record.local ? await fetchPluginSource(withCacheBust(record.url)) : record.source;
-                activatePlugin(await evaluatePluginSource(source));
+                // Local plugins use the latest output; other plugins use their verified cached source.
+                const download = record.local ? await fetchPluginSource(withCacheBust(record.url)) : { source: record.source, bytes: new TextEncoder().encode(record.source), size: undefined };
+                if (!record.local) await verifyInstalledSource(record, download.bytes);
+                const plugin = await evaluatePluginSource(download.source);
+                assertPluginCompatibility(plugin);
+                activatePlugin(plugin);
             } catch (error) {
                 console.error(`[plugin] Failed to load: ${record.id}`, error);
             }
@@ -128,16 +204,17 @@ async function loadLocalPlugins() {
     await Promise.all(
         urls.map(async (url: string) => {
             try {
-                const source = await fetchPluginSource(withCacheBust(url));
-                const plugin = await evaluatePluginSource(source);
+                const download = await fetchPluginSource(withCacheBust(url));
+                const plugin = await evaluatePluginSource(download.source);
+                assertPluginCompatibility(plugin);
                 const existing = store.plugins.find((item) => item.id === plugin.id);
                 store.upsert({
                     id: plugin.id,
                     name: plugin.name || plugin.id,
-                    version: plugin.version || "0.0.0",
+                    version: plugin.version,
                     description: plugin.description,
                     url,
-                    source,
+                    source: download.source,
                     enabled: existing?.enabled ?? false, // Preserve the user setting; new discoveries default to disabled.
                     local: true,
                 });
@@ -157,8 +234,9 @@ async function loadDevPlugins() {
     await Promise.all(
         urls.map(async (url) => {
             try {
-                const source = await fetchPluginSource(withCacheBust(url));
-                const plugin = await evaluatePluginSource(source);
+                const download = await fetchPluginSource(withCacheBust(url));
+                const plugin = await evaluatePluginSource(download.source);
+                assertPluginCompatibility(plugin);
                 deactivatePlugin(plugin.id);
                 activatePlugin(plugin);
                 console.info(`[plugin] Dev plugin loaded: ${plugin.id} (${url})`);

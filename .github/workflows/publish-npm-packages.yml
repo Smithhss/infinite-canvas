@@ -1,0 +1,84 @@
+name: Publish npm packages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "canvas-agent/**"
+      - "canvas-proxy/**"
+      - ".github/workflows/publish-npm-packages.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish missing package versions to npm"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-npm-packages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: canvas-agent
+            dir: canvas-agent
+          - name: canvas-proxy
+            dir: canvas-proxy
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        if: matrix.name == 'canvas-agent'
+        run: npm run build
+
+      - name: Check package contents
+        run: npm pack --dry-run
+
+      - name: Check package version
+        id: package
+        shell: bash
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if published=$(npm view "$name@$version" version 2>&1); then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "$name@$version already exists on npm; skipping publish."
+          elif [[ "$published" == *"E404"* ]]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$published"
+            echo "Could not determine whether $name@$version exists; refusing to publish."
+            exit 1
+          fi
+
+      - name: Publish to npm
+        if: steps.package.outputs.should_publish == 'true' && (github.event_name == 'push' || github.event.inputs.publish == 'true')
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

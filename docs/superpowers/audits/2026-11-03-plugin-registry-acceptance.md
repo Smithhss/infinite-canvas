@@ -2,9 +2,9 @@
 
 **验收日期：** 2026-11-03
 
-**环境：** Infinite Canvas `v0.23.0`，独立本地预发 `http://127.0.0.1:4174/`，Ego Browser TaskSpace `infinite-canvas-plugin-registry-20261103`（54）。
+**环境：** Infinite Canvas `v0.23.0`，独立本地预发 `http://127.0.0.1:4174/`，Ego Browser TaskSpace `infinite-canvas-plugin-registry-20261103`（55）。
 
-**结论：** B1 自有插件 registry 的构建、清单、完整性校验、安装、更新、禁用、重新启用、卸载和失败关闭链路已在本地通过。官方默认地址已切到 `Smithhss/infinite-canvas`，但远端 `plugins-dist` 分支尚未实际发布，不能把本轮视为线上发布完成。
+**结论：** B1 自有插件 registry 的构建、清单、完整性校验、安装、更新、禁用、重新启用、卸载和失败关闭链路已通过。官方默认地址已切到 `Smithhss/infinite-canvas`，GitHub Actions 已发布 `plugins-dist`，jsDelivr 在线制品同样通过大小和哈希校验，并已完成在线浏览器验收。本轮没有部署生产。
 
 ## 清单与制品
 
@@ -20,11 +20,21 @@
 
 `npm run validate` 会重新读取每个 bundle，核对入口路径、大小、SHA-256、平台、最低应用版本和完整的 5 项插件集合。CI 在 force-push `plugins-dist` 之前执行同一校验。
 
+## 远端发布
+
+| 检查项 | 结果 | 实测 |
+| --- | --- | --- |
+| GitHub Actions | 通过 | `Publish Official Plugins` run `41506497353`，构建、校验和发布步骤全部成功 |
+| 制品分支 | 通过 | `origin/plugins-dist` 已创建，HEAD 为 `81cd17507a423a6fb583cba68d7a17af561fd90c` |
+| jsDelivr 清单 | 通过 | `official-plugins.json` 返回 5 个条目，`schemaVersion=1` |
+| jsDelivr bundle | 通过 | 5 个 bundle 均 HTTP 200，大小和 SHA-256 与清单一致 |
+| 默认地址面板 | 通过 | 本地应用使用默认 `Smithhss/infinite-canvas@plugins-dist` 地址读取 5 个官方插件 |
+
 ## 浏览器结果
 
 | 检查项 | 结果 | 实测 |
 | --- | --- | --- |
-| 官方清单加载 | 通过 | 面板显示 Markdown、SVG、HTML、3D 全景和便利贴 5 项 |
+| 官方清单加载 | 通过 | 默认 jsDelivr 地址加载 Markdown、SVG、HTML、3D 全景和便利贴 5 项 |
 | 官方安装 | 通过 | 便利贴安装后出现“扩展节点”入口和“便利贴”节点项 |
 | 更新 | 通过 | 从来源更新成功，插件保持启用 |
 | 禁用 | 通过 | 关闭开关后扩展入口消失 |
@@ -60,13 +70,12 @@
 | `bun test tests/plugin-registry.test.ts` | 8 pass，0 fail，40 assertions |
 | `bun run typecheck` | 通过 |
 | `npm run build && npm run validate` | 通过，5 个插件 |
-| Web 全量测试 | 115 pass，0 fail，386 assertions |
+| Web 全量测试（隔离工作树） | 106 pass，0 fail，350 assertions |
 | Web 类型检查与生产构建 | 通过 |
 | Docs 类型检查与构建 | 通过 |
 
 ## 剩余风险
 
-- `origin/plugins-dist` 当前不存在；只有打 `v*` tag 或手动运行发布工作流后，默认 jsDelivr 地址才会有制品。
-- 本轮没有提交、推送、触发远端工作流、打 tag 或部署生产。
-- 默认 jsDelivr 地址和真实 GitHub Actions 发布链路尚未在线验证。
+- 本轮没有部署生产，也没有合并到 `dev` 或 `main`。
+- jsDelivr 对分支存在缓存；后续发布若需立即生效，仍需按需 purge。
 - 第三方插件仍会直接在页面内执行，现有风险提示和用户信任边界没有改变。

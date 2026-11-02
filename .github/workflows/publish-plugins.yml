@@ -27,11 +27,15 @@ jobs:
 
       - name: Install build dependencies
         working-directory: plugins/canvas/registry
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Build official plugins
         working-directory: plugins/canvas/registry
         run: npm run build
+
+      - name: Validate official plugin artifacts
+        working-directory: plugins/canvas/registry
+        run: npm run validate
 
       - name: Publish to plugins-dist branch
         working-directory: plugins/canvas/registry/dist

@@ -22,7 +22,7 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
     const [loadingOfficial, setLoadingOfficial] = useState(false);
     const [officialError, setOfficialError] = useState<string | null>(null);
 
-    const recordById = useMemo(() => new Map(plugins.map((item) => [item.id, item])), [plugins]);
+    const officialRecordById = useMemo(() => new Map(plugins.filter((item) => item.official).map((item) => [item.id, item])), [plugins]);
     const localPlugins = useMemo(() => plugins.filter((item) => item.local), [plugins]);
     const thirdPartyPlugins = useMemo(() => plugins.filter((item) => !item.local && !item.official), [plugins]);
 
@@ -58,10 +58,18 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
         }
     };
 
+    const officialExpectation = (entry: OfficialPluginEntry) => ({
+        id: entry.id,
+        version: entry.version,
+        sha256: entry.sha256,
+        size: entry.size,
+        minAppVersion: entry.minAppVersion,
+    });
+
     const handleInstallOfficial = async (entry: OfficialPluginEntry) => {
         setBusyId(entry.id);
         try {
-            const plugin = await installPluginFromUrl(entry.url, { official: true });
+            const plugin = await installPluginFromUrl(entry.url, { official: true, bustCache: true, expected: officialExpectation(entry) });
             message.success(t("canvas.plugins.installed", { name: plugin.name }));
         } catch (error) {
             message.error(t("canvas.plugins.installFailed", { error: error instanceof Error ? error.message : String(error) }));
@@ -84,7 +92,7 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
 
     // Installed plugin actions: enable toggle plus update/uninstall for non-local plugins.
     // Highlight the update action when a newer remote version is available.
-    const installedControls = (record: InstalledPlugin, upgradable = false) => (
+    const installedControls = (record: InstalledPlugin, upgradable = false, officialEntry?: OfficialPluginEntry) => (
         <>
             <Switch size="small" checked={record.enabled} loading={busyId === record.id} onChange={(checked) => runOnPlugin(record, () => setPluginEnabled(record, checked), t(checked ? "canvas.plugins.enabled" : "canvas.plugins.disabled"))} />
             {!record.local && (
@@ -95,7 +103,7 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
                         icon={<RefreshCw className="size-4" />}
                         loading={busyId === record.id}
                         title={t(upgradable ? "canvas.plugins.upgradeAvailable" : "canvas.plugins.updateFromSource")}
-                        onClick={() => runOnPlugin(record, async () => void (await updatePlugin(record)), t("canvas.plugins.updated"))}
+                        onClick={() => runOnPlugin(record, async () => void (await updatePlugin(record, officialEntry ? officialExpectation(officialEntry) : undefined)), t("canvas.plugins.updated"))}
                     />
                     <Popconfirm title={t("canvas.plugins.uninstallTitle")} okText={t("canvas.plugins.uninstall")} cancelText={t("canvas.editors.cancel")} onConfirm={() => uninstallPlugin(record.id)}>
                         <Button type="text" size="small" danger icon={<Trash2 className="size-4" />} title={t("canvas.plugins.uninstall")} />
@@ -168,7 +176,7 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
             ) : (
                 <div className="thin-scrollbar max-h-[46vh] space-y-2 overflow-auto">
                     {official.map((entry) => {
-                        const record = recordById.get(entry.id);
+                        const record = officialRecordById.get(entry.id);
                         // Show the update dot and highlight the action when the remote version is newer.
                         const upgradable = Boolean(record && hasUpgrade(record.version, entry.version));
                         const icon = entry.icon || <Puzzle className="size-4" />;
@@ -180,7 +188,7 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
                             upgradable && record ? `${record.version} → ${entry.version}` : entry.version,
                             entry.description,
                             record ? (
-                                installedControls(record, upgradable)
+                                installedControls(record, upgradable, entry)
                             ) : (
                                 <Button type="primary" size="small" icon={<Download className="size-4" />} loading={busyId === entry.id} onClick={() => handleInstallOfficial(entry)}>
                                     {t("canvas.plugins.install")}

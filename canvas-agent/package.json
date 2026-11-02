@@ -1,6 +1,7 @@
 {
-  "name": "@basketikun/canvas-agent",
-  "version": "0.6.0",
+  "name": "@smithhss/canvas-agent",
+  "version": "0.7.0",
+  "description": "Local agent bridge connecting Infinite Canvas to Codex and Claude Code.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,10 +14,26 @@
     "agent-instructions.md",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Smithhss/infinite-canvas.git",
+    "directory": "canvas-agent"
+  },
+  "homepage": "https://github.com/Smithhss/infinite-canvas/tree/dev/canvas-agent",
+  "bugs": {
+    "url": "https://github.com/Smithhss/infinite-canvas/issues"
+  },
+  "keywords": [
+    "infinite-canvas",
+    "codex",
+    "claude-code",
+    "mcp",
+    "canvas"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "debug": "tsx src/index.ts --debug",
-    "test": "tsx --test src/config.test.ts src/canvas/operations.test.ts src/canvas/session.test.ts src/agent/codex-client.test.ts src/agent/codex-history.test.ts src/agent/message-metadata.test.ts src/skills/store.test.ts src/utils/agent-runtime.test.ts",
+    "test": "tsx --test src/config.test.ts src/package-contract.test.ts src/canvas/operations.test.ts src/canvas/session.test.ts src/agent/codex-client.test.ts src/agent/codex-history.test.ts src/agent/message-metadata.test.ts src/skills/store.test.ts src/utils/agent-runtime.test.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "prepack": "npm run build"

@@ -1,6 +1,6 @@
 {
-  "name": "@basketikun/canvas-proxy",
-  "version": "0.1.0",
+  "name": "@smithhss/canvas-proxy",
+  "version": "0.2.0",
   "description": "Minimal local forwarding proxy that lets the Infinite Canvas web app call AI provider APIs without CORS restrictions.",
   "license": "MIT",
   "type": "module",
@@ -12,8 +12,24 @@
     "index.js",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Smithhss/infinite-canvas.git",
+    "directory": "canvas-proxy"
+  },
+  "homepage": "https://github.com/Smithhss/infinite-canvas/tree/dev/canvas-proxy",
+  "bugs": {
+    "url": "https://github.com/Smithhss/infinite-canvas/issues"
+  },
+  "keywords": [
+    "infinite-canvas",
+    "proxy",
+    "cors",
+    "ai"
+  ],
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test index.test.js"
   },
   "engines": {
     "node": ">=18"

@@ -1,6 +1,6 @@
 # Infinite Canvas 项目自有化迁移
 
-**状态：** 阶段 A 已提交并推送到 PR [#20](https://github.com/Smithhss/infinite-canvas/pull/20)，Quality CI 已通过；尚未合并、发布或部署生产。
+**状态：** 阶段 A 已通过 PR [#20](https://github.com/Smithhss/infinite-canvas/pull/20) 普通合并到 `dev`，合并提交为 `ef864eb`，合并后 Quality CI 通过；尚未发布 npm、镜像部署生产。
 
 **目标：** 在保留 MIT 原始版权和必要兼容边界的前提下，让用户入口、发布链路、扩展生态、视觉语言和文档逐步归属当前项目，不再依赖上游品牌与公共发布地址。
 
@@ -14,7 +14,7 @@
 
 ## 阶段 A：入口和构建归属
 
-**状态：** 已提交 `1d6ec9f` 并推送 PR [#20](https://github.com/Smithhss/infinite-canvas/pull/20)，Quality CI 已通过。
+**状态：** 已提交 `1d6ec9f`，随 PR [#20](https://github.com/Smithhss/infinite-canvas/pull/20) 合并到 `dev`，合并后 Quality CI 通过。
 
 - README、文档首页、侧栏、插件元数据、版本检查和页内文档入口指向当前仓库。
 - 删除上游赞助、QQ、社区、Star History、远程宣传图和在线体验入口。

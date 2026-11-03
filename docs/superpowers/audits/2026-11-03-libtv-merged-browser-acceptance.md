@@ -11,7 +11,8 @@
 | 提交 | `1d6ec9f feat(canvas): 对齐 LibTV 工作流与故事板体验` |
 | Pull Request | [#20](https://github.com/Smithhss/infinite-canvas/pull/20)，目标 `dev` |
 | Quality CI | 通过，run `41585499344` |
-| 合并 | 尚未合并 |
+| 合并 | 已普通合并 `dev`，合并提交 `ef864eb` |
+| 合并后 Quality CI | 通过，run `41599738285` |
 | 生产部署 | 未执行 |
 
 ## 验收范围
@@ -107,4 +108,4 @@ PR Quality CI 还覆盖了 standalone Web、FYT-managed Web、Docs 类型检查�
 - Phase 5C 公开只读分享仍需要服务端项目存储、权限、分享凭证和审计契约，当前分支不提供伪分享。
 - 112 个素材的桌面、DPR 3 和触摸事件模拟已通过，详见 [112 素材压力验收](2026-11-03-libtv-112-stress-acceptance.md)；真实手机触控惯性、软键盘、系统字体和长时间滚动仍需实体设备验收。
 - 浏览器存储命名空间迁移仍暂缓，避免未备份时丢失现有画布和资产。
-- 已提交、推送并创建 PR；尚未合并 `dev`、发布镜像或部署生产。
+- 已合并 `dev` 并通过合并后 Quality CI；尚未发布 npm、镜像或部署生产。

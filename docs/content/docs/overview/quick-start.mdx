@@ -35,4 +35,22 @@ docker run --rm -p 3000:3000 infinite-canvas
 - Open `/prompts` to fetch prompt repositories directly from the browser and cache them in IndexedDB.
 - Configure WebDAV if you want to synchronize canvases, assets, and generation history across devices.
 
+## Operate the canvas with Codex
+
+Install the [Codex App plugin](/docs/overview/codex-app-plugin), start a new Codex conversation, and send:
+
+```text
+Open a new Infinite Canvas board and connect it to Codex
+```
+
+When the Agent panel says Connected, try:
+
+```text
+Read the current canvas and summarize its node structure
+Turn the current selection into a set of ready-to-use prompts
+Organize the selected nodes into an image generation flow
+```
+
+Examples only fill the input box and do not send automatically. For operations that may cost money, create the flow and confirm its settings before starting generation.
+
 Canvas projects and My Assets are primarily stored in the browser. The API key is also stored locally and used by the browser to call OpenAI-compatible endpoints directly.

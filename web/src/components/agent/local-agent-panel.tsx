@@ -6,6 +6,7 @@ import { Bot, History, MessageSquare, PanelRightClose, PlugZap, Plus, Sparkles, 
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
+import { rememberAgentPluginDetected, resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
 import { readAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
@@ -134,13 +135,14 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     // canvasContext is intentionally excluded because project updates it every frame during dragging and resizing.
     // The panel uses it only for ref synchronization and debounced postState calls, never during rendering.
     // Subscribing here would rerender the panel every frame and amplify the #185 crash, so it is observed imperatively below.
-    const { width, url, token, connected, enabled, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, models, model, reasoningEffort, activity, conversation, connectError, pendingTool, pendingApprovals } = useAgentStore(
+    const { width, url, token, connected, enabled, pluginDetected, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, models, model, reasoningEffort, activity, conversation, connectError, pendingTool, pendingApprovals } = useAgentStore(
         useShallow((state) => ({
             width: state.width,
             url: state.url,
             token: state.token,
             connected: state.connected,
             enabled: state.enabled,
+            pluginDetected: state.pluginDetected,
             prompt: state.prompt,
             attachments: state.attachments,
             sending: state.sending,
@@ -383,10 +385,13 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             const messages = activeTurnId
                 ? bindPendingTurnMessages(current.messages.filter((item) => !isConnectionErrorMessage(item)), nextThreadId, activeTurnId)
                 : current.messages.filter((item) => !isConnectionErrorMessage(item));
+            const pluginInitiated = useAgentStore.getState().fragmentBootstrap;
             errorLoggedRef.current = false;
             connectedRef.current = true;
+            if (pluginInitiated) rememberAgentPluginDetected();
             setAgentState({
                 connected: true,
+                pluginDetected: pluginInitiated ? true : useAgentStore.getState().pluginDetected,
                 activity: pendingApprovals.length ? rt("awaitingApproval") : busy ? rt("codexRunning") : rt("connected"),
                 waiting: busy,
                 sending: false,
@@ -904,10 +909,10 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         });
     };
 
-    const toggleAgentConnection = async ({ silent = false }: { silent?: boolean } = {}) => {
-        if (enabled) {
+    const toggleAgentConnection = async ({ silent = false, reconnect = false }: { silent?: boolean; reconnect?: boolean } = {}) => {
+        if (useAgentStore.getState().enabled) {
             clearAgentSession({ enabled: false, connected: false, activity: rt("offline"), connectError: "" });
-            return;
+            if (!reconnect) return;
         }
         const urlToken = searchParams.get("agentToken") || "";
         const urlEndpoint = searchParams.get("agentUrl") || "";
@@ -963,10 +968,14 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             return;
         }
         errorLoggedRef.current = false;
+        rememberAgentPluginDetected();
         setAgentState({ url: bootstrap.url.replace(/\/$/, ""), token: bootstrap.token, enabled: true, connected: false, silentConnect: true, fragmentBootstrap: true, confirmTools: false, activity: rt("connecting"), connectError: "", activeTab: "setup" });
     }, [hash, navigate, setAgentState]);
 
     useEffect(() => {
+        if (!urlAgentAutoConnect) return;
+        rememberAgentPluginDetected();
+        if (!useAgentStore.getState().pluginDetected) setAgentState({ pluginDetected: true });
         if (urlAgentAutoConnect && confirmTools) setAgentState({ confirmTools: false });
     }, [confirmTools, setAgentState, urlAgentAutoConnect]);
 
@@ -1313,8 +1322,24 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         setAgentState({ messages: currentMessages.map((message, itemIndex) => itemIndex === index ? { ...message, text: isDelta ? `${message.text}${text}` : mergeStreamText(message.text, text) } : message) });
     };
 
-    const connectionStatus = t(connectError ? "agent.status.failed" : connected ? "agent.status.connected" : enabled ? "agent.status.connecting" : "agent.status.disconnected");
-    const connectionStatusColor = connectError ? "#dc2626" : connected ? "#16a34a" : enabled ? "#d97706" : theme.node.muted;
+    const setupPhase = resolveAgentSetupPhase({
+        connected,
+        enabled,
+        connectError,
+        conversationStatus: conversation.status,
+        mcpStatuses: conversation.mcpStatuses,
+        pluginDetected,
+        tokenPresent: Boolean(token.trim()),
+    });
+    const connectionStatus = t({
+        "not-detected": "agent.connect.statusNotDetected",
+        installed: "agent.connect.statusInstalled",
+        connecting: "agent.connect.statusConnecting",
+        "mcp-starting": "agent.connect.statusMcpStarting",
+        connected: "agent.connect.statusConnected",
+        failed: "agent.connect.statusFailed",
+    }[setupPhase]);
+    const connectionStatusColor = setupPhase === "failed" ? "#dc2626" : setupPhase === "connected" ? "#16a34a" : setupPhase === "connecting" || setupPhase === "mcp-starting" ? "#d97706" : theme.node.muted;
     const content = (
         <>
             <AgentPanelTabs
@@ -1364,11 +1389,16 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                     token={token}
                     enabled={enabled}
                     connected={connected}
+                    pluginDetected={pluginDetected}
+                    conversation={conversation}
                     activity={activity}
                     connectError={connectError}
                     onUrlChange={(url) => setAgentState({ url, connectError: "" })}
                     onTokenChange={(token) => setAgentState({ token, connectError: "" })}
                     onToggleEnabled={toggleAgentConnection}
+                    onReconnect={() => void toggleAgentConnection({ reconnect: true })}
+                    onOpenChat={() => setAgentState({ activeTab: "chat" })}
+                    onUsePrompt={(prompt) => setAgentState({ activeTab: "chat", prompt })}
                 />
             ) : activeTab === "skills" ? (
                 <AgentSkillsView clientId={clientIdRef.current} />

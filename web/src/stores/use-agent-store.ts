@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import i18n from "@/i18n";
 
+import { readAgentPluginDetected } from "@/lib/agent/agent-setup";
 import type { CanvasAgentOp, CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 
@@ -53,6 +54,7 @@ type AgentStore = {
     token: string;
     connected: boolean;
     enabled: boolean;
+    pluginDetected: boolean;
     silentConnect: boolean;
     fragmentBootstrap: boolean;
     prompt: string;
@@ -105,6 +107,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     token: typeof window === "undefined" ? "" : localStorage.getItem("canvas-agent-token") || "",
     connected: false,
     enabled: false,
+    pluginDetected: readAgentPluginDetected(),
     silentConnect: false,
     fragmentBootstrap: false,
     prompt: "",

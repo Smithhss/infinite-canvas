@@ -1,140 +1,159 @@
 ---
 title: Codex App 插件
-description: 在 Codex App 中安装并使用 Infinite Canvas 插件
+description: 在 Codex App 中安装、连接并使用 Infinite Canvas
 ---
 
 # Codex App 插件
 
-Infinite Canvas 提供了一个 Codex App 插件，用来把 Codex 和本地 Canvas Agent 连接起来。安装后，你可以直接在 Codex 中说“打开 Infinite Canvas”，让 Codex 打开画布、读取节点、创建节点并触发生成流程。
+安装插件后，可以直接在 Codex 中打开 Infinite Canvas，并让 Codex 读取节点、创建内容、连接生成流程或触发生成。插件源码位于仓库的 `plugins/infinite-canvas/`。
 
-插件源码位于仓库的 `plugins/infinite-canvas/` 目录。
+## 第一次使用
 
-## 安装方式
+### 1. 安装插件
 
-### 让 Codex 自动安装
-
-把下面这段发给 Codex：
+最省事的方式是把下面这段完整发给 Codex：
 
 ```text
 请从 https://github.com/basketikun/infinite-canvas.git 安装 Infinite Canvas Codex 插件。
-请 clone 仓库到 ~/plugins/infinite-canvas，确认 plugins/infinite-canvas/.codex-plugin/plugin.json 存在，
-把 plugins/infinite-canvas 加入 personal marketplace，先运行 codex plugin marketplace add ~，
-再运行 codex plugin add infinite-canvas@personal。
-安装后请校验插件，并告诉我是否需要开启一个新对话来加载新技能和 MCP 工具。
+clone 到 ~/plugins/infinite-canvas 后，把该仓库加入 Codex marketplace，
+再安装 infinite-canvas@infinite-canvas-local。
+安装完成后请检查插件和 MCP 状态，并提醒我新建对话。
 ```
 
-这种方式适合不想手动改 marketplace 配置的用户。Codex 会完成 clone、写入 marketplace、安装插件和基础校验。
-
-### 手动安装
-
-推荐把仓库 clone 到 Codex personal marketplace 默认会引用的位置：
+也可以自己执行：
 
 ```bash
-mkdir -p ~/plugins
 git clone https://github.com/basketikun/infinite-canvas.git ~/plugins/infinite-canvas
-```
-
-确保 `~/.agents/plugins/marketplace.json` 中有 Infinite Canvas 条目。这里的 `path` 要指向仓库里的插件子目录：
-
-```json
-{
-  "name": "personal",
-  "interface": {
-    "displayName": "Personal"
-  },
-  "plugins": [
-    {
-      "name": "infinite-canvas",
-      "source": {
-        "source": "local",
-        "path": "./plugins/infinite-canvas/plugins/infinite-canvas"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Productivity"
-    }
-  ]
-}
-```
-
-然后注册 personal marketplace 并安装插件：
-
-```bash
-codex plugin marketplace add ~
-codex plugin add infinite-canvas@personal
-```
-
-安装完成后，建议新建一个 Codex 对话，让新的 skill 和 MCP 工具完整加载。
-
-### 本仓库开发调试安装
-
-如果你正在 Infinite Canvas 仓库中开发插件，可以直接使用仓库自带的 marketplace：
-
-```bash
-cd /path/to/infinite-canvas
-codex plugin marketplace add "$(pwd)"
+codex plugin marketplace add ~/plugins/infinite-canvas
 codex plugin add infinite-canvas@infinite-canvas-local
 ```
 
-仓库内的 `.agents/plugins/marketplace.json` 已经指向 `./plugins/infinite-canvas`，适合开发者本地调试。
+安装完成后必须新建一个 Codex 对话。旧对话不会自动补载新安装的 Skill 和 MCP 工具。
 
-## 使用插件
+### 2. 让 Codex 打开并连接画布
 
-新建 Codex 对话后，可以直接说：
+在新对话中发送：
 
 ```text
-打开 Infinite Canvas 新建画布 并连接好Codex
+打开 Infinite Canvas 新建画布，并连接好 Codex
 ```
 
-插件会启动本地 Canvas Agent，读取连接地址和 token，然后在右侧打开 `https://canvas.best/` 并自动新建、连接画布。只有明确要求使用本地项目时，插件才会启动本地前端。
+正常情况下，Codex 会执行下面几件事：
 
-画布打开后可以继续让 Codex 操作画布：
+1. 启动本地 Canvas Agent。
+2. 打开 `https://canvas.best/` 并新建画布。
+3. 把画布的本地 Agent 连接信息带入网页。
+4. 在右侧打开 Infinite Canvas Agent 面板。
+
+如果你明确要求使用本地项目，Codex 才会启动本地前端，而不是在线版。
+
+### 3. 确认连接成功
+
+画布右侧的 Agent 面板显示“已连接”就可以开始使用。连接成功后，通常不需要手动填写 `Local URL` 或 `Connect token`。
+
+先发一条只读指令确认工具链：
 
 ```text
 读取当前画布并总结节点结构
-根据选中节点创建一组生图提示词
-把这些节点整理成一个生成流程
 ```
 
-## 更新插件
+如果当前画布为空，返回节点数为 0 是正常结果；先创建几个节点，再执行一次即可。
 
-普通业务代码变更通常不需要更新插件。只有改了下面这些内容时，才建议重新安装或刷新插件：
+## 常用指令
 
-- `plugins/infinite-canvas/.codex-plugin/plugin.json`
-- `plugins/infinite-canvas/.mcp.json`
-- `plugins/infinite-canvas/skills/` 下的技能说明
-- 插件暴露的 MCP、app 或入口脚本
+| 目标 | 可以直接发送的指令 |
+| --- | --- |
+| 查看画布 | `读取当前画布并总结节点结构` |
+| 查看选区 | `读取当前选中的节点，说明它们之间的关系` |
+| 创建内容 | `在当前视口空白处创建 3 个文本节点，分别写三个咖啡海报文案方向` |
+| 批量整理 | `把当前选中的节点按图片、提示词和配置分类，并移动到三个纵向区域` |
+| 创建流程 | `根据选中的提示词和图片创建生图流程，先不要触发生成` |
+| 修改节点 | `把选中的文本节点标题改成“产品卖点”，正文保持不动` |
+| 连接节点 | `把选中的文本节点连接到右侧的生图配置节点` |
 
-重新安装后建议开启新对话，避免旧对话继续使用缓存中的技能和 MCP 工具。
+需要执行可能产生费用的生成时，建议先明确说“只创建流程，不要生成”。确认节点和参数后，再单独要求生成。
 
-## 手动排查
+## 连接面板怎么用
 
-插件默认通过下面的 MCP 命令启动 Canvas Agent：
+在画布右侧点击 Agent 面板顶部的连接状态，可以打开连接面板。
 
-```bash
-npx -y @smithhsiiiii/canvas-agent@latest mcp
-```
+### 自动状态
 
-如果需要手动排查，先启动画布：
+面板会自动区分未检测到插件、已安装、连接中、MCP 启动中、已连接和连接失败，并只显示当前需要的操作：
 
-```bash
-cd web
-bun install
-bun run dev
-```
+- 未检测到插件：显示安装指令。
+- 已安装但未连接：显示重新打开画布的指令。
+- MCP 启动中：等待工具初始化。
+- 已连接：直接进入对话。
+- 连接失败：显示插件、本地 Agent、MCP 和 Token 四项检查。
 
-然后启动本地 Agent：
+示例任务会根据空画布、已有节点、连线和选区变化。点击只会填入输入框，不会发送或触发生成费用。
+
+### 连接详情
+
+插件连接正常时，这一区域不需要操作。只有自动发现失败时，才需要检查：
+
+- `Local URL`：本地 Agent 地址，默认通常是 `http://127.0.0.1:17371`。
+- `Connect token`：本地 Agent 自动生成的连接令牌。
+- 连接按钮：用于重新连接或断开当前 Agent。
+
+### 高级设置
+
+展开“高级设置”后可以手动启动 Agent，或移除插件与 MCP。手动排查网址连接时运行：
 
 ```bash
 npx -y @smithhsiiiii/canvas-agent@latest
 ```
 
-从 Agent 输出或 `http://127.0.0.1:17371/config` 读取本地地址和 token 后，打开：
+运行后保持终端窗口开启，再从网页的“连接详情”重新连接。这条命令只提供网页连接服务，不会安装 Codex MCP。
 
-```text
-<画布网页地址>/canvas?mode=new#agentUrl=<Local URL>&agentToken=<Connect token>
+### 插件与 MCP 管理
+
+只有卸载或检查残留配置时才需要这些命令：
+
+```bash
+codex plugin remove infinite-canvas
+codex mcp remove infinite-canvas
 ```
 
-`mode=new` 会让网页自动创建具体画布并连接本地 Agent，不需要手动点击“新建画布”。
+## 常见问题
+
+| 现象 | 原因与处理 |
+| --- | --- |
+| 安装后 Codex 仍没有插件工具 | 新建一个 Codex 对话，让 Skill 和 MCP 重新加载 |
+| 网页显示“未连接” | 检查本地 Canvas Agent 是否运行，或在连接详情中重新连接 |
+| 插件面板显示 MCP ready，但网页仍未连接 | MCP 工具和网页连接服务是两个进程；让 Codex 重新打开画布并连接 |
+| “读取当前画布”返回 0 个节点 | 当前画布为空，不是连接失败 |
+| `npx` 命令失败 | 检查 Node.js 是否可用，然后重新执行命令查看终端错误 |
+| 修改插件 Skill 后没有生效 | 刷新或重装插件，然后新建对话，旧对话会继续使用缓存 |
+
+## 更新插件
+
+普通网页代码更新不需要重装插件。修改下面内容后，才需要刷新插件并新建对话：
+
+- `plugins/infinite-canvas/.codex-plugin/plugin.json`
+- `plugins/infinite-canvas/.mcp.json`
+- `plugins/infinite-canvas/skills/`
+- 插件暴露的 MCP 工具或入口脚本
+
+## 本仓库开发调试
+
+在仓库根目录执行：
+
+```bash
+codex plugin marketplace add "$(pwd)"
+codex plugin add infinite-canvas@infinite-canvas-local
+```
+
+仓库内的 `.agents/plugins/marketplace.json` 已指向 `./plugins/infinite-canvas`。
+
+## 连接原理
+
+排错时需要区分两个进程：
+
+| 进程 | 启动方式 | 作用 |
+| --- | --- | --- |
+| 插件 MCP | `npx -y @smithhsiiiii/canvas-agent@latest mcp` | 把画布工具提供给 Codex |
+| 网页连接服务 | `npx -y @smithhsiiiii/canvas-agent@latest` | 接收网页画布状态并提供 Local URL / Connect token |
+
+正常使用时不需要手动启动或复制这两个进程的信息，插件 Skill 会处理。只有在 MCP ready 但网页仍显示未连接时，才需要检查网页连接服务。

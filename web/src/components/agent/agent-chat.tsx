@@ -2,6 +2,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useSpring, useTransform } from "motion/react";
 import { useTranslation } from "react-i18next";
 
+import { useAgentCanvasSummary } from "@/hooks/use-agent-canvas-summary";
+import { getAgentSuggestionKeys } from "@/lib/agent/agent-suggestions";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { summarizeCanvasAgentOps } from "@/lib/canvas/canvas-agent-ops";
 import { useAgentStore, type AgentChatItem, type AgentPendingApproval, type AgentPendingToolCall, type AgentTokenUsage } from "@/stores/use-agent-store";
@@ -33,6 +35,8 @@ export function AgentChatTimeline({
 }) {
     const { t } = useTranslation();
     const messages = useAgentStore((state) => state.messages);
+    const connected = useAgentStore((state) => state.connected);
+    const setAgentState = useAgentStore((state) => state.setAgentState);
     const bootstrapStatus = useAgentStore((state) => state.bootstrapStatus);
     const mcpStartupStatuses = useAgentStore((state) => state.mcpStartupStatuses);
     const timeline = useMemo(() => groupTimelineMessages(messages), [messages]);
@@ -41,7 +45,8 @@ export function AgentChatTimeline({
     const followMessagesRef = useRef(true);
     const [showScrollToBottom, setShowScrollToBottom] = useState(false);
     const streaming = messages.some((message) => message.streamId);
-    const showBootstrap = Boolean(bootstrapStatus && !messages.some((message) => message.role === "user" || message.role === "assistant"));
+    const showBootstrap = Boolean(bootstrapStatus && bootstrapStatus.status !== "ready" && !messages.some((message) => message.role === "user" || message.role === "assistant"));
+    const showEmptyState = connected && !timeline.length && !pendingTool && !pendingApprovals.length && !sending && !waiting && !showBootstrap;
     const working = showBootstrap ? bootstrapStatus! : workingActivity(messages.at(-1));
     const updateScrollState = useCallback(() => {
         const list = listRef.current;
@@ -78,10 +83,11 @@ export function AgentChatTimeline({
     return (
         <div className="relative min-h-0 flex-1">
             <div ref={listRef} className="thin-scrollbar h-full select-text overflow-y-auto" onScroll={updateScrollState}>
-                <div ref={contentRef} className="space-y-4 px-4 pt-4">
+                <div ref={contentRef} className="flex min-h-full flex-col gap-4 px-4 pt-4">
                     {timeline.map((entry) => entry.type === "commands"
                         ? <AgentCommandGroupRow key={entry.id} items={entry.items} theme={theme} />
                         : <AgentChatMessageRow key={entry.item.id} item={entry.item} theme={theme} />)}
+                    {showEmptyState ? <AgentChatEmptyState theme={theme} onUsePrompt={(prompt) => setAgentState({ prompt })} /> : null}
                     {pendingTool ? (
                         <AgentPendingToolCard
                             summary={summarizeCanvasAgentOps(pendingTool.input?.ops || []) || toolName(pendingTool.name)}
@@ -109,6 +115,28 @@ export function AgentTaskProgress({ theme, busy }: { theme: (typeof canvasThemes
     return (
         <div className="shrink-0 px-4 pt-2">
             <AgentToolCard key={plan.id} title={plan.title || t("agent.events.progress")} text={plan.text} detail={plan.detail} theme={theme} />
+        </div>
+    );
+}
+
+function AgentChatEmptyState({ theme, onUsePrompt }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onUsePrompt: (prompt: string) => void }) {
+    const { t } = useTranslation();
+    const canvasSummary = useAgentCanvasSummary();
+    const examples = getAgentSuggestionKeys(canvasSummary).map((key) => t(key));
+    return (
+        <div className="flex flex-1 flex-col justify-center py-8">
+            <div className="mx-auto w-full max-w-md">
+                <div className="text-lg font-semibold leading-7">{t("agent.connect.emptyTitle")}</div>
+                <div className="mt-1.5 text-xs leading-5" style={{ color: theme.node.muted }}>{t("agent.connect.emptyDescription")}</div>
+                <div className="mt-4 grid gap-2">
+                    {examples.map((prompt) => (
+                        <button key={prompt} type="button" className="flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left text-sm leading-6 transition hover:bg-black/5 dark:hover:bg-white/10" style={{ borderColor: theme.node.stroke, color: theme.node.text }} onClick={() => onUsePrompt(prompt)}>
+                            <span>{prompt}</span>
+                            <span className="shrink-0 text-[11px]" style={{ color: theme.node.muted }}>{t("agent.connect.fillPrompt")}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }

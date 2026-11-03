@@ -5,27 +5,19 @@ import { localizePath, type Locale } from '@/lib/i18n';
 import type { Metadata } from 'next';
 
 const githubUrl = `https://github.com/${gitConfig.user}/${gitConfig.repo}`;
-const demoUrl = 'https://canvas.best/';
-const starHistoryUrl = `https://www.star-history.com/?repos=${gitConfig.user}%2F${gitConfig.repo}&type=date`;
-const starHistoryChart = `https://api.star-history.com/chart?repos=${gitConfig.user}/${gitConfig.repo}&type=date&transparent=true`;
-const darkStarHistoryChart = `${starHistoryChart}&theme=dark`;
 
 const previewImages = [
   {
-    src: 'https://i.ibb.co/TDFvGWDT/image.png',
+    src: '/preview-workflow.png',
     title: { en: 'Canvas composition', 'zh-CN': '画布编排' },
   },
   {
-    src: 'https://i.ibb.co/zVwJq3YS/image.png',
-    title: { en: 'Image generation', 'zh-CN': '图片生成' },
+    src: '/preview-storyboard.png',
+    title: { en: 'Storyboard', 'zh-CN': '故事板' },
   },
   {
-    src: 'https://i.ibb.co/PvY3qhhK/image.png',
-    title: { en: 'Reference editing', 'zh-CN': '参考图编辑' },
-  },
-  {
-    src: 'https://i.ibb.co/7D04LwN/image.png',
-    title: { en: 'Node workflow', 'zh-CN': '节点工作流' },
+    src: '/preview-mobile.png',
+    title: { en: 'Mobile layout', 'zh-CN': '移动端布局' },
   },
 ];
 
@@ -35,7 +27,6 @@ const messages = {
     center: 'Documentation',
     description: 'An infinite canvas for image creation that brings canvas composition, AI generation, reference editing, prompt libraries, and reusable assets into one workflow.',
     quickStart: 'Quick Start',
-    demo: 'Live Demo',
     gallery: 'Gallery',
     features: 'Explore Features',
     previewAlt: 'Infinite Canvas preview',
@@ -48,7 +39,6 @@ const messages = {
     center: '文档中心',
     description: '面向图片创作的无限画布，把画布编排、AI 生成、参考图编辑、提示词库和素材沉淀放在同一个工作流里。',
     quickStart: '快速开始',
-    demo: '在线体验',
     gallery: '效果展示',
     features: '功能介绍',
     previewAlt: '无限画布效果图',
@@ -96,21 +86,12 @@ export default async function HomePage({ params }: PageProps<'/[lang]'>) {
               <img src="/github.svg" alt="" className="size-4" />
               GitHub
             </a>
-            <a
-              href={demoUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-zinc-300 px-5 py-3 text-sm font-medium text-zinc-900 transition hover:border-zinc-900 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-900"
-            >
-              {text.demo}
-              <ArrowUpRight className="size-4" />
-            </a>
           </div>
         </div>
 
         <div className="overflow-hidden rounded-2xl lg:w-[108%] lg:max-w-none">
           <img
-            src={previewImages[3].src}
+            src={previewImages[0].src}
             alt={text.previewAlt}
             className="aspect-[16/10] w-full rounded-xl object-cover"
           />
@@ -171,37 +152,6 @@ export default async function HomePage({ params }: PageProps<'/[lang]'>) {
         </div>
       </section>
 
-      <section className="mx-auto mt-16 w-full max-w-5xl text-center">
-        <h2 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50 md:text-3xl">
-          Star History
-        </h2>
-        <div className="mt-7 flex justify-center">
-          <a
-            href={starHistoryUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="block w-full max-w-4xl"
-          >
-            <picture>
-              <source
-                media="(prefers-color-scheme: dark)"
-                srcSet={darkStarHistoryChart}
-              />
-              <source
-                media="(prefers-color-scheme: light)"
-                srcSet={starHistoryChart}
-              />
-              <img
-                src={starHistoryChart}
-                alt="Star History Chart"
-                loading="lazy"
-                decoding="async"
-                className="mx-auto w-full"
-              />
-            </picture>
-          </a>
-        </div>
-      </section>
     </main>
   );
 }

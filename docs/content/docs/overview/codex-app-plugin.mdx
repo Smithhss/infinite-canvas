@@ -14,16 +14,18 @@ The plugin lets Codex open Infinite Canvas, inspect nodes, create content, conne
 The easiest option is to send this request to Codex:
 
 ```text
-Install the Infinite Canvas Codex plugin from https://github.com/basketikun/infinite-canvas.git.
-Clone it to ~/plugins/infinite-canvas, add that repository to Codex marketplace,
-then install infinite-canvas@infinite-canvas-local.
-When finished, check the plugin and MCP status and tell me to start a new conversation.
+Install the Infinite Canvas Codex plugin from https://github.com/Smithhss/infinite-canvas.git.
+Clone it to ~/plugins/infinite-canvas, verify plugins/infinite-canvas/.codex-plugin/plugin.json,
+add the repository to Codex marketplace with `codex plugin marketplace add ~/plugins/infinite-canvas`,
+then install `infinite-canvas@infinite-canvas-local`. Validate the installation and tell me whether a new
+conversation is required to load the Skill and MCP tools.
 ```
 
 Or run the commands yourself:
 
 ```bash
-git clone https://github.com/basketikun/infinite-canvas.git ~/plugins/infinite-canvas
+mkdir -p ~/plugins
+git clone https://github.com/Smithhss/infinite-canvas.git ~/plugins/infinite-canvas
 codex plugin marketplace add ~/plugins/infinite-canvas
 codex plugin add infinite-canvas@infinite-canvas-local
 ```
@@ -41,11 +43,9 @@ Open a new Infinite Canvas board and connect it to Codex
 Codex normally:
 
 1. Starts the local Canvas Agent.
-2. Opens `https://canvas.best/` and creates a canvas.
+2. Starts the local Vite frontend and creates a canvas.
 3. Passes the local Agent connection details to the page.
 4. Opens the Infinite Canvas Agent panel on the right.
-
-Codex starts a local frontend instead of the hosted site only when you explicitly ask for it.
 
 ### 3. Confirm the connection
 

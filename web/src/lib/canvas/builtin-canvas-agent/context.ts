@@ -1,8 +1,7 @@
 import type { CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
-import type { BuiltinCanvasAction, BuiltinCanvasReadAction } from "./actions";
-import { isBuiltinCanvasReadAction } from "./actions";
+import type { BuiltinCanvasReadAction } from "./actions";
 
 export type BuiltinCanvasNodeSummary = {
     id: string;
@@ -62,10 +61,6 @@ export function executeBuiltinCanvasReadAction(action: BuiltinCanvasReadAction, 
         return { nodes: context.nodes.filter((node) => selected.has(node.id)) };
     }
     return { node: context.nodes.find((node) => node.id === action.args.id) || null };
-}
-
-export function isReadOnlyBuiltinCanvasAction(action: BuiltinCanvasAction) {
-    return isBuiltinCanvasReadAction(action);
 }
 
 function summarizeNode(node: CanvasNodeData): BuiltinCanvasNodeSummary {

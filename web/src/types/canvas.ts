@@ -24,6 +24,7 @@ export type CanvasNodeTypeId = CanvasNodeType | (string & {});
 export type CanvasNodeStatus = "idle" | "success" | "loading" | "error";
 export type CanvasGenerationMode = "text" | "image" | "video" | "audio";
 export type CanvasImageGenerationType = "generation" | "edit";
+export type CanvasWorkspaceView = "workflow" | "storyboard";
 
 export type CanvasNodeImage = {
     id: string;
@@ -94,6 +95,7 @@ export type CanvasNodeData = {
     position: Position;
     width: number;
     height: number;
+    locked?: boolean;
     metadata?: CanvasNodeMetadata;
 };
 

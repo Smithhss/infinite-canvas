@@ -84,7 +84,7 @@ codex plugin add infinite-canvas@infinite-canvas-local
 npx -y @smithhsiiiii/canvas-agent@latest mcp
 ```
 
-使用时可以直接在 Codex 里说“打开 Infinite Canvas”，插件会启动本地 Agent，读取 Local URL 和 Connect token，然后在右侧打开 `https://canvas.best/` 并自动新建、连接画布；只有明确要求使用本地项目时才会启动本地前端。
+使用时可以直接在 Codex 里说“打开 Infinite Canvas”，插件会启动本地 Agent 和当前项目的 Vite 前端，读取 Local URL 与 Connect token，然后在 Codex 右侧打开本地画布并自动连接。
 
 Canvas Agent 启动后，给 Codex 添加 MCP：
 

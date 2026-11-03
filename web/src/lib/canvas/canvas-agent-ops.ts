@@ -59,22 +59,27 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
         }
         if (op.type === "update_node") {
             if (!op.id) return;
-            nodes = nodes.map((node) => (node.id === op.id ? { ...node, ...op.patch, metadata: { ...node.metadata, ...op.patch?.metadata, ...op.metadata } } : node));
+            nodes = nodes.map((node) => (node.id === op.id && !node.locked ? { ...node, ...op.patch, metadata: { ...node.metadata, ...op.patch?.metadata, ...op.metadata } } : node));
         }
         if (op.type === "delete_node") {
             const ids = new Set(op.ids || (op.id ? [op.id] : op.nodeType ? nodes.filter((node) => node.type === op.nodeType).map((node) => node.id) : []));
+            nodes.forEach((node) => node.locked && ids.delete(node.id));
             nodes = nodes.filter((node) => !ids.has(node.id));
             connections = connections.filter((conn) => !ids.has(conn.fromNodeId) && !ids.has(conn.toNodeId));
             selectedNodeIds = selectedNodeIds.filter((id) => !ids.has(id));
         }
         if (op.type === "delete_connections") {
             const ids = new Set(op.ids || (op.id ? [op.id] : []));
-            connections = op.all ? [] : connections.filter((conn) => !ids.has(conn.id));
+            const lockedNodeIds = new Set(nodes.filter((node) => node.locked).map((node) => node.id));
+            const removable = (conn: CanvasConnection) => !lockedNodeIds.has(conn.fromNodeId) && !lockedNodeIds.has(conn.toNodeId);
+            connections = op.all ? connections.filter((conn) => !removable(conn)) : connections.filter((conn) => !ids.has(conn.id) || !removable(conn));
         }
         if (op.type === "connect_nodes") {
             if (!op.fromNodeId || !op.toNodeId) return;
             const exists = connections.some((conn) => conn.fromNodeId === op.fromNodeId && conn.toNodeId === op.toNodeId);
-            const hasNodes = nodes.some((node) => node.id === op.fromNodeId) && nodes.some((node) => node.id === op.toNodeId);
+            const from = nodes.find((node) => node.id === op.fromNodeId);
+            const to = nodes.find((node) => node.id === op.toNodeId);
+            const hasNodes = Boolean(from && to && !from.locked && !to.locked);
             if (!exists && hasNodes) connections = [...connections, { id: op.id || nanoid(), fromNodeId: op.fromNodeId, toNodeId: op.toNodeId }];
         }
         if (op.type === "set_viewport" && op.viewport) viewport = op.viewport;
@@ -82,6 +87,32 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
     });
 
     return { ...snapshot, nodes, connections, selectedNodeIds, viewport };
+}
+
+export function protectLockedCanvasSnapshot(next: CanvasAgentSnapshot, current: CanvasAgentSnapshot): CanvasAgentSnapshot {
+    const currentLocked = new Map(current.nodes.filter((node) => node.locked).map((node) => [node.id, node]));
+    if (!currentLocked.size) return next;
+
+    const nodes = next.nodes.map((node) => currentLocked.get(node.id) || node);
+    const nextNodeIds = new Set(nodes.map((node) => node.id));
+    currentLocked.forEach((node, id) => {
+        if (!nextNodeIds.has(id)) nodes.push(node);
+    });
+
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const connectionIds = new Set(next.connections.map((connection) => connection.id));
+    const connections = next.connections.filter((connection) => nodeIds.has(connection.fromNodeId) && nodeIds.has(connection.toNodeId));
+    current.connections.forEach((connection) => {
+        const touchesLocked = currentLocked.has(connection.fromNodeId) || currentLocked.has(connection.toNodeId);
+        if (touchesLocked && !connectionIds.has(connection.id) && nodeIds.has(connection.fromNodeId) && nodeIds.has(connection.toNodeId)) connections.push(connection);
+    });
+
+    return {
+        ...next,
+        nodes,
+        connections,
+        selectedNodeIds: next.selectedNodeIds.filter((id) => nodeIds.has(id)),
+    };
 }
 
 function opLabel(type: string) {

@@ -168,7 +168,7 @@ type AgentEvent =
   | { type: "turn.failed"; error: { message: string } };
 ```
 
-Claude 后续接入时再单独做 Claude Adapter；当前前端默认只展示 Codex。
+Claude 后端 Adapter 已接入并复用同一组结构化事件；当前前端默认只展示 Codex，Agent 类型选择仍待开放。
 
 ## Codex 接入优先级
 
@@ -184,15 +184,14 @@ Claude 后续接入时再单独做 Claude Adapter；当前前端默认只展示 
 
 ## Claude Code 接入优先级
 
-Claude Code 侧当前 MVP 先调用本机 Claude Code CLI 的流式 JSON 输出，由 `canvas-agent` 统一转换事件和工具调用；后续可升级为 Claude Agent SDK。
+Claude Code 侧已接入 `@anthropic-ai/claude-agent-sdk@0.3.317`，同时升级 MCP SDK、Anthropic SDK 与 Zod 4。`POST /agent/claude/turn` 默认使用 SDK，并把现有画布工具注册为进程内 MCP。
 
-SDK Adapter 的实施门槛：
-
-- 当前查询到的 `@anthropic-ai/claude-agent-sdk@0.3.317` 需要 `@anthropic-ai/sdk >= 0.93.0`、`@modelcontextprotocol/sdk ^1.29.0` 和 `zod ^4.0.0`。
-- `canvas-agent` 当前使用 MCP SDK `^1.12.1` 与 Zod `^3.25.0`，因此不是只新增一个包，而是需要同时升级 MCP SDK、跨 Zod 大版本，并新增 Anthropic SDK。
-- 这些依赖会进入本地常驻服务和 npm 发布产物，必须单独确认包名、目标版本、锁文件变化、兼容窗口和回滚策略后才能安装。
-- 实施时保留现有 Claude CLI Adapter 作为回退，新增 SDK Adapter，不一次性删除当前可用路径。
-- 验收必须覆盖会话创建与恢复、流式消息、工具调用与结果、取消、错误、Usage、多标签页线程隔离、凭据脱敏和 npm 干净安装。
+- SDK 会话开启 partial messages，统一输出 `thread.started`、`turn.started`、`item.*`、`usage.updated`、`turn.completed` 和 `agent_done`。
+- `tool_use` 只标记工具开始，收到 `tool_result` 后才标记完成；同一 tool ID 不重复完成。
+- SDK 模式关闭 Claude 内置文件与命令工具，只允许 `mcp__infinite-canvas__*`，并使用 `strictMcpConfig` 与空的 `settingSources` 隔离用户机器上的其他 MCP 和项目设置。
+- `POST /agent/claude/interrupt` 按发起网页和 `runId` 取消，不会停止其他网页的任务。
+- 保留 `"transport": "cli"` 作为旧 print 模式回退，不删除现有 Claude CLI Adapter。
+- 自动测试覆盖流式文本去重、工具开始/完成、错误只发一次、凭据脱敏、Usage、取消和启动异常；真实模型收费请求不在自动测试范围内。
 
 如果希望 Claude Code 也能操作当前画布，需要给 Claude Code 配置同一个 MCP：
 
@@ -235,9 +234,9 @@ Canvas Agent 调用 Claude Code 时默认允许 `mcp__infinite-canvas__*`，避�
 
 ### 第三阶段：接入 Claude Code
 
-1. Canvas Agent 新增 Claude Code CLI Adapter。
-2. 统一 Claude Code 的消息和工具调用事件。
-3. 前端侧边栏增加 Agent 类型选择。
+1. Canvas Agent 默认接入 Claude Agent SDK，并保留 Claude Code CLI Adapter。
+2. 统一 Claude Code 的消息、工具调用、Usage、取消和错误事件。
+3. 前端侧边栏增加 Agent 类型选择，并完成真实 Claude 登录态的端到端验收。
 
 ### 第四阶段：体验完善
 

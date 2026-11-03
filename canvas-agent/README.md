@@ -142,11 +142,24 @@ default_tools_approval_mode = "approve"
 
 侧边栏上传或粘贴的图片会先发到本机 Canvas Agent，再由 Canvas Agent 临时写入本机文件并作为 app-server `localImage` 输入传给 Codex；前端会提示附件体积，单次请求体限制为 30MB。
 
-## Claude Code
+## Claude Agent SDK
 
-Claude Code Adapter 代码暂时保留，但当前网页侧边栏只开放 Codex。后续开放 Claude 入口时，Canvas Agent 会调用本机 `claude -p --output-format stream-json` 并把流式 JSON 事件转发到侧边栏。
+Canvas Agent 已接入官方 `@anthropic-ai/claude-agent-sdk`。`POST /agent/claude/turn` 默认使用 SDK，并把画布工具注册为进程内 MCP，不需要先给 Claude 写入全局 MCP 配置。
 
-如果希望 Claude Code 也能操作画布，需要给 Claude Code 添加同一个 MCP。建议用 user scope，避免 Canvas Agent 从不同目录启动时找不到配置：
+SDK 模式会关闭 Claude 内置文件和命令工具，只允许 `mcp__infinite-canvas__*`，并启用流式文本、工具开始/完成、Usage、会话 ID、错误和取消事件。运行中的任务可通过 `POST /agent/claude/interrupt` 按发起网页中断：
+
+```bash
+curl -X POST http://127.0.0.1:17371/agent/claude/turn \
+  -H 'content-type: application/json' \
+  -H "x-canvas-agent-token: $TOKEN" \
+  -d '{"clientId":"current-page-client-id","prompt":"读取当前画布"}'
+```
+
+SDK 使用本机已有的 Claude Code 登录态，不上传登录凭证。当前网页侧边栏仍默认只开放 Codex；Claude 后端接口先供后续 Agent 类型切换使用。
+
+需要兼容旧的 print 模式时，可在请求里传 `"transport": "cli"`。这条路径仍调用本机 `claude -p --output-format stream-json`，并默认允许 `mcp__infinite-canvas__*`。
+
+如果希望终端里的 Claude Code 也能直接操作画布，仍需单独添加同一个 MCP。建议用 user scope，避免 Canvas Agent 从不同目录启动时找不到配置：
 
 ```bash
 claude mcp add --scope user --transport stdio infinite-canvas -- npx -y @smithhsiiiii/canvas-agent@latest mcp
@@ -158,4 +171,4 @@ claude mcp add --scope user --transport stdio infinite-canvas -- npx -y @smithhs
 claude mcp add --scope user --transport stdio infinite-canvas -- node /path/to/infinite-canvas/canvas-agent/dist/index.js mcp
 ```
 
-Canvas Agent 调用 Claude Code 时会默认带上 `--allowedTools mcp__infinite-canvas__*`，画布写操作仍由网页侧边栏确认。
+真正修改画布仍由网页侧边栏确认。

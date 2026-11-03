@@ -1,6 +1,6 @@
 {
   "name": "@smithhsiiiii/canvas-agent",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Local agent bridge connecting Infinite Canvas to Codex and Claude Code.",
   "license": "MIT",
   "type": "module",
@@ -33,20 +33,22 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "debug": "tsx src/index.ts --debug",
-    "test": "tsx --test src/config.test.ts src/package-contract.test.ts src/canvas/operations.test.ts src/canvas/session.test.ts src/agent/codex-client.test.ts src/agent/codex-history.test.ts src/agent/message-metadata.test.ts src/skills/store.test.ts src/utils/agent-runtime.test.ts",
+    "test": "tsx --test src/config.test.ts src/package-contract.test.ts src/canvas/operations.test.ts src/canvas/session.test.ts src/agent/codex-client.test.ts src/agent/codex-history.test.ts src/agent/claude-events.test.ts src/agent/claude-sdk.test.ts src/agent/message-metadata.test.ts src/skills/store.test.ts src/utils/agent-runtime.test.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.317",
+    "@anthropic-ai/sdk": "^1.4.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@openai/codex": "0.146.0",
     "express": "^5.1.0",
     "gray-matter": "^4.0.3",
     "strip-ansi": "7.2.0",
     "winston": "^3.19.0",
     "yaml": "^2.9.0",
-    "zod": "^3.25.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

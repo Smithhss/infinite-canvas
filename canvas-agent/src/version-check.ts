@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { VERSION } from "./config.js";
 import { logger } from "./utils/logger.js";
 
-const PACKAGE_NAME = "@smithhss/canvas-agent";
+const PACKAGE_NAME = "@smithhsiiiii/canvas-agent";
 const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
 const CODEX_VERSION = String((require("@openai/codex/package.json") as { version: string }).version);

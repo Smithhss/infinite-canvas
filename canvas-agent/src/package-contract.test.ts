@@ -10,7 +10,7 @@ test("package metadata keeps the published CLI contract", async () => {
         files: string[];
     };
 
-    assert.equal(pkg.name, "@smithhss/canvas-agent");
+    assert.equal(pkg.name, "@smithhsiiiii/canvas-agent");
     assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
     assert.equal(pkg.bin["canvas-agent"], "dist/index.js");
     assert.ok(pkg.files.includes("dist"));

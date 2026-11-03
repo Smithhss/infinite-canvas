@@ -34,7 +34,7 @@ test("root reports the package identity", async () => {
         assert.equal(response.status, 200);
         const body = await response.json();
         assert.equal(body.app, "infinite-canvas");
-        assert.equal(body.proxy, "@smithhss/canvas-proxy");
+        assert.equal(body.proxy, "@smithhsiiiii/canvas-proxy");
         assert.match(body.version, /^\d+\.\d+\.\d+$/);
     } finally {
         await close(proxy);
@@ -100,7 +100,7 @@ test("runs through an npm-style executable symlink", async () => {
         await symlink(fileURLToPath(new URL("./index.js", import.meta.url)), executable);
         const result = spawnSync(process.execPath, [executable, "--help"], { encoding: "utf8" });
         assert.equal(result.status, 0, result.stderr);
-        assert.match(result.stdout, /@smithhss\/canvas-proxy v\d+\.\d+\.\d+/);
+        assert.match(result.stdout, /@smithhsiiiii\/canvas-proxy v\d+\.\d+\.\d+/);
     } finally {
         await rm(directory, { recursive: true, force: true });
     }

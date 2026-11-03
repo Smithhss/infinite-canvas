@@ -4,7 +4,7 @@
 
 **环境：** Infinite Canvas 本地预发版本 `http://127.0.0.1:4173/`，Ego Browser，TaskSpace `infinite-canvas-ownership-stress-20261103`（53）。
 
-**结论：** 高密度工作流和故事板在 1440×900、390×844、深色和浅色主题下未出现横向溢出、模块错位或关键交互阻断。品牌与文档入口已切换到当前仓库，Docker 默认从源码构建。实现已通过提交 `1d6ec9f` 推送到 PR [#20](https://github.com/Smithhss/infinite-canvas/pull/20)，Quality CI run `41585499344` 通过；尚未合并或部署。
+**结论：** 高密度工作流和故事板在 1440×900、390×844、深色和浅色主题下未出现横向溢出、模块错位或关键交互阻断。品牌与文档入口已切换到当前仓库，Docker 默认从源码构建。实现已随 PR [#20](https://github.com/Smithhss/infinite-canvas/pull/20) 合并到 `dev`，PR Quality CI run `41585499344` 与合并后 Quality CI run `41599738285` 均通过；尚未发布 npm、镜像部署生产。
 
 ## 测试数据
 
@@ -90,4 +90,4 @@
 - 100 个以上素材时的 DOM 数量、图片解码和选择性能尚未压测；当前没有证据支持立即引入虚拟列表。
 - GitHub Actions 的 Docker 镜像与插件发布工作流只在版本 tag 或手动触发时运行，尚未随 PR 发布远端制品。
 - npm 包、插件 registry 和存储命名空间仍依赖兼容名称。
-- 改动已提交、推送并创建 PR；尚未合并或部署生产。
+- 改动已合并到 `dev` 并通过合并后 Quality CI；尚未发布 npm、镜像部署生产。

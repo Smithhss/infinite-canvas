@@ -4,7 +4,7 @@
 
 **边界:** 不复制 LibTV 的源码、图标、字体、素材和公开项目内容；不把画布迁移到 React Flow；不建立第二份故事板业务数据；本轮不调用真实付费模型、不部署生产。
 
-**交付状态:** 实现已提交 `1d6ec9f` 并推送到 PR [#20](https://github.com/Smithhss/infinite-canvas/pull/20)。Quality CI 已通过，尚未合并或部署生产。
+**交付状态:** 实现已通过 PR [#20](https://github.com/Smithhss/infinite-canvas/pull/20) 普通合并到 `dev`，合并提交为 `ef864eb`。合并后 Quality CI run `41599738285` 通过；尚未发布 npm、镜像部署生产。
 
 ## 执行阶段
 
@@ -85,5 +85,5 @@ Phase 5A/5B 可以独立于服务端实施，但节点锁必须是持久化节�
 - 复制后的测试画布保留 6 个锁定节点，原画布仍保持 5 个节点和 1 条连线；清空画布只保留锁定节点，解锁后节点删除能力恢复。
 - 深色桌面与 390px 深色布局均无页面横向溢出或固定工具栏越界，移动端新页面默认收起左侧面板。
 - 最新全量自动化验证为 122 个测试通过、TypeScript 类型检查通过、Vite 生产构建通过、`git diff --check` 通过。
-- PR Quality CI（run `41585499344`）已通过，覆盖 Web 测试、类型检查、standalone/FYT-managed 构建、Docs 类型检查和 whitespace。
+- PR Quality CI（run `41585499344`）和合并后 `dev` Quality CI（run `41599738285`）均通过，覆盖 Web 测试、类型检查、standalone/FYT-managed 构建、Docs 类型检查和 whitespace。
 - Phase 5C 公开只读分享和跨设备复制仍阻塞于服务端项目存储、权限、分享凭证、撤销和审计契约。

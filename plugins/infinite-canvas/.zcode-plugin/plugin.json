@@ -14,7 +14,7 @@
   "mcpServers": {
     "infinite-canvas": {
       "command": "npx",
-      "args": ["-y", "@basketikun/canvas-agent@latest", "mcp"]
+      "args": ["-y", "@smithhsiiiii/canvas-agent@latest", "mcp"]
     }
   }
 }

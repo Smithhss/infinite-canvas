@@ -73,7 +73,8 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
     );
     const total = items.text.length + items.image.length + items.video.length;
     const visibleItems = useMemo(() => [...items.text, ...items.image, ...items.video], [items]);
-    const selectedNodeIds = useMemo(() => [...new Set(visibleItems.filter((item) => selectedItemIds.has(item.id)).map((item) => item.nodeId))], [selectedItemIds, visibleItems]);
+    const selectedItems = useMemo(() => visibleItems.filter((item) => selectedItemIds.has(item.id)), [selectedItemIds, visibleItems]);
+    const selectedNodeIds = useMemo(() => [...new Set(selectedItems.map((item) => item.nodeId))], [selectedItems]);
 
     const locate = (item: StoryboardItem) => {
         setDetail(null);
@@ -101,10 +102,10 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                     className="min-w-0 max-w-md flex-1 sm:flex-none"
                     aria-label={t("canvas.storyboard.search")}
                 />
-                {selectedNodeIds.length ? (
+                {selectedItems.length ? (
                     <div className="ml-auto flex shrink-0 items-center gap-1">
                         <span className="hidden text-xs tabular-nums sm:inline" style={{ color: theme.node.muted }}>
-                            {t("canvas.storyboard.selected", { count: selectedNodeIds.length })}
+                            {t("canvas.storyboard.selected", { count: selectedItems.length })}
                         </span>
                         <button type="button" className="rounded-md px-2 py-1 text-xs transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.muted }} onClick={() => setSelectedItemIds(new Set(visibleItems.map((item) => item.id)))}>
                             {t("canvas.storyboard.selectAll")}
@@ -114,9 +115,10 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                         </button>
                         <button
                             type="button"
-                            className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium"
+                            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs font-medium sm:h-7 sm:min-w-0"
                             style={{ background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}
                             onClick={() => onSelectNodesInCanvas(selectedNodeIds)}
+                            aria-label={t("canvas.storyboard.processSelection")}
                         >
                             <MousePointer2 className="size-3.5" />
                             <span className="hidden sm:inline">{t("canvas.storyboard.processSelection")}</span>
@@ -286,7 +288,7 @@ function StoryboardModule({
                 <button
                     type="button"
                     onClick={onToggle}
-                    className="grid size-6 shrink-0 place-items-center rounded-md transition hover:bg-black/5 dark:hover:bg-white/10"
+                    className="grid size-8 shrink-0 place-items-center rounded-md transition hover:bg-black/5 dark:hover:bg-white/10 sm:size-6"
                     aria-label={collapsed ? t("canvas.storyboard.expand") : t("canvas.storyboard.collapse")}
                 >
                     <ChevronDown className={cn("size-3.5 transition-transform", collapsed && "-rotate-90")} />
@@ -337,7 +339,7 @@ function SelectionToggle({ checked, theme, onClick }: { checked: boolean; theme:
             aria-label={t(checked ? "canvas.storyboard.deselectItem" : "canvas.storyboard.selectItem")}
             aria-pressed={checked}
             onClick={onClick}
-            className="absolute right-1.5 top-1.5 z-10 grid size-5 place-items-center rounded border backdrop-blur transition"
+            className="absolute right-1.5 top-1.5 z-10 grid size-7 touch-manipulation place-items-center rounded border backdrop-blur transition sm:size-5"
             style={{ background: checked ? theme.node.activeStroke : "rgba(0,0,0,.42)", borderColor: checked ? theme.node.activeStroke : "rgba(255,255,255,.28)", color: "#fff" }}
         >
             <Check className={cn("size-3 transition-opacity", checked ? "opacity-100" : "opacity-0")} />

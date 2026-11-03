@@ -235,7 +235,7 @@ export function CanvasNodeHoverToolbar({
     return (
         <>
             <div
-                className="absolute z-[70] flex h-11 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[12px] border text-[15px] shadow-[0_6px_18px_rgba(0,0,0,.14)]"
+                className="absolute z-[70] flex h-11 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[12px] border text-[15px] shadow-[0_4px_12px_rgba(0,0,0,.09)]"
                 data-node-toolbar={node.id}
                 style={{ left, top, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
                 onMouseEnter={() => onKeep(node.id)}

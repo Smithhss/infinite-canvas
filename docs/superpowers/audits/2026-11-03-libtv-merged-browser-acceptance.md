@@ -31,7 +31,7 @@
 
 | 问题 | 修复 | 结果 |
 | --- | --- | --- |
-| 故事板搜索隐藏已选项后，仍可能显示“已选 0 个节点”和操作按钮 | 操作区判断从 `selectedItemIds.size` 改为 `selectedNodeIds.length` | 通过 |
+| 故事板搜索隐藏已选项后，仍可能显示“已选 0 个素材”和操作按钮 | 操作区判断从 `selectedItemIds.size` 改为 `selectedNodeIds.length` | 通过 |
 | 首次进入或切回工作流时，画布容器尺寸监听未重新绑定，移动端可能沿用旧尺寸 | `ResizeObserver` 只在 `workflow` 视图绑定，并在视图变化时重新测量 | 通过 |
 
 ## 交互回归

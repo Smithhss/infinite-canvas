@@ -520,7 +520,7 @@ export default {
             noVideo: "没有视频素材",
             noPreview: "没有可预览内容",
             locate: "定位到画布",
-            selected: "已选 {{count}} 个节点",
+            selected: "已选 {{count}} 个素材",
             selectAll: "全选",
             clearSelection: "清除",
             processSelection: "在画布中处理",

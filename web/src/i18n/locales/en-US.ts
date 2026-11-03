@@ -520,7 +520,7 @@ export default {
             noVideo: "No video assets",
             noPreview: "No preview available",
             locate: "Locate on canvas",
-            selected: "{{count}} nodes selected",
+            selected: "{{count}} assets selected",
             selectAll: "Select all",
             clearSelection: "Clear",
             processSelection: "Process on canvas",

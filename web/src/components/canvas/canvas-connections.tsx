@@ -51,10 +51,10 @@ export function ConnectionPath({
             <path
                 d={pathD}
                 stroke={active ? theme.canvas.selectionStroke : hovered ? theme.node.activeStroke : theme.node.muted}
-                strokeWidth={active ? 3 : hovered ? 2.5 : 2}
+                strokeWidth={active ? 2.5 : 2}
                 strokeOpacity={active ? 1 : hovered ? 0.92 : 0.72}
                 fill="none"
-                style={{ filter: active ? `drop-shadow(0 0 4px ${theme.canvas.selectionStroke}55)` : undefined, pointerEvents: "none", transition: "stroke 120ms ease, stroke-width 120ms ease, stroke-opacity 120ms ease" }}
+                style={{ pointerEvents: "none", transition: "stroke 120ms ease, stroke-width 120ms ease, stroke-opacity 120ms ease" }}
             />
         </g>
     );

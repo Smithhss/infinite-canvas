@@ -1,4 +1,4 @@
-import type { BuiltinCanvasAction, BuiltinCanvasMediaAction } from "./actions";
+import type { BuiltinCanvasMediaAction } from "./actions";
 import { isBuiltinCanvasMediaAction } from "./actions";
 import { modelCapabilityOf, resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
 
@@ -26,10 +26,6 @@ export { isBuiltinCanvasMediaAction };
 export async function executeBuiltinCanvasMediaAction(action: BuiltinCanvasMediaAction, executor: BuiltinCanvasMediaExecutor, signal: AbortSignal): Promise<BuiltinCanvasMediaResult> {
     if (signal.aborted) throw new Error("canceled");
     return action.name === "generate_image" ? executor.generateImage(action, signal) : executor.editImage(action, signal);
-}
-
-export function isMediaAction(action: BuiltinCanvasAction): action is BuiltinCanvasMediaAction {
-    return isBuiltinCanvasMediaAction(action);
 }
 
 export function selectBuiltinImageModel(config: AiConfig, requestedModel?: string) {

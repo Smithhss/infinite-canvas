@@ -14,16 +14,18 @@ description: 在 Codex App 中安装、连接并使用 Infinite Canvas
 最省事的方式是把下面这段完整发给 Codex：
 
 ```text
-请从 https://github.com/basketikun/infinite-canvas.git 安装 Infinite Canvas Codex 插件。
-clone 到 ~/plugins/infinite-canvas 后，把该仓库加入 Codex marketplace，
-再安装 infinite-canvas@infinite-canvas-local。
-安装完成后请检查插件和 MCP 状态，并提醒我新建对话。
+请从 https://github.com/Smithhss/infinite-canvas.git 安装 Infinite Canvas Codex 插件。
+请 clone 仓库到 ~/plugins/infinite-canvas，确认 plugins/infinite-canvas/.codex-plugin/plugin.json 存在，
+先把插件目录加入 Codex marketplace，运行 codex plugin marketplace add ~/plugins/infinite-canvas，
+再运行 codex plugin add infinite-canvas@infinite-canvas-local。
+安装后请校验插件，并告诉我是否需要开启一个新对话来加载新技能和 MCP 工具。
 ```
 
 也可以自己执行：
 
 ```bash
-git clone https://github.com/basketikun/infinite-canvas.git ~/plugins/infinite-canvas
+mkdir -p ~/plugins
+git clone https://github.com/Smithhss/infinite-canvas.git ~/plugins/infinite-canvas
 codex plugin marketplace add ~/plugins/infinite-canvas
 codex plugin add infinite-canvas@infinite-canvas-local
 ```
@@ -41,11 +43,9 @@ codex plugin add infinite-canvas@infinite-canvas-local
 正常情况下，Codex 会执行下面几件事：
 
 1. 启动本地 Canvas Agent。
-2. 打开 `https://canvas.best/` 并新建画布。
+2. 启动本地 Vite 前端并新建画布。
 3. 把画布的本地 Agent 连接信息带入网页。
 4. 在右侧打开 Infinite Canvas Agent 面板。
-
-如果你明确要求使用本地项目，Codex 才会启动本地前端，而不是在线版。
 
 ### 3. 确认连接成功
 

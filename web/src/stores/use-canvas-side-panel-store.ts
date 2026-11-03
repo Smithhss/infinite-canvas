@@ -3,7 +3,7 @@ import { create } from "zustand";
 export const CANVAS_SIDE_PANEL_MOTION_MS = 500;
 export const CANVAS_SIDE_PANEL_MIN_WIDTH = 220;
 export const CANVAS_SIDE_PANEL_MAX_WIDTH = 480;
-export const CANVAS_SIDE_PANEL_DEFAULT_WIDTH = 280;
+export const CANVAS_SIDE_PANEL_DEFAULT_WIDTH = 320;
 
 const WIDTH_KEY = "canvas-side-panel-width";
 const OPEN_KEY = "canvas-side-panel-open";
@@ -20,7 +20,9 @@ function initialWidth() {
 
 function initialOpen() {
     if (typeof window === "undefined") return true;
-    return localStorage.getItem(OPEN_KEY) !== "0";
+    const stored = localStorage.getItem(OPEN_KEY);
+    if (stored !== null) return stored !== "0";
+    return window.innerWidth >= 768;
 }
 
 function initialNodeView(): CanvasNodeViewMode {

@@ -5,21 +5,15 @@ description: Deploy Infinite Canvas with Docker Compose
 
 # Docker Deployment
 
-## Use the published image
+## Build from source
 
 ```bash
-git clone git@github.com:basketikun/infinite-canvas.git
+git clone git@github.com:Smithhss/infinite-canvas.git
 cd infinite-canvas
-docker compose up -d
+docker compose up -d --build
 ```
 
 Open `http://localhost:3000`.
-
-## Build locally
-
-```bash
-docker compose -f docker-compose.local.yml up -d --build
-```
 
 ## Documentation image
 
@@ -27,14 +21,7 @@ The documentation in `docs/` is a separate Next.js standalone application with s
 
 ```bash
 cd docs
-docker compose up -d
-```
-
-To build it from the current source:
-
-```bash
-cd docs
-docker compose -f docker-compose.local.yml up -d --build
+docker compose up -d --build
 ```
 
 The main application container only runs Next.js. Canvases, My Assets, generation history, and API keys are stored in the browser by default, while prompt repositories are fetched directly by the frontend. No persistent data volume is required for this data.
@@ -51,7 +38,9 @@ No analytics are enabled by default. A deployment can enable GA4, Baidu Analytic
 ```yaml
 services:
   app:
-    image: ghcr.io/basketikun/infinite-canvas:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:

@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "description": "Use ZCode to read and operate Infinite Canvas through the local Canvas Agent MCP server.",
   "author": {
-    "name": "basketikun",
-    "url": "https://canvas.best/"
+    "name": "Smithhss",
+    "url": "https://github.com/Smithhss/infinite-canvas"
   },
-  "homepage": "https://canvas.best/",
-  "repository": "https://github.com/basketikun/infinite-canvas",
+  "homepage": "https://github.com/Smithhss/infinite-canvas",
+  "repository": "https://github.com/Smithhss/infinite-canvas",
   "license": "MIT",
   "keywords": ["infinite-canvas", "canvas", "mcp", "agent"],
   "skills": "skills",

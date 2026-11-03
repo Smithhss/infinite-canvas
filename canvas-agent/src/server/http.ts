@@ -4,6 +4,7 @@ import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 
 import { runClaudeTurn } from "../agent/claude.js";
+import { ClaudeSdkAdapter } from "../agent/claude-sdk.js";
 import { archiveCodexThread, CodexSkillLookupError, configureCodexSkill, generateCodexSkillDraft, interruptCodexTurn, isRecoverableThreadError, listCodexModels, listCodexSkills, listCodexThreads, readCodexThread, resolveCodexApproval, resolveCodexSkill, resumeCodexThread, runCodexTurn, startCodexThread, summarizeCodexThread } from "../agent/codex.js";
 import type { CodexReasoningEffort, CodexSkillSelector } from "../agent/codex-protocol.js";
 import { messageMetadataStore } from "../agent/message-metadata.js";
@@ -23,6 +24,7 @@ export function startHttpServer() {
 
     const initialWorkspace = ensureSiteWorkspace(config);
     const session = new CanvasSession(initialWorkspace.activeThreadId || "");
+    const claudeAdapter = new ClaudeSdkAdapter();
     const skillStore = new SkillStore(initialWorkspace.workspacePath);
     /** 将 Agent 事件广播到所属线程或全部网页。 */
     const emit = (type: string, payload: unknown) => {
@@ -120,7 +122,7 @@ export function startHttpServer() {
         if (req.method === "OPTIONS") return void res.json({});
         next();
     });
-    app.get("/health", (_req, res) => res.json(session.health()));
+    app.get("/health", (_req, res) => res.json({ ...session.health(), claudeBusy: claudeAdapter.busy }));
     app.get("/config", (_req, res) => res.json({ ok: true, protocolVersion: AGENT_PROTOCOL_VERSION, url: config.url, hasToken: true }));
     app.use((req, res, next) => {
         if (validToken(req, requestUrl(req, config), config.token)) return next();
@@ -420,10 +422,39 @@ export function startHttpServer() {
         const ok = await interruptCodexTurn(skillDraftRunning ? undefined : String(req.body?.threadId || ""));
         res.status(ok ? 200 : 409).json({ ok, ...(ok ? {} : { error: "当前没有可停止的任务" }) });
     }));
-    app.post("/agent/claude/turn", (req, res) => {
-        runClaudeTurn(String(req.body?.prompt || ""), emit);
-        res.json({ ok: true });
-    });
+    app.post("/agent/claude/turn", route(async (req, res) => {
+        const prompt = String(req.body?.prompt || "");
+        if (!prompt.trim()) return res.status(400).json({ ok: false, error: "请输入任务内容" });
+        if (String(req.body?.transport || "sdk") === "cli") {
+            runClaudeTurn(prompt, emit);
+            return res.json({ ok: true, transport: "cli" });
+        }
+        const clientId = String(req.body?.clientId || "");
+        if (!clientId || !session.hasClient(clientId)) return res.status(409).json({ ok: false, error: "发起 Claude 任务的网页已断开，请重新连接后再试" });
+        const workspace = ensureSiteWorkspace(config);
+        session.bindClient(clientId);
+        try {
+            const run = await claudeAdapter.run(prompt, emit, {
+                clientId,
+                cwd: workspace.workspacePath,
+                threadId: String(req.body?.threadId || "") || undefined,
+                sessionId: String(req.body?.sessionId || "") || undefined,
+                model: String(req.body?.model || "") || undefined,
+                effort: claudeEffort(req.body?.effort),
+                onFinish: () => session.releaseClient(clientId),
+            });
+            res.json({ ok: true, transport: "sdk", ...run });
+        } catch (error) {
+            session.releaseClient(clientId);
+            throw error;
+        }
+    }));
+    app.post("/agent/claude/interrupt", route(async (req, res) => {
+        const clientId = String(req.body?.clientId || "");
+        if (!clientId) return res.status(400).json({ ok: false, error: "缺少发起任务的网页标识" });
+        const ok = await claudeAdapter.interrupt(clientId, String(req.body?.runId || ""));
+        res.status(ok ? 200 : 409).json({ ok, ...(ok ? {} : { error: "当前网页没有可停止的 Claude 任务" }) });
+    }));
     app.use((_req, res) => res.status(404).json({ ok: false, error: "not found" }));
     app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
         logger.error("HTTP request failed", { method: req.method, path: req.path, error });
@@ -469,6 +500,12 @@ function permissionMode(value: unknown): AgentPermissionMode {
 
 function reasoningEffort(value: unknown): CodexReasoningEffort | undefined {
     return value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max" || value === "ultra" ? value : undefined;
+}
+
+function claudeEffort(value: unknown): "low" | "medium" | "high" | "xhigh" | "max" | undefined {
+    if (value === "minimal") return "low";
+    if (value === "ultra") return "max";
+    return value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max" ? value : undefined;
 }
 
 function startupStatus(value: unknown): "starting" | "ready" | "failed" | "cancelled" {

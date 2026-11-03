@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
-import { focusViewportForNode } from "../src/lib/canvas/canvas-node-geometry";
+import { fitViewportForNodes, focusViewportForNode } from "../src/lib/canvas/canvas-node-geometry";
+import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
 
 // Mirrors the canvas transform: screen = viewport.offset + world * viewport.k, origin at top-left.
 function projectPoint(world: { x: number; y: number }, viewport: { x: number; y: number; k: number }) {
@@ -57,4 +58,26 @@ test("keeps the panel clear of the bottom dock, leaving a smaller gap below it",
     const usableBottom = size.height - bottomInset;
     expect(bottom).toBeLessThanOrEqual(usableBottom);
     expect(usableBottom - bottom).toBeCloseTo(top / 3, 6);
+});
+
+test("fits all nodes inside the usable canvas area without changing their relative positions", () => {
+    const size = { width: 1000, height: 700 };
+    const nodes: CanvasNodeData[] = [
+        { id: "a", type: CanvasNodeType.Text, title: "A", position: { x: -300, y: 100 }, width: 400, height: 200 },
+        { id: "b", type: CanvasNodeType.Text, title: "B", position: { x: 900, y: 900 }, width: 500, height: 300 },
+    ];
+    const viewport = fitViewportForNodes(nodes, size, { top: 48, bottom: 96 });
+    const first = projectPoint({ x: -300, y: 100 }, viewport);
+    const second = projectPoint({ x: 1400, y: 1200 }, viewport);
+
+    expect(first.x).toBeGreaterThanOrEqual(64);
+    expect(first.y).toBeGreaterThanOrEqual(112);
+    expect(second.x).toBeLessThanOrEqual(size.width - 64);
+    expect(second.y).toBeLessThanOrEqual(size.height - 160);
+    expect(viewport.k).toBeGreaterThan(0.05);
+    expect(viewport.k).toBeLessThan(1);
+});
+
+test("centers an empty canvas at 100%", () => {
+    expect(fitViewportForNodes([], { width: 900, height: 600 })).toEqual({ x: 450, y: 300, k: 1 });
 });

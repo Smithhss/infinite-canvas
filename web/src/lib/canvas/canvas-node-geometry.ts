@@ -174,3 +174,33 @@ export function focusViewportForNode(node: Pick<CanvasNodeData, "position" | "wi
     const groupTop = slack * (below > 0 && slack > 0 ? 0.75 : 0.5);
     return { x: size.width / 2 - nodeCenterX * k, y: groupTop + groupHeight / 2 - nodeCenterY * k - (below - above) / 2, k };
 }
+
+export type FitInsets = {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+};
+
+// Fits every node into the usable canvas area while keeping a small, predictable margin around the content.
+export function fitViewportForNodes(nodes: CanvasNodeData[], size: { width: number; height: number }, insets: FitInsets = {}): ViewportTransform {
+    if (!nodes.length) return { x: size.width / 2, y: size.height / 2, k: 1 };
+
+    const padding = 64;
+    const left = padding + (insets.left ?? 0);
+    const right = padding + (insets.right ?? 0);
+    const top = padding + (insets.top ?? 0);
+    const bottom = padding + (insets.bottom ?? 0);
+    const availableWidth = Math.max(1, size.width - left - right);
+    const availableHeight = Math.max(1, size.height - top - bottom);
+    const bounds = nodeBounds(nodes);
+    const boundsWidth = Math.max(1, bounds.right - bounds.left);
+    const boundsHeight = Math.max(1, bounds.bottom - bounds.top);
+    const k = Math.min(Math.max(Math.min(availableWidth / boundsWidth, availableHeight / boundsHeight), 0.05), 1);
+
+    return {
+        x: left + (availableWidth - boundsWidth * k) / 2 - bounds.left * k,
+        y: top + (availableHeight - boundsHeight * k) / 2 - bounds.top * k,
+        k,
+    };
+}

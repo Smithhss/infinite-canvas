@@ -1,4 +1,4 @@
-import { Check, Download, Pencil, Trash2, X } from "lucide-react";
+import { Check, Copy, Download, Pencil, Trash2, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Input } from "antd";
 import { useTranslation } from "react-i18next";
@@ -13,6 +13,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const renameProject = useCanvasStore((state) => state.renameProject);
+    const duplicateProject = useCanvasStore((state) => state.duplicateProject);
     const selectedIds = useCanvasUiStore((state) => state.selectedProjectIds);
     const editingId = useCanvasUiStore((state) => state.editingProjectId);
     const editingTitle = useCanvasUiStore((state) => state.editingProjectTitle);
@@ -55,9 +56,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                         }}
                     >
                         <h2 className="truncate text-xl font-semibold">{project.title}</h2>
-                        <p className="mt-3 text-sm leading-6 text-stone-600 dark:text-stone-400">
-                            {t("canvas.project.stats", { nodes: project.nodes.length, connections: project.connections.length })}
-                        </p>
+                        <p className="mt-3 text-sm leading-6 text-stone-600 dark:text-stone-400">{t("canvas.project.stats", { nodes: project.nodes.length, connections: project.connections.length })}</p>
                     </button>
                 )}
             </div>
@@ -71,6 +70,17 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                         </>
                     ) : (
                         <>
+                            <Button
+                                type="text"
+                                size="small"
+                                shape="circle"
+                                icon={<Copy className="size-4" />}
+                                onClick={() => {
+                                    const id = duplicateProject(project.id);
+                                    if (id) navigate(`/canvas/${id}`);
+                                }}
+                                aria-label={t("canvas.project.duplicate")}
+                            />
                             <Button type="text" size="small" shape="circle" icon={<Download className="size-4" />} onClick={() => void exportCanvasProjects([project], project.title || t("canvas.title"))} aria-label={t("canvas.project.export")} />
                             <Button type="text" size="small" shape="circle" icon={<Pencil className="size-4" />} onClick={() => startEditing(project.id, project.title)} aria-label={t("canvas.project.rename")} />
                             <Button type="text" size="small" shape="circle" icon={<Trash2 className="size-4" />} onClick={() => setDeleteIds([project.id])} aria-label={t("canvas.project.delete")} />

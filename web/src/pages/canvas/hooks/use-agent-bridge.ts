@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type Dispatch, type MutableR
 
 import i18n from "@/i18n";
 import { useAgentStore } from "@/stores/use-agent-store";
-import { applyCanvasAgentOps, type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
+import { applyCanvasAgentOps, protectLockedCanvasSnapshot, type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import type { CanvasConnection, CanvasNodeData, ContextMenuState, ViewportTransform } from "@/types/canvas";
 
@@ -59,7 +59,8 @@ export function useAgentBridge(params: AgentBridgeParams) {
         (ops?: CanvasAgentOp[], options?: { recordUndo?: boolean }) => {
             const safeOps = Array.isArray(ops) ? ops.filter((op) => op?.type) : [];
             const before = { projectId, title: projectTitle, nodes: nodesRef.current, connections: connectionsRef.current, selectedNodeIds: Array.from(selectedNodeIdsRef.current), viewport: viewportRef.current };
-            const generationOps = safeOps.filter((op): op is Extract<CanvasAgentOp, { type: "run_generation" }> => op.type === "run_generation" && Boolean(op.nodeId));
+            const lockedNodeIds = new Set(before.nodes.filter((node) => node.locked).map((node) => node.id));
+            const generationOps = safeOps.filter((op): op is Extract<CanvasAgentOp, { type: "run_generation" }> => op.type === "run_generation" && Boolean(op.nodeId) && !lockedNodeIds.has(op.nodeId));
             const next = applyCanvasAgentOps(
                 before,
                 safeOps.filter((op) => op.type !== "run_generation"),
@@ -82,8 +83,10 @@ export function useAgentBridge(params: AgentBridgeParams) {
     );
     const applyAgentSnapshot = useCallback(
         (next: CanvasAgentSnapshot) => {
-            writeAgentSnapshot(next);
-            return { ...next, projectId, title: projectTitle };
+            const current = { projectId, title: projectTitle, nodes: nodesRef.current, connections: connectionsRef.current, selectedNodeIds: Array.from(selectedNodeIdsRef.current), viewport: viewportRef.current };
+            const protectedNext = protectLockedCanvasSnapshot(next, current);
+            writeAgentSnapshot(protectedNext);
+            return { ...protectedNext, projectId, title: projectTitle };
         },
         [projectTitle, projectId, writeAgentSnapshot],
     );

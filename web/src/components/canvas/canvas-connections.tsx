@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
+import { useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -20,6 +20,7 @@ export function ConnectionPath({
     onContextMenu?: (event: ReactMouseEvent<SVGPathElement>) => void;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const [hovered, setHovered] = useState(false);
     const startX = from.position.x + from.width;
     const startY = from.position.y + from.height / 2;
     const endX = to.position.x;
@@ -29,7 +30,7 @@ export function ConnectionPath({
     const pathD = `M ${startX} ${startY} C ${startX + curvature} ${startY}, ${endX - curvature} ${endY}, ${endX} ${endY}`;
 
     return (
-        <g>
+        <g onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
             <path
                 data-connection-id={connection.id}
                 d={pathD}
@@ -49,11 +50,11 @@ export function ConnectionPath({
             />
             <path
                 d={pathD}
-                stroke={active ? theme.node.activeStroke : theme.node.muted}
-                strokeWidth={active ? 3 : 2}
-                strokeOpacity={active ? 1 : 0.82}
+                stroke={active ? theme.canvas.selectionStroke : hovered ? theme.node.activeStroke : theme.node.muted}
+                strokeWidth={active ? 2.5 : 2}
+                strokeOpacity={active ? 1 : hovered ? 0.92 : 0.72}
                 fill="none"
-                style={{ filter: active ? `drop-shadow(0 0 8px ${theme.node.activeStroke}66)` : undefined, pointerEvents: "none" }}
+                style={{ pointerEvents: "none", transition: "stroke 120ms ease, stroke-width 120ms ease, stroke-opacity 120ms ease" }}
             />
         </g>
     );

@@ -2,7 +2,7 @@
 
 **验收日期：** 2026-11-03
 
-**环境：** Infinite Canvas `v0.23.0`，独立本地预发 `http://127.0.0.1:4174/`，Ego Browser TaskSpace `infinite-canvas-plugin-registry-20261103`（55）。
+**环境：** Infinite Canvas `v0.24.0`，独立本地预发 `http://127.0.0.1:4174/`，Ego Browser TaskSpace `infinite-canvas-plugin-registry-20261103`（55）。
 
 **结论：** B1 自有插件 registry 的构建、清单、完整性校验、安装、更新、禁用、重新启用、卸载和失败关闭链路已通过。官方默认地址已切到 `Smithhss/infinite-canvas`，GitHub Actions 已发布 `plugins-dist`，jsDelivr 在线制品同样通过大小和哈希校验，并已完成在线浏览器验收。本轮没有部署生产。
 
@@ -70,7 +70,7 @@
 | `bun test tests/plugin-registry.test.ts` | 8 pass，0 fail，40 assertions |
 | `bun run typecheck` | 通过 |
 | `npm run build && npm run validate` | 通过，5 个插件 |
-| Web 全量测试（隔离工作树） | 106 pass，0 fail，350 assertions |
+| Web 全量测试（隔离工作树） | 122 pass，0 fail，585 assertions |
 | Web 类型检查与生产构建 | 通过 |
 | Docs 类型检查与构建 | 通过 |
 

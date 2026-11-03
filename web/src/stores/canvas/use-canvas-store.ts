@@ -6,6 +6,8 @@ import i18n from "@/i18n";
 import { localForageStorage } from "@/lib/localforage-storage";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { normalizeDirectorProject, type DirectorProjectState } from "@/lib/canvas/director-project";
+import { duplicateCanvasProject } from "@/lib/canvas/canvas-project-copy";
+import { useCanvasSaveStatusStore } from "@/stores/canvas/canvas-save-status-store";
 import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
 
 export type CanvasProject = {
@@ -33,6 +35,7 @@ type CanvasStore = {
     projects: CanvasProject[];
     deletedProjects: CanvasDeletedProject[];
     createProject: (title?: string) => string;
+    duplicateProject: (id: string, title?: string) => string | null;
     importProject: (project: Partial<CanvasProject>) => string;
     openProject: (id: string) => CanvasProject | null;
     renameProject: (id: string, title: string) => void;
@@ -46,6 +49,7 @@ const CANVAS_STORE_KEY = "infinite-canvas:canvas_store";
 type PersistedCanvasState = Pick<CanvasStore, "projects" | "deletedProjects">;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let queuedPersistState: PersistedCanvasState | null = null;
+let persistRevision = 0;
 
 const canvasStorage: PersistStorage<CanvasStore> = {
     getItem: async (name) => {
@@ -59,10 +63,18 @@ const canvasStorage: PersistStorage<CanvasStore> = {
         const nextState = value.state as PersistedCanvasState;
         if (queuedPersistState && queuedPersistState.projects === nextState.projects && queuedPersistState.deletedProjects === nextState.deletedProjects) return;
         queuedPersistState = nextState;
+        const revision = ++persistRevision;
+        useCanvasSaveStatusStore.getState().markSaving();
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
             saveTimer = null;
-            void localForageStorage.setItem(name, JSON.stringify(value));
+            void Promise.resolve(localForageStorage.setItem(name, JSON.stringify(value)))
+                .then(() => {
+                    if (persistRevision === revision) useCanvasSaveStatusStore.getState().markSaved();
+                })
+                .catch((error: unknown) => {
+                    if (persistRevision === revision) useCanvasSaveStatusStore.getState().markError(error instanceof Error ? error.message : String(error));
+                });
         }, 400);
     },
     removeItem: (name) => localForageStorage.removeItem(name),
@@ -86,12 +98,22 @@ export const useCanvasStore = create<CanvasStore>()(
                     connections: [],
                     chatSessions: [],
                     activeChatId: null,
-                    backgroundMode: "lines",
+                    backgroundMode: "dots",
                     showImageInfo: false,
                     viewport: initialViewport,
                 };
                 set((state) => ({ projects: [project, ...state.projects] }));
                 return id;
+            },
+            duplicateProject: (id, title) => {
+                const source = get().projects.find((item) => item.id === id);
+                if (!source) return null;
+                const project = duplicateCanvasProject(source, {
+                    id: nanoid(),
+                    title: title || i18n.t("canvas.project.copyTitle", { title: source.title }),
+                });
+                set((state) => ({ projects: [project, ...state.projects] }));
+                return project.id;
             },
             importProject: (source) => {
                 const now = new Date().toISOString();
@@ -104,7 +126,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     connections: source.connections || [],
                     chatSessions: source.chatSessions || [],
                     activeChatId: source.activeChatId || null,
-                    backgroundMode: source.backgroundMode || "lines",
+                    backgroundMode: source.backgroundMode || "dots",
                     showImageInfo: source.showImageInfo || false,
                     viewport: source.viewport || initialViewport,
                     director: source.director ? normalizeDirectorProject(source.director) : undefined,

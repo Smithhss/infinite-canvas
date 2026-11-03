@@ -362,4 +362,4 @@ git diff --check
 - 182 节点以上画布的真实浏览器性能和长任务表现。
 - LibTV 实际字体文件、图标资源和授权状态；本项目不复制这些资源。
 - 截图取色可能受色彩管理和 HiDPI 缩放影响，精确值需在实施时通过浏览器计算样式再次核对。
-- 本轮已完成 P0 和主要 P1 视觉调整，但尚未 commit、push、创建 PR 或部署生产。
+- 本轮已完成 P0 和主要 P1 视觉调整，并通过提交 `1d6ec9f` 推送到 PR [#20](https://github.com/Smithhss/infinite-canvas/pull/20)；Quality CI 已通过，尚未合并或部署生产。

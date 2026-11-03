@@ -4,6 +4,16 @@
 
 **结论：** 当前 `codex/libtv-clean-20261103` 候选分支没有发现阻断合并的前端问题。LibTV 对齐、项目自有化、节点锁定、画布复制、故事板交互、主题与窄屏布局均完成回归；本轮新增的尺寸监听和搜索选择修复通过复测。
 
+## 交付状态
+
+| 项目 | 结果 |
+| --- | --- |
+| 提交 | `1d6ec9f feat(canvas): 对齐 LibTV 工作流与故事板体验` |
+| Pull Request | [#20](https://github.com/Smithhss/infinite-canvas/pull/20)，目标 `dev` |
+| Quality CI | 通过，run `41585499344` |
+| 合并 | 尚未合并 |
+| 生产部署 | 未执行 |
+
 ## 验收范围
 
 | 项目 | 值 |
@@ -70,11 +80,14 @@
 | `plugins/canvas/registry/` | `npm run build`、`npm run validate` | 通过，5 个插件 |
 | 仓库根目录 | `docker compose config` | 通过 |
 
+PR Quality CI 还覆盖了 standalone Web、FYT-managed Web、Docs 类型检查和 whitespace。仓库的 Docker 镜像与插件发布工作流只在版本 tag 或手动触发时发布远端制品，不属于 PR 检查。
+
 已知既存警告，不是本轮新增错误：
 
 - Web 主 chunk 约 3.99 MB。
 - `image-storage.ts`、`use-canvas-store.ts` 存在动态与静态重复导入警告。
 - Docs `next.config.mjs` 仍有 Turbopack NFT 警告。
+- 本地应用与 Docs Docker 镜像构建未完成：Docker Hub 的 `auth.docker.io` token 请求持续返回 TLS EOF。插件本地构建与校验已通过，镜像构建仍待仓库 tag 工作流或网络恢复后复核。
 
 敏感信息扫描未发现真实密钥。
 
@@ -92,6 +105,6 @@
 ## 剩余边界
 
 - Phase 5C 公开只读分享仍需要服务端项目存储、权限、分享凭证和审计契约，当前分支不提供伪分享。
-- 100 个以上素材、真实手机触控、长时间滚动和 GPU 性能仍需真实设备验收。
+- 112 个素材的桌面、DPR 3 和触摸事件模拟已通过，详见 [112 素材压力验收](2026-11-03-libtv-112-stress-acceptance.md)；真实手机触控惯性、软键盘、系统字体和长时间滚动仍需实体设备验收。
 - 浏览器存储命名空间迁移仍暂缓，避免未备份时丢失现有画布和资产。
-- 当前仅完成本地提交前验收，未提交、推送、创建 PR、合并 `dev` 或部署生产。
+- 已提交、推送并创建 PR；尚未合并 `dev`、发布镜像或部署生产。

@@ -186,6 +186,14 @@ Claude 后续接入时再单独做 Claude Adapter；当前前端默认只展示 
 
 Claude Code 侧当前 MVP 先调用本机 Claude Code CLI 的流式 JSON 输出，由 `canvas-agent` 统一转换事件和工具调用；后续可升级为 Claude Agent SDK。
 
+SDK Adapter 的实施门槛：
+
+- 当前查询到的 `@anthropic-ai/claude-agent-sdk@0.3.317` 需要 `@anthropic-ai/sdk >= 0.93.0`、`@modelcontextprotocol/sdk ^1.29.0` 和 `zod ^4.0.0`。
+- `canvas-agent` 当前使用 MCP SDK `^1.12.1` 与 Zod `^3.25.0`，因此不是只新增一个包，而是需要同时升级 MCP SDK、跨 Zod 大版本，并新增 Anthropic SDK。
+- 这些依赖会进入本地常驻服务和 npm 发布产物，必须单独确认包名、目标版本、锁文件变化、兼容窗口和回滚策略后才能安装。
+- 实施时保留现有 Claude CLI Adapter 作为回退，新增 SDK Adapter，不一次性删除当前可用路径。
+- 验收必须覆盖会话创建与恢复、流式消息、工具调用与结果、取消、错误、Usage、多标签页线程隔离、凭据脱敏和 npm 干净安装。
+
 如果希望 Claude Code 也能操作当前画布，需要给 Claude Code 配置同一个 MCP：
 
 ```bash

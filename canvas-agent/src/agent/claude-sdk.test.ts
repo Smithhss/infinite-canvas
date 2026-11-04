@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import { ClaudeSdkAdapter, createCanvasMcpServer } from "./claude-sdk.js";
@@ -260,6 +263,86 @@ test("模型列表读取失败时不伪造模型并释放查询", async () => {
     assert.equal(closed, 1);
 });
 
+test("Skill 列表读取项目内非内置命令且不执行用户任务", async () => {
+    const cwd = await projectWithSkill("probe-skill");
+    let receivedPrompt = "";
+    let receivedOptions: Record<string, unknown> | undefined;
+    let closed = 0;
+    const adapter = new ClaudeSdkAdapter(
+        ({ prompt, options }) => {
+            receivedPrompt = prompt;
+            receivedOptions = options as unknown as Record<string, unknown>;
+            return Object.assign((async function* () {
+                throw new Error("Skill 列表不应消费生成事件");
+            })(), {
+                supportedCommands: async () => [
+                    { name: "probe-skill", description: "项目 Skill", argumentHint: "", builtin: false },
+                    { name: "help", description: "内置命令", argumentHint: "", builtin: true },
+                    { name: "outside-skill", description: "项目外命令", argumentHint: "", builtin: false },
+                    { name: "probe-skill", description: "重复项", argumentHint: "", builtin: false },
+                ],
+                close: () => {
+                    closed += 1;
+                },
+            });
+        },
+    );
+    try {
+        assert.deepEqual(await adapter.listSkills(cwd), [{ name: "probe-skill", description: "项目 Skill" }]);
+        assert.equal(receivedPrompt, "");
+        assert.equal(receivedOptions?.cwd, cwd);
+        assert.deepEqual(receivedOptions?.settingSources, ["project"]);
+        assert.deepEqual(receivedOptions?.settings, { disableAllHooks: true });
+        assert.deepEqual(receivedOptions?.tools, []);
+        assert.deepEqual(receivedOptions?.skills, ["probe-skill"]);
+        assert.equal(closed, 1);
+    } finally {
+        await fs.rm(cwd, { recursive: true, force: true });
+    }
+});
+
+test("选择 Claude Skill 时只开放 Skill 与画布 MCP，并禁用项目 hooks", async () => {
+    const cwd = await projectWithSkill("probe-skill");
+    let received: Record<string, unknown> | undefined;
+    const adapter = new ClaudeSdkAdapter(
+        ({ options }) => {
+            received = options as unknown as Record<string, unknown>;
+            return Object.assign((async function* () {
+                yield { type: "result", session_id: "session-1", subtype: "success", is_error: false, result: "完成", usage: {}, modelUsage: {} };
+            })(), { close: () => undefined });
+        },
+        () => ({ type: "sdk", name: "infinite-canvas", instance: {} } as never),
+    );
+    try {
+        await adapter.run("/probe-skill 写入画布", () => undefined, { clientId: "client-1", cwd, permissionMode: "request", skill: "probe-skill" });
+        await waitFor(() => !adapter.busy);
+        assert.deepEqual(received?.settingSources, ["project"]);
+        assert.deepEqual(received?.settings, { disableAllHooks: true });
+        assert.deepEqual(received?.tools, ["Skill"]);
+        assert.deepEqual(received?.skills, ["probe-skill"]);
+    } finally {
+        await fs.rm(cwd, { recursive: true, force: true });
+    }
+});
+
+test("没有项目 Skill 时不启动 Claude 查询，未知 Skill 也会被拒绝", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "canvas-claude-empty-"));
+    let queries = 0;
+    const adapter = new ClaudeSdkAdapter(() => {
+        queries += 1;
+        return Object.assign((async function* () {
+            yield undefined;
+        })(), { close: () => undefined });
+    });
+    try {
+        assert.deepEqual(await adapter.listSkills(cwd), []);
+        await assert.rejects(adapter.run("/unknown 写入画布", () => undefined, { clientId: "client-1", cwd, skill: "unknown" }), /Skill 不存在或不可用/);
+        assert.equal(queries, 0);
+    } finally {
+        await fs.rm(cwd, { recursive: true, force: true });
+    }
+});
+
 test("中断只作用于发起网页且完成后释放运行状态", async () => {
     let interrupted = 0;
     let closed = 0;
@@ -319,4 +402,12 @@ async function waitFor(predicate: () => boolean) {
         await new Promise((resolve) => setTimeout(resolve, 5));
     }
     throw new Error("timed out");
+}
+
+async function projectWithSkill(name: string) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "canvas-claude-skill-"));
+    const skillDir = path.join(root, ".claude", "skills", name);
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(path.join(skillDir, "SKILL.md"), `---\nname: ${name}\ndescription: 测试 Skill\n---\n\n按项目规则执行。\n`);
+    return root;
 }

@@ -437,6 +437,21 @@ export function startHttpServer() {
         const workspace = ensureSiteWorkspace(config);
         res.json({ ok: true, data: await claudeAdapter.listModels(workspace.workspacePath) });
     }));
+    app.get("/agent/claude/skills", route(async (_req, res) => {
+        const workspace = ensureSiteWorkspace(config);
+        const skills = await claudeAdapter.listSkills(workspace.workspacePath);
+        res.json({
+            ok: true,
+            data: skills.map((skill) => ({
+                ...skill,
+                path: `claude:${skill.name}`,
+                scope: "repo",
+                enabled: true,
+                managed: false,
+            })),
+            errors: [],
+        });
+    }));
     app.post("/agent/claude/threads/:threadId/delete", route(async (req, res) => {
         const workspace = ensureSiteWorkspace(config);
         const deleted = await deleteClaudeThread(routeParam(req.params.threadId), workspace.workspacePath);
@@ -451,6 +466,8 @@ export function startHttpServer() {
         }
         const clientId = String(req.body?.clientId || "");
         if (!clientId || !session.hasClient(clientId)) return res.status(409).json({ ok: false, error: "发起 Claude 任务的网页已断开，请重新连接后再试" });
+        const skill = claudeSkillName(req.body?.skill);
+        if (skill === null) return res.status(400).json({ ok: false, error: "Claude Skill 选择无效" });
         const workspace = ensureSiteWorkspace(config);
         session.bindClient(clientId);
         try {
@@ -461,6 +478,7 @@ export function startHttpServer() {
                 sessionId: String(req.body?.sessionId || req.body?.threadId || "") || undefined,
                 model: String(req.body?.model || "") || undefined,
                 permissionMode: permissionMode(req.body?.permissionMode),
+                skill: skill || undefined,
                 effort: claudeEffort(req.body?.effort),
                 onFinish: () => session.releaseClient(clientId),
             });
@@ -535,6 +553,13 @@ function claudeEffort(value: unknown): "low" | "medium" | "high" | "xhigh" | "ma
     if (value === "minimal") return "low";
     if (value === "ultra") return "max";
     return value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max" ? value : undefined;
+}
+
+function claudeSkillName(value: unknown): string | null {
+    if (value === undefined || value === null) return "";
+    const skill = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    const name = typeof skill.name === "string" ? skill.name.trim() : "";
+    return /^[a-z0-9][a-z0-9:_-]*$/.test(name) ? name : null;
 }
 
 function startupStatus(value: unknown): "starting" | "ready" | "failed" | "cancelled" {

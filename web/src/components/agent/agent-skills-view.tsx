@@ -4,6 +4,7 @@ import type { MenuProps } from "antd";
 import { Check, ChevronDown, CircleAlert, FilePenLine, LoaderCircle, LockKeyhole, MessageSquareText, Plus, RefreshCw, Search, Sparkles, Trash2, Workflow } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { activeAgentProvider } from "@/lib/agent/agent-provider";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { createCodexSkill, createCodexSkillDraft, deleteCodexSkill, fetchCodexSkill, postState, setCodexSkillEnabled, updateCodexSkill, type AgentSkillDetail, type AgentSkillDraft, type AgentSkillInterface, type AgentSkillScope, type AgentSkillSummary } from "@/services/api/canvas-agent";
 import { useAgentSkillStore } from "@/stores/use-agent-skill-store";
@@ -20,6 +21,8 @@ const skillNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export function AgentSkillsView({ clientId }: { clientId: string }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const provider = activeAgentProvider(useAgentStore((state) => state.agentProvider));
+    const claudeSkills = provider === "claude";
     const { message, modal } = App.useApp();
     const connected = useAgentStore((state) => state.connected);
     const url = useAgentStore((state) => state.url);
@@ -72,6 +75,20 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
     useEffect(() => {
         if (draft) setEditor((current) => current || { mode: "create", values: draftFormValues(draft) });
     }, [draft]);
+    useEffect(() => {
+        if (claudeSkills && scope !== "all" && scope !== "repo") setScope("all");
+    }, [claudeSkills, scope]);
+    useEffect(() => {
+        if (!claudeSkills) return;
+        confirmRef.current?.destroy();
+        confirmRef.current = null;
+        setEditor(null);
+        setSaving(false);
+        setAdvancedOpen(false);
+        setCreateMenuOpen(false);
+        setBusySkill("");
+        form.resetFields();
+    }, [claudeSkills, form]);
     useEffect(() => {
         if (connected) return;
         confirmRef.current?.destroy();
@@ -273,18 +290,20 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
             <div className="shrink-0 border-b px-4 py-3" style={{ borderColor: theme.node.stroke }}>
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <div className="text-sm font-semibold">{t("agent.skillManager.localSkills")}</div>
-                        <div className="mt-0.5 text-xs" style={{ color: theme.node.muted }}>{t("agent.skillManager.localDescription")}</div>
+                        <div className="text-sm font-semibold">{t(claudeSkills ? "agent.skillManager.claudeSkills" : "agent.skillManager.localSkills")}</div>
+                        <div className="mt-0.5 text-xs" style={{ color: theme.node.muted }}>{t(claudeSkills ? "agent.skillManager.claudeDescription" : "agent.skillManager.localDescription")}</div>
                     </div>
                     <div className="flex items-center gap-1">
                         <Tooltip title={t("agent.skillManager.reload")}>
                             <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8" aria-label={t("agent.skillManager.reloadSkill")} disabled={!connected || loading} icon={<RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />} onClick={() => void refresh()} />
                         </Tooltip>
-                        <Dropdown trigger={["click"]} placement="bottomRight" open={createMenuOpen} onOpenChange={setCreateMenuOpen} disabled={!connected || !clientId || Boolean(generatingSource)} menu={createMenu}>
-                            <Button type="text" className="!h-8 !px-2" aria-haspopup="menu" aria-expanded={createMenuOpen} disabled={!connected || !clientId} loading={Boolean(generatingSource)} icon={<Plus className="size-4" />}>
-                                {t("agent.skillManager.createSkill")} <ChevronDown className="size-3.5 opacity-60" />
-                            </Button>
-                        </Dropdown>
+                        {claudeSkills ? null : (
+                            <Dropdown trigger={["click"]} placement="bottomRight" open={createMenuOpen} onOpenChange={setCreateMenuOpen} disabled={!connected || !clientId || Boolean(generatingSource)} menu={createMenu}>
+                                <Button type="text" className="!h-8 !px-2" aria-haspopup="menu" aria-expanded={createMenuOpen} disabled={!connected || !clientId} loading={Boolean(generatingSource)} icon={<Plus className="size-4" />}>
+                                    {t("agent.skillManager.createSkill")} <ChevronDown className="size-3.5 opacity-60" />
+                                </Button>
+                            </Dropdown>
+                        )}
                     </div>
                 </div>
                 <div className="mt-3 flex gap-2">
@@ -297,7 +316,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
                         disabled={!connected}
                         value={scope}
                         onChange={setScope}
-                        options={[{ value: "all", label: t("agent.skillManager.scopes.all") }, ...(["repo", "user", "system", "admin"] as AgentSkillScope[]).map((value) => ({ value, label: t(`agent.skillManager.scopes.${value}`) }))]}
+                        options={[{ value: "all", label: t("agent.skillManager.scopes.all") }, ...((claudeSkills ? ["repo"] : ["repo", "user", "system", "admin"]) as AgentSkillScope[]).map((value) => ({ value, label: t(`agent.skillManager.scopes.${value}`) }))]}
                     />
                 </div>
                 {errors.length ? (
@@ -319,7 +338,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
                                         <div className="min-w-0 flex-1">
                                             <div className="flex min-w-0 items-center gap-2">
                                                 <span className="truncate text-sm font-medium">{skill.interface?.displayName || skill.name}</span>
-                                                {!skill.managed ? <Tooltip title={t("agent.skillManager.externalReadonly")}><LockKeyhole className="size-3.5 shrink-0" style={{ color: theme.node.faint }} /></Tooltip> : null}
+                                                {!skill.managed ? <Tooltip title={t(claudeSkills ? "agent.skillManager.claudeReadonly" : "agent.skillManager.externalReadonly")}><LockKeyhole className="size-3.5 shrink-0" style={{ color: theme.node.faint }} /></Tooltip> : null}
                                             </div>
                                             <div className="mt-1 line-clamp-2 text-xs leading-5" style={{ color: theme.node.muted }}>{skill.interface?.shortDescription || skill.shortDescription || skill.description || t("agent.skillManager.noDescription")}</div>
                                             <Tooltip title={skill.path}>
@@ -328,10 +347,14 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
                                         </div>
                                     </div>
                                     <div className="mt-2 flex items-center justify-between gap-2 pl-7">
-                                        <label className="inline-flex items-center gap-2 text-xs" style={{ color: theme.node.muted }}>
-                                            <Switch size="small" checked={skill.enabled} loading={busy} disabled={!connected || Boolean(busySkill) || Boolean(generatingSource)} onChange={(enabled) => void toggleEnabled(skill, enabled)} />
-                                            {t(skill.enabled ? "agent.skillManager.enabled" : "agent.skillManager.disabled")}
-                                        </label>
+                                        {claudeSkills ? (
+                                            <span className="text-xs" style={{ color: theme.node.muted }}>{t("agent.skillManager.enabled")}</span>
+                                        ) : (
+                                            <label className="inline-flex items-center gap-2 text-xs" style={{ color: theme.node.muted }}>
+                                                <Switch size="small" checked={skill.enabled} loading={busy} disabled={!connected || Boolean(busySkill) || Boolean(generatingSource)} onChange={(enabled) => void toggleEnabled(skill, enabled)} />
+                                                {t(skill.enabled ? "agent.skillManager.enabled" : "agent.skillManager.disabled")}
+                                            </label>
+                                        )}
                                         <div className="flex items-center gap-0.5">
                                             <Button type="text" size="small" disabled={!connected || !skill.enabled || Boolean(busySkill)} icon={selected ? <Check className="size-3.5" /> : <Sparkles className="size-3.5" />} onClick={() => useSkill(skill)}>{t(selected ? "agent.skillManager.selected" : "agent.skillManager.use")}</Button>
                                             {skill.managed ? (
@@ -350,7 +373,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
                     <div className="flex h-48 flex-col items-center justify-center text-center">
                         <Sparkles className="size-5" style={{ color: theme.node.faint }} />
                         <div className="mt-3 text-sm font-medium">{t(!connected ? "agent.skillManager.connectToView" : skills.length ? "agent.skillManager.noMatch" : "agent.skillManager.none")}</div>
-                        <div className="mt-1 text-xs" style={{ color: theme.node.muted }}>{t(!connected ? "agent.skillManager.connectDescription" : skills.length ? "agent.skillManager.tryAnotherFilter" : "agent.skillManager.createOrInstall")}</div>
+                        <div className="mt-1 text-xs" style={{ color: theme.node.muted }}>{t(!connected ? "agent.skillManager.connectDescription" : skills.length ? "agent.skillManager.tryAnotherFilter" : claudeSkills ? "agent.skillManager.claudeEmpty" : "agent.skillManager.createOrInstall")}</div>
                     </div>
                 )}
             </div>

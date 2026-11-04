@@ -4,6 +4,7 @@ import {
     agentSkillDescription,
     agentSkillDisplayName,
     agentSkillKey,
+    agentSkillMarker,
     compareAgentSkillFavoriteRecords,
     didAgentWorkspaceChange,
     filterAgentSkills,
@@ -44,6 +45,11 @@ const skills: AgentSkillSummary[] = [
 test("agent Skill identity includes scope and path instead of relying on name", () => {
     expect(agentSkillKey(skills[0])).toBe("repo\u0000/workspace/.agents/skills/product-grid");
     expect(agentSkillKey(skills[0])).not.toBe(agentSkillKey(skills[1]));
+});
+
+test("Skill invocation markers follow the active Agent contract", () => {
+    expect(agentSkillMarker(skills[0], "codex")).toBe("$product-grid");
+    expect(agentSkillMarker(skills[0], "claude")).toBe("/product-grid");
 });
 
 test("favorite keys reject malformed values and remove duplicates", () => {

@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口、P2-D 本机会话历史与续聊和 P2-E Claude 原生模型列表已合并到 `dev`。P2-F Claude SDK 原生权限模式已实现，等待 PR 合并和人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口、P2-D 本机会话历史与续聊、P2-E Claude 原生模型列表和 P2-F Claude SDK 原生权限已合并到 `dev`。P2-G Claude 原生项目 Skill 已实现，等待 PR 合并和人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 
@@ -440,7 +440,7 @@ P2-C 初始实现：
 
 ### P2-F：Claude SDK 原生权限模式
 
-状态：已实现，沿用 `agentProviderSwitch`，等待 PR 合并和人工验收。
+状态：已合并 `dev`（PR #31），沿用 `agentProviderSwitch`，等待人工验收。
 
 目标：
 
@@ -471,6 +471,40 @@ P2-C 初始实现：
 - 自动审查和完全访问分别使用 SDK `auto`、`bypassPermissions`，完全访问前显示 Claude 专用警告。
 - 停止或 turn 结束会拒绝未决审批；刷新后审批卡恢复且仍绑定 Claude `threadId` / `turnId`。
 - Codex 的模型、权限、工具确认、审批与刷新恢复行为不变。
+- 1440px、390px、中英文和浅深色无横向溢出。
+
+### P2-G：Claude 原生项目 Skill
+
+状态：已实现，沿用 `agentProviderSwitch`，等待 PR 合并和人工验收。
+
+目标：
+
+- 使用 Claude Agent SDK 原生 Skill 发现与调用，不复用 Codex 的 `$skill` 调用约定，也不伪造云端 Skill 市场。
+- 只列出当前工作空间项目内、非 Claude Code 内置的 Skill，并让用户在现有侧栏与资源页中选择。
+- 选择 Skill 时只开放 `Skill` 与画布 MCP，关闭项目 hooks，避免为 Skill 引入文件、命令或网络工具。
+
+已实现：
+
+1. 新增 `GET /agent/claude/skills`，通过 SDK `supportedCommands()` 读取 `.claude/skills` 中的非内置 Skill；空 prompt 只执行初始化，不触发模型生成。
+2. Skill 列表映射为现有只读 Skill 卡片，使用 `claude:<name>` 稳定标识，不提供创建、编辑、删除或启停入口。
+3. Claude 模式使用 `/skill-name` 标记，Codex 继续使用 `$skill-name`；输入框 token、资源页卡片和发送内容按当前 Agent 切换。
+4. `/agent/claude/turn` 接收单个 `skill.name`；选择 Skill 时 `settingSources` 仅加载 `project`，同时设置 `disableAllHooks`，内置工具只开放 `Skill`。
+5. Skill 调用仍通过现有画布 MCP 执行写入，因此请求模式的画布工具审批继续生效。
+6. 切换 Agent 会清空旧 Skill 列表和选择，功能开关关闭时始终按 Codex Skill 读取。
+
+不在本轮范围：
+
+- Skill 市场、远端安装、评分和云端收藏。
+- Claude 图片附件与图片引用。
+- 多个 Skill 同时选择或多工具并发队列。
+- 真实 Claude 云端账号的收费验收。
+
+验收：
+
+- `?ff_agentProviderSwitch=1` 下切换 Claude 后，技能页只显示项目 `.claude/skills` 中的非内置 Skill，卡片为只读且没有创建、编辑、删除、启停入口。
+- 选择 Claude Skill 后输入框出现 `/skill-name`，发送体包含对应 `skill.name`；Codex 仍使用 `$skill-name` 和原结构化 Skill 选择。
+- Skill 运行只暴露 `Skill` 与画布 MCP，项目 hooks 不执行；画布写入在请求模式下仍触发 Claude 原生审批。
+- 项目没有 Skill、Skill 列表读取失败、Agent 未连接和切换 Agent 时均不残留旧列表。
 - 1440px、390px、中英文和浅深色无横向溢出。
 
 ### P3：需要服务端或产品契约的能力
@@ -547,7 +581,8 @@ P2-C 初始实现：
 | 8    | P2-D Claude 历史与续聊     | 是         | SDK 会话 API 和现有 History 视图      |
 | 9    | P2-E Claude 原生模型列表   | 是         | SDK 模型接口和现有模型选择器          |
 | 10   | P2-F Claude SDK 原生权限   | 是         | SDK 权限接口、现有审批 UI             |
-| 11   | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
+| 11   | P2-G Claude 原生项目 Skill | 是         | SDK Skill 发现、现有 Skill 视图       |
+| 12   | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
 
 先做 P1-A 的原因：
 

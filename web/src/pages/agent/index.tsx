@@ -8,7 +8,8 @@ import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import { useAgentSkillFavorites } from "@/hooks/use-agent-skill-favorites";
 import { useCopyText } from "@/hooks/use-copy-text";
-import { agentSkillDescription, agentSkillDisplayName, agentSkillKey, filterAgentSkills, type AgentSkillCollection, type AgentSkillScopeFilter } from "@/lib/agent/agent-skill-catalog";
+import { activeAgentProvider } from "@/lib/agent/agent-provider";
+import { agentSkillDescription, agentSkillDisplayName, agentSkillKey, agentSkillMarker, filterAgentSkills, type AgentSkillCollection, type AgentSkillScopeFilter } from "@/lib/agent/agent-skill-catalog";
 import { AGENT_PLUGIN_INSTALL_COMMAND } from "@/lib/agent/plugin-commands";
 import type { AgentSkillScope, AgentSkillSummary } from "@/services/api/canvas-agent";
 import { useAgentSkillFavoriteStore } from "@/stores/use-agent-skill-favorite-store";
@@ -34,6 +35,7 @@ function AgentSkillHubPage() {
     const enabled = useAgentStore((state) => state.enabled);
     const endpoint = useAgentStore((state) => state.url.trim().replace(/\/$/, ""));
     const token = useAgentStore((state) => state.token);
+    const provider = activeAgentProvider(useAgentStore((state) => state.agentProvider));
     const connectError = useAgentStore((state) => state.connectError);
     const skills = useAgentSkillStore((state) => state.skills);
     const selectedSkill = useAgentSkillStore((state) => state.selectedSkill);
@@ -50,7 +52,7 @@ function AgentSkillHubPage() {
 
     useEffect(() => {
         if (connected && !loaded && !loading) void loadSkills(endpoint, token);
-    }, [connected, endpoint, loadSkills, loaded, loading, token]);
+    }, [connected, endpoint, loadSkills, loaded, loading, provider, token]);
 
     const availableSkills = connected ? skills : [];
     const visibleSkills = useMemo(() => filterAgentSkills({ skills: availableSkills, query, scope, collection, enabledOnly, favoriteKeys }), [availableSkills, collection, enabledOnly, favoriteKeys, query, scope]);
@@ -253,6 +255,7 @@ function AgentSkillHubPage() {
                                     <SkillCard
                                         key={agentSkillKey(skill)}
                                         skill={skill}
+                                        provider={provider}
                                         selected={Boolean(selectedSkill && agentSkillKey(selectedSkill) === agentSkillKey(skill))}
                                         favorite={favoriteKeys.includes(agentSkillKey(skill))}
                                         favoriteReady={favoritesLoaded}
@@ -271,7 +274,7 @@ function AgentSkillHubPage() {
     );
 }
 
-function SkillCard({ skill, selected, favorite, favoriteReady, onToggleFavorite, onUse }: { skill: AgentSkillSummary; selected: boolean; favorite: boolean; favoriteReady: boolean; onToggleFavorite: () => void; onUse: () => void }) {
+function SkillCard({ skill, provider, selected, favorite, favoriteReady, onToggleFavorite, onUse }: { skill: AgentSkillSummary; provider: "codex" | "claude"; selected: boolean; favorite: boolean; favoriteReady: boolean; onToggleFavorite: () => void; onUse: () => void }) {
     const { t } = useTranslation();
     const Icon = scopeIcon(skill.scope);
     const description = agentSkillDescription(skill);
@@ -303,7 +306,7 @@ function SkillCard({ skill, selected, favorite, favoriteReady, onToggleFavorite,
                     {selected ? <CheckCircle2 className="size-3.5 shrink-0 text-teal-600 dark:text-teal-400" /> : null}
                 </div>
                 <div className="mt-1 truncate font-mono text-[10px] text-stone-400 dark:text-stone-500" title={skill.path}>
-                    ${skill.name}
+                    {agentSkillMarker(skill, provider)}
                 </div>
                 <p className="mt-3 line-clamp-3 min-h-[60px] text-xs leading-5 text-stone-500 dark:text-stone-400">{description || t("agentHub.noDescription")}</p>
             </div>

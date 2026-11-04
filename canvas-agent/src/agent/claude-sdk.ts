@@ -30,6 +30,7 @@ type RunOptions = {
     skill?: string;
     effort?: "low" | "medium" | "high" | "xhigh" | "max";
     messageId?: string;
+    isClientActive?: () => boolean;
     onSessionId?: (sessionId: string) => void;
     onFinish?: () => void;
 };
@@ -190,8 +191,10 @@ export class ClaudeSdkAdapter {
     /** 启动一轮 SDK 调用；事件通过 SSE 异步返回。 */
     async run(prompt: string, emit: AgentEmit, options: RunOptions, attachments: AgentAttachment[] = []) {
         if (!prompt.trim()) throw new Error("请输入任务内容");
+        this.assertClientActive(options);
         if (this.active.size) throw new Error("Claude 正在执行其他任务，请先停止当前任务");
         if (options.skill && !(await listProjectClaudeSkillNames(options.cwd)).includes(options.skill)) throw new Error("Claude Skill 不存在或不可用");
+        this.assertClientActive(options);
         const runId = this.runIdFactory();
         const abort = new AbortController();
         const state = new ClaudeEventState({
@@ -215,6 +218,10 @@ export class ClaudeSdkAdapter {
         this.active.set(runId, run);
         void this.consume(run);
         return { runId, sessionId: state.sessionId };
+    }
+
+    private assertClientActive(options: RunOptions) {
+        if (options.isClientActive && !options.isClientActive()) throw new Error("发起 Claude 任务的网页已断开，请重新连接后再试");
     }
 
     /** 只中断发起请求的网页所拥有的 Claude turn。 */

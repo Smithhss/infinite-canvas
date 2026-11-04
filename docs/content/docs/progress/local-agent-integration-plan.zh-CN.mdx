@@ -168,7 +168,7 @@ type AgentEvent =
   | { type: "turn.failed"; error: { message: string } };
 ```
 
-Claude 后端 Adapter 已接入并复用同一组结构化事件；网页侧栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换。Claude 当前开放原生模型、本机会话历史、文本对话和画布工具，权限、Skill 和图片附件仍只属于 Codex。
+Claude 后端 Adapter 已接入并复用同一组结构化事件；网页侧栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换。Claude 当前开放原生模型、权限、本机会话历史、文本对话和画布工具，Skill 和图片附件仍只属于 Codex。
 
 ## Codex 接入优先级
 
@@ -191,6 +191,7 @@ Claude Code 侧已接入 `@anthropic-ai/claude-agent-sdk@0.3.317`，同时升级
 - SDK 模式关闭 Claude 内置文件与命令工具，只允许 `mcp__infinite-canvas__*`，并使用 `strictMcpConfig` 与空的 `settingSources` 隔离用户机器上的其他 MCP 和项目设置。
 - `GET /agent/claude/models` 通过 SDK `supportedModels()` 读取真实可用模型；查询创建后立即关闭，不提交用户 prompt 或触发模型生成。
 - `/agent/claude/turn` 接收并透传所选 `model`；Codex 与 Claude 的模型选择分开保存，Claude 不发送尚未开放的思考强度。
+- `/agent/claude/turn` 接收 `permissionMode` 并映射到 SDK 原生 `default`、`auto` 或 `bypassPermissions`；请求模式的画布写入通过 `POST /agent/claude/approval` 审批，同一 SDK 会话的“本会话允许”跨 turn 保留。
 - `POST /agent/claude/interrupt` 按发起网页和 `runId` 取消，不会停止其他网页的任务。
 - 保留 `"transport": "cli"` 作为旧 print 模式回退，不删除现有 Claude CLI Adapter。
 - 自动测试覆盖流式文本去重、工具开始/完成、错误只发一次、凭据脱敏、Usage、取消和启动异常；真实模型收费请求不在自动测试范围内。

@@ -26,7 +26,7 @@ export type AgentModel = {
     isDefault?: boolean;
 };
 export type AgentApprovalDecision = "accept" | "acceptForSession" | "decline";
-export type AgentPendingApproval = { requestId: string; method: string; threadId?: string; turnId?: string; itemId?: string; reason?: string; command?: unknown; cwd?: string; grantRoot?: string; networkApprovalContext?: unknown; permissions?: unknown; deciding?: AgentApprovalDecision };
+export type AgentPendingApproval = { requestId: string; method: string; provider?: AgentProvider; threadId?: string; turnId?: string; itemId?: string; reason?: string; title?: string; description?: string; displayName?: string; toolName?: string; toolInput?: unknown; command?: unknown; cwd?: string; grantRoot?: string; networkApprovalContext?: unknown; permissions?: unknown; deciding?: AgentApprovalDecision };
 export type AgentCanvasContext = { snapshot: CanvasAgentSnapshot; applyOps: (ops?: CanvasAgentOp[]) => CanvasAgentSnapshot; undoOps: () => CanvasAgentSnapshot | null; canUndo: boolean };
 export type AgentThreadSummary = { id: string; preview: string; name?: string | null; cwd?: string; status?: string; source?: unknown; createdAt?: number; updatedAt?: number };
 export type AgentTokenUsage = { input: number; cached: number; output: number };
@@ -79,6 +79,7 @@ type AgentStore = {
     activeTab: AgentPanelTab;
     confirmTools: boolean;
     permissionMode: AgentPermissionMode;
+    claudePermissionMode: AgentPermissionMode;
     models: AgentModel[];
     model: string;
     reasoningEffort: AgentReasoningEffort | "";
@@ -133,6 +134,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     activeTab: "setup",
     confirmTools: false,
     permissionMode: typeof window === "undefined" ? "request" : (localStorage.getItem("canvas-agent-permission-mode") as AgentPermissionMode) || "request",
+    claudePermissionMode: typeof window === "undefined" ? "request" : (localStorage.getItem("canvas-agent-permission-mode-claude") as AgentPermissionMode) || "request",
     models: [],
     model: initialModel,
     reasoningEffort: initialReasoningEffort as AgentReasoningEffort | "",

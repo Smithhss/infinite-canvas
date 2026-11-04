@@ -96,7 +96,7 @@ export function AgentChatComposer({
                             </>
                         ) : null}
                         {onConfirmToolsChange ? <ToolConfirmationMenu confirmTools={Boolean(confirmTools)} theme={theme} onChange={onConfirmToolsChange} /> : null}
-                        {permissionMode && onPermissionModeChange ? <PermissionModeMenu permissionMode={permissionMode} theme={theme} onChange={onPermissionModeChange} /> : null}
+                        {permissionMode && onPermissionModeChange ? <PermissionModeMenu permissionMode={permissionMode} provider={agentProvider || "codex"} theme={theme} onChange={onPermissionModeChange} /> : null}
                         {models?.length && model && onModelChange ? <AgentModelControls models={models} model={model} reasoningEffort={reasoningEffort} onModelChange={onModelChange} onReasoningEffortChange={onReasoningEffortChange} /> : null}
                         {left}
                     </div>
@@ -184,12 +184,13 @@ function AgentModelControls({ models, model, reasoningEffort, onModelChange, onR
     );
 }
 
-function PermissionModeMenu({ permissionMode, theme, onChange }: { permissionMode: AgentPermissionMode; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onChange: (permissionMode: AgentPermissionMode) => void }) {
+function PermissionModeMenu({ permissionMode, provider, theme, onChange }: { permissionMode: AgentPermissionMode; provider: AgentProvider; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onChange: (permissionMode: AgentPermissionMode) => void }) {
     const { t } = useTranslation();
+    const namespace = provider === "claude" ? "agent.composer.claudePermission" : "agent.composer.permission";
     const permissionOptions: Array<{ key: AgentPermissionMode; title: string; shortTitle: string; description: string; icon: ReactNode }> = [
-        { key: "request", title: t("agent.composer.permission.request"), shortTitle: t("agent.composer.permission.request"), description: t("agent.composer.permission.requestDescription"), icon: <ShieldAlert className="size-3.5" /> },
-        { key: "automatic", title: t("agent.composer.permission.automatic"), shortTitle: t("agent.composer.permission.automatic"), description: t("agent.composer.permission.automaticDescription"), icon: <ShieldCheck className="size-3.5" /> },
-        { key: "full", title: t("agent.composer.permission.full"), shortTitle: t("agent.composer.permission.fullShort"), description: t("agent.composer.permission.fullDescription"), icon: <ShieldOff className="size-3.5" /> },
+        { key: "request", title: t(`${namespace}.request`), shortTitle: t(`${namespace}.request`), description: t(`${namespace}.requestDescription`), icon: <ShieldAlert className="size-3.5" /> },
+        { key: "automatic", title: t(`${namespace}.automatic`), shortTitle: t(`${namespace}.automatic`), description: t(`${namespace}.automaticDescription`), icon: <ShieldCheck className="size-3.5" /> },
+        { key: "full", title: t(`${namespace}.full`), shortTitle: t(`${namespace}.fullShort`), description: t(`${namespace}.fullDescription`), icon: <ShieldOff className="size-3.5" /> },
     ];
     const current = permissionOptions.find((item) => item.key === permissionMode) || permissionOptions[0];
     const [open, setOpen] = useState(false);
@@ -209,7 +210,7 @@ function PermissionModeMenu({ permissionMode, theme, onChange }: { permissionMod
                         })),
                     }}
                 >
-                    <button type="button" className="flex h-9 w-9 min-w-9 shrink-0 items-center justify-center gap-0 rounded-full px-0 text-xs font-medium transition hover:bg-black/5 @min-[660px]:h-9 @min-[660px]:w-auto @min-[660px]:min-w-0 @min-[660px]:justify-start @min-[660px]:gap-1.5 @min-[660px]:px-2.5 dark:hover:bg-white/10" style={{ color: permissionMode === "full" ? "#ea580c" : theme.node.text }} aria-label={t("agent.composer.selectPermission", { mode: current.title })}>
+                    <button type="button" className="flex h-9 w-9 min-w-9 shrink-0 items-center justify-center gap-0 rounded-full px-0 text-xs font-medium transition hover:bg-black/5 @min-[660px]:h-9 @min-[660px]:w-auto @min-[660px]:min-w-0 @min-[660px]:justify-start @min-[660px]:gap-1.5 @min-[660px]:px-2.5 dark:hover:bg-white/10" style={{ color: permissionMode === "full" ? "#ea580c" : theme.node.text }} aria-label={t("agent.composer.selectPermission", { agent: provider === "claude" ? "Claude" : "Codex", mode: current.title })}>
                         {current.icon}
                         <span className="hidden @min-[660px]:inline">{current.shortTitle}</span>
                         <ChevronUp className="hidden size-3 opacity-50 @min-[660px]:block" />

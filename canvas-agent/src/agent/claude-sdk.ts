@@ -1,13 +1,13 @@
 import crypto from "node:crypto";
 
-import { createSdkMcpServer, query, tool, type McpServerConfig, type ModelInfo, type Options as ClaudeSdkOptions } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query, tool, type CanUseTool, type McpServerConfig, type ModelInfo, type Options as ClaudeSdkOptions, type PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 
 import { toolDescriptions, toolInputSchemas, toolNames, type ToolName } from "../canvas/schemas.js";
 import { AGENT_PROMPT, loadConfig, type CanvasAgentConfig, VERSION } from "../config.js";
 import { redactAgentLog } from "../utils/agent-runtime.js";
 import { errorMessage } from "../utils/value.js";
 import { ClaudeEventState } from "./claude-events.js";
-import type { AgentEmit } from "./types.js";
+import type { AgentEmit, AgentPermissionMode } from "./types.js";
 import { callCanvasAgentTool } from "../server/mcp.js";
 
 type ClaudeSdkQuery = AsyncIterable<unknown> & {
@@ -23,8 +23,20 @@ type RunOptions = {
     threadId?: string;
     sessionId?: string;
     model?: string;
+    permissionMode?: AgentPermissionMode;
     effort?: "low" | "medium" | "high" | "xhigh" | "max";
     onFinish?: () => void;
+};
+type PermissionDecision = "accept" | "acceptForSession" | "decline";
+type PendingPermission = {
+    requestId: string;
+    runId: string;
+    clientId: string;
+    toolName: string;
+    emit: AgentEmit;
+    signal: AbortSignal;
+    resolve: (result: PermissionResult) => void;
+    onAbort: () => void;
 };
 type ActiveRun = {
     runId: string;
@@ -36,9 +48,39 @@ type ActiveRun = {
     options: RunOptions;
 };
 
+const CLAUDE_WRITE_TOOLS = new Set<ToolName>([
+    "site_navigate",
+    "canvas_apply_ops",
+    "canvas_create_node",
+    "canvas_create_attachment_nodes",
+    "canvas_create_text_node",
+    "canvas_create_text_nodes",
+    "canvas_create_config_node",
+    "canvas_create_image_prompt_flow",
+    "canvas_create_generation_flow",
+    "canvas_generate_text",
+    "canvas_generate_image",
+    "canvas_generate_video",
+    "canvas_generate_audio",
+    "canvas_update_node",
+    "canvas_update_node_text",
+    "canvas_move_nodes",
+    "canvas_resize_node",
+    "canvas_delete_nodes",
+    "canvas_connect_nodes",
+    "canvas_select_nodes",
+    "canvas_set_viewport",
+    "canvas_run_generation",
+    "workbench_image_generate",
+    "workbench_video_generate",
+    "assets_add",
+]);
+
 /** 使用 Claude Agent SDK 运行画布 Agent，并管理会话与中断。 */
 export class ClaudeSdkAdapter {
     private active = new Map<string, ActiveRun>();
+    private permissions = new Map<string, PendingPermission>();
+    private sessionApprovals = new Map<string, Set<ToolName>>();
 
     constructor(
         private queryFactory: QueryFactory = query,
@@ -49,6 +91,28 @@ export class ClaudeSdkAdapter {
     /** 返回当前是否有 Claude turn 正在运行。 */
     get busy() {
         return this.active.size > 0;
+    }
+
+    /** 将网页的权限决定交还给等待中的 SDK 工具调用。 */
+    resolvePermission(clientId: string, requestId: string, decision: PermissionDecision) {
+        const pending = this.permissions.get(requestId);
+        if (!pending || pending.clientId !== clientId) return false;
+        this.permissions.delete(requestId);
+        pending.signal.removeEventListener("abort", pending.onAbort);
+        const accepted = decision !== "decline";
+        if (decision === "acceptForSession") {
+            const run = this.active.get(pending.runId);
+            if (run) {
+                const approved = this.sessionApprovals.get(run.state.sessionId) || new Set<ToolName>();
+                approved.add(pending.toolName as ToolName);
+                this.sessionApprovals.set(run.state.sessionId, approved);
+            }
+        }
+        pending.emit("claude_approval_resolved", { requestId, provider: "claude", toolName: pending.toolName, decision });
+        pending.resolve(accepted
+            ? { behavior: "allow", decisionClassification: decision === "acceptForSession" ? "user_permanent" : "user_temporary" }
+            : { behavior: "deny", message: "用户拒绝了这次 Claude 画布工具调用", decisionClassification: "user_reject" });
+        return true;
     }
 
     /** 通过 SDK 原生初始化响应读取当前账号可用模型，不提交用户任务。 */
@@ -90,7 +154,7 @@ export class ClaudeSdkAdapter {
         const state = new ClaudeEventState({ clientId: options.clientId, threadId: options.threadId || options.sessionId || runId, turnId: runId });
         let activeQuery: ClaudeSdkQuery;
         try {
-            activeQuery = this.queryFactory({ prompt, options: this.queryOptions(abort, options) });
+            activeQuery = this.queryFactory({ prompt, options: this.queryOptions(abort, options, runId, emit) });
         } catch (error) {
             state.fail(error, emit);
             options.onFinish?.();
@@ -107,31 +171,99 @@ export class ClaudeSdkAdapter {
         const run = runId ? this.active.get(runId) : [...this.active.values()].find((item) => item.clientId === clientId);
         if (!run || run.clientId !== clientId) return false;
         run.state.interrupted(run.emit);
+        this.rejectPermissions(run.runId, "Claude 任务已停止");
         void run.query.interrupt?.().catch(() => undefined);
         run.abort.abort();
         run.query.close?.();
         return true;
     }
 
-    private queryOptions(abort: AbortController, options: RunOptions) {
-        const mcpServer = this.mcpServerFactory();
+    private queryOptions(abort: AbortController, options: RunOptions, runId: string, emit: AgentEmit) {
+        const permissionMode = options.permissionMode || "request";
+        const mcpServer = this.mcpServer(permissionMode);
+        const sdkPermissionMode = claudePermissionMode(permissionMode);
+        const usePermissionCallback = sdkPermissionMode === "default" || sdkPermissionMode === "auto";
         return {
             abortController: abort,
             cwd: options.cwd,
             systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: AGENT_PROMPT, snapshot: true },
             includePartialMessages: true,
             persistSession: true,
-            permissionMode: "dontAsk" as const,
+            permissionMode: sdkPermissionMode,
+            ...(sdkPermissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
             settingSources: [],
             strictMcpConfig: true,
             mcpServers: { "infinite-canvas": mcpServer },
-            allowedTools: ["mcp__infinite-canvas__*"],
+            allowedTools: sdkPermissionMode === "bypassPermissions" ? ["mcp__infinite-canvas__*"] : [],
             tools: [],
             ...(options.sessionId ? { resume: options.sessionId } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...(options.effort ? { effort: options.effort } : {}),
+            ...(usePermissionCallback ? { canUseTool: this.canUseTool(runId, options.clientId, emit) } : {}),
             env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: `canvas-agent/${VERSION}` },
         } satisfies ClaudeSdkOptions;
+    }
+
+    /** 将 SDK MCP 写入工具标记为逐次审批，读工具仍由 callback 自动放行。 */
+    private mcpServer(permissionMode: AgentPermissionMode) {
+        const server = this.mcpServerFactory();
+        if (permissionMode !== "request" || server.type !== "sdk") return server;
+        return {
+            ...server,
+            tools: [...CLAUDE_WRITE_TOOLS].map((name) => ({ name, permission_policy: "always_ask" as const })),
+        };
+    }
+
+    private canUseTool(runId: string, clientId: string, emit: AgentEmit): CanUseTool {
+        return async (toolName, input, options) => {
+            const canvasTool = toolName.replace(/^mcp__infinite-canvas__/, "") as ToolName;
+            if (!CLAUDE_WRITE_TOOLS.has(canvasTool)) return { behavior: "allow" };
+            const run = this.active.get(runId);
+            if (run && this.sessionApprovals.get(run.state.sessionId)?.has(canvasTool)) return { behavior: "allow", decisionClassification: "user_permanent" };
+            const requestId = options.requestId;
+            if (!requestId) return { behavior: "deny", message: "Claude SDK 未提供权限请求 ID", decisionClassification: "user_reject" };
+            return await new Promise<PermissionResult>((resolve) => {
+                const pending: PendingPermission = {
+                    requestId,
+                    runId,
+                    clientId,
+                    toolName: canvasTool,
+                    emit,
+                    signal: options.signal,
+                    resolve,
+                    onAbort: () => {
+                        if (!this.permissions.delete(requestId)) return;
+                        emit("claude_approval_resolved", { requestId, provider: "claude", toolName: canvasTool, decision: "decline" });
+                        resolve({ behavior: "deny", message: "Claude 任务已停止", decisionClassification: "user_reject" });
+                    },
+                };
+                this.permissions.set(requestId, pending);
+                options.signal.addEventListener("abort", pending.onAbort, { once: true });
+                emit("claude_approval", {
+                    requestId,
+                    provider: "claude",
+                    method: "claude/permission",
+                    toolName: canvasTool,
+                    toolInput: input,
+                    title: options.title,
+                    description: options.description,
+                    reason: options.decisionReason,
+                    displayName: options.displayName,
+                    toolUseId: options.toolUseID,
+                    threadId: this.active.get(runId)?.state.sessionId || runId,
+                    turnId: runId,
+                });
+            });
+        };
+    }
+
+    private rejectPermissions(runId: string, message: string) {
+        [...this.permissions.values()].filter((item) => item.runId === runId).forEach((item) => {
+            this.permissions.delete(item.requestId);
+            item.signal.removeEventListener("abort", item.onAbort);
+            item.emit("claude_approval_resolved", { requestId: item.requestId, provider: "claude", toolName: item.toolName, decision: "decline" });
+            item.resolve({ behavior: "deny", message, decisionClassification: "user_reject" });
+        });
     }
 
     private async consume(run: ActiveRun) {
@@ -143,6 +275,7 @@ export class ClaudeSdkAdapter {
             if (run.abort.signal.aborted) run.state.interrupted(run.emit);
             else run.state.fail(error, run.emit);
         } finally {
+            this.rejectPermissions(run.runId, "Claude 任务已结束");
             this.active.delete(run.runId);
             try {
                 run.query.close?.();
@@ -175,4 +308,10 @@ export function createCanvasMcpServer(config: CanvasAgentConfig) {
 
 function defaultMcpServer() {
     return createCanvasMcpServer(loadConfig(true));
+}
+
+function claudePermissionMode(mode: AgentPermissionMode): "default" | "auto" | "bypassPermissions" {
+    if (mode === "automatic") return "auto";
+    if (mode === "full") return "bypassPermissions";
+    return "default";
 }

@@ -23,7 +23,7 @@ export type ConversationState = {
     error?: string;
 };
 type McpInventoryItem = { name: string; authStatus?: string };
-export const AGENT_PROTOCOL_VERSION = 6;
+export const AGENT_PROTOCOL_VERSION = 7;
 
 const SITE_TOOLS = new Set<ToolName>([
     "site_navigate",
@@ -224,11 +224,11 @@ export class CanvasSession {
         return [...this.pendingApprovals.values()];
     }
 
-    /** 跟踪需要跨页面重连恢复的 Codex 权限请求。 */
+    /** 跟踪需要跨页面重连恢复的 Agent 权限请求。 */
     trackCodexEvent(type: string, payload: Record<string, unknown>) {
         const requestId = String(payload.requestId || "");
-        if (type === "codex_approval" && requestId) this.pendingApprovals.set(requestId, payload);
-        if (type === "codex_approval_resolved" && requestId) this.pendingApprovals.delete(requestId);
+        if ((type === "codex_approval" || type === "claude_approval") && requestId) this.pendingApprovals.set(requestId, payload);
+        if ((type === "codex_approval_resolved" || type === "claude_approval_resolved") && requestId) this.pendingApprovals.delete(requestId);
         if (type === "agent_error") this.pendingApprovals.clear();
     }
 

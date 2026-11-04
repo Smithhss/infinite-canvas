@@ -5,5 +5,5 @@ import { AGENT_PROVIDERS, agentProviderCapabilities } from "../src/lib/agent/age
 test("agent providers expose only implemented capabilities", () => {
     expect(AGENT_PROVIDERS).toEqual(["codex", "claude"]);
     expect(agentProviderCapabilities("codex")).toEqual({ model: true, reasoning: true, permission: true, attachments: true, skills: true, history: true, imageReferences: true, messageLabel: "Codex" });
-    expect(agentProviderCapabilities("claude")).toEqual({ model: true, reasoning: false, permission: false, attachments: false, skills: false, history: true, imageReferences: false, messageLabel: "Claude" });
+    expect(agentProviderCapabilities("claude")).toEqual({ model: true, reasoning: false, permission: true, attachments: false, skills: false, history: true, imageReferences: false, messageLabel: "Claude" });
 });

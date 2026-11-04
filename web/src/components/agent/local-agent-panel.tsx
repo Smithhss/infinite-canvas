@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
 import { agentProviderCapabilities, type AgentProvider } from "@/lib/agent/agent-provider";
+import { recoverPendingApprovals } from "@/lib/agent/agent-pending-approvals";
 import { rememberAgentPluginDetected, resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
 import { readAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -25,7 +26,7 @@ import { useAgentStore, type AgentAttachment, type AgentBootstrapStatus, type Ag
 import { type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import { isSiteTool, runSiteTool } from "@/lib/agent/agent-site-tools";
 import { didAgentWorkspaceChange } from "@/lib/agent/agent-skill-catalog";
-import { acknowledgeCodexHistory, activateAgentClient, AgentApiError, discoverAgentConfig, fetchAgentJson, interruptClaudeTurn, interruptCodexTurn, postCodexApproval, postState, postToolResult } from "@/services/api/canvas-agent";
+import { acknowledgeCodexHistory, activateAgentClient, AgentApiError, discoverAgentConfig, fetchAgentJson, interruptClaudeTurn, interruptCodexTurn, postClaudeApproval, postCodexApproval, postState, postToolResult } from "@/services/api/canvas-agent";
 import { AgentChatTimeline, AgentTaskProgress, AgentUsageBar } from "./agent-chat";
 import { AgentChatComposer } from "./agent-chat-composer";
 import { AgentConnectView } from "./agent-connect-view";
@@ -77,7 +78,7 @@ const MAX_ATTACHMENT_PAYLOAD_BYTES = 28 * 1024 * 1024;
 const MESSAGE_PREVIEW_LONG_EDGE = 192;
 const MESSAGE_PREVIEW_MAX_LENGTH = 500_000;
 const DEFAULT_AGENT_URL = "http://127.0.0.1:17371";
-const AGENT_PROTOCOL_VERSION = 6;
+const AGENT_PROTOCOL_VERSION = 7;
 const HISTORY_RETRY_DELAYS_MS = [0, 150, 350, 700, 1200];
 const AGENT_REASONING_EFFORTS = new Set<AgentReasoningEffort>(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 const AGENT_MODEL_STORAGE_KEYS: Record<AgentProvider, string> = { codex: "canvas-agent-model-codex", claude: "canvas-agent-model-claude" };
@@ -144,7 +145,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     // canvasContext is intentionally excluded because project updates it every frame during dragging and resizing.
     // The panel uses it only for ref synchronization and debounced postState calls, never during rendering.
     // Subscribing here would rerender the panel every frame and amplify the #185 crash, so it is observed imperatively below.
-    const { width, url, token, connected, enabled, pluginDetected, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, models, model, reasoningEffort, agentProvider, activity, conversation, connectError, pendingTool, pendingApprovals } = useAgentStore(
+    const { width, url, token, connected, enabled, pluginDetected, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, claudePermissionMode, models, model, reasoningEffort, agentProvider, activity, conversation, connectError, pendingTool, pendingApprovals } = useAgentStore(
         useShallow((state) => ({
             width: state.width,
             url: state.url,
@@ -165,6 +166,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             activeTab: state.activeTab,
             confirmTools: state.confirmTools,
             permissionMode: state.permissionMode,
+            claudePermissionMode: state.claudePermissionMode,
             models: state.models,
             model: state.model,
             reasoningEffort: state.reasoningEffort,
@@ -178,6 +180,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     );
     const effectiveAgentProvider: AgentProvider = agentProviderSwitchEnabled ? agentProvider : "codex";
     const providerCapabilities = agentProviderCapabilities(effectiveAgentProvider);
+    const effectivePermissionMode = effectiveAgentProvider === "claude" ? claudePermissionMode : permissionMode;
+    const runningActivity = effectiveAgentProvider === "claude" ? rt("claudeRunning") : rt("codexRunning");
     const setAgentState = useAgentStore((state) => state.setAgentState);
     const conversationReady = conversation.status === "ready" || conversation.status === "warning";
     const conversationBusy = conversation.status === "preparing" || conversation.status === "running";
@@ -399,15 +403,19 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 return;
             }
             const codex = hello?.codex;
-            const busy = Boolean(codex?.busy);
-            const nextThreadId = hello?.conversation?.threadId ?? hello?.workspace?.activeThreadId ?? useAgentStore.getState().activeThreadId;
-            if (hello?.conversation) applyConversationState(hello.conversation, true);
-            else applyWorkspaceChange({ activeThreadId: nextThreadId });
+            const fallbackThreadId = hello?.conversation?.threadId ?? hello?.workspace?.activeThreadId ?? useAgentStore.getState().activeThreadId;
+            const approvalRecovery = recoverPendingApprovals(hello?.pendingApprovals || [], fallbackThreadId, Boolean(codex?.busy));
+            const nextThreadId = approvalRecovery.threadId;
+            if (approvalRecovery.agent !== "claude") {
+                if (hello?.conversation) applyConversationState(hello.conversation, true);
+                else applyWorkspaceChange({ activeThreadId: nextThreadId });
+            }
             const current = useAgentStore.getState();
-            const nextTurnId = codex?.threadId === nextThreadId ? codex.turnId ?? "" : "";
+            const pendingApprovals = approvalRecovery.pendingApprovals;
+            const busy = Boolean(codex?.busy || pendingApprovals.length);
+            const nextTurnId = approvalRecovery.turnId || (codex?.threadId === nextThreadId ? codex.turnId ?? "" : "");
             if (nextTurnId) liveTurnKeysRef.current.add(`${nextThreadId}\0${nextTurnId}`);
             const activeTurnId = busy ? nextTurnId : "";
-            const pendingApprovals = busy ? (hello?.pendingApprovals || []).filter((item) => !item.threadId || item.threadId === nextThreadId) : [];
             const messages = activeTurnId
                 ? bindPendingTurnMessages(current.messages.filter((item) => !isConnectionErrorMessage(item)), nextThreadId, activeTurnId)
                 : current.messages.filter((item) => !isConnectionErrorMessage(item));
@@ -418,7 +426,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             setAgentState({
                 connected: true,
                 pluginDetected: pluginInitiated ? true : useAgentStore.getState().pluginDetected,
-                activity: pendingApprovals.length ? rt("awaitingApproval") : busy ? rt("codexRunning") : rt("connected"),
+                activity: pendingApprovals.length ? rt("awaitingApproval") : busy ? rt(approvalRecovery.agent === "claude" ? "claudeRunning" : "codexRunning") : rt("connected"),
                 waiting: busy,
                 sending: false,
                 connectError: "",
@@ -483,9 +491,27 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             const current = useAgentStore.getState();
             const approval = current.pendingApprovals.find((item) => item.requestId === data.requestId);
             const pendingApprovals = current.pendingApprovals.filter((item) => item.requestId !== data.requestId);
-            setAgentState({ pendingApprovals, activity: approvalActivity(pendingApprovals, current.waiting, current.activity) });
+            setAgentState({ pendingApprovals, activity: approvalActivity(pendingApprovals, current.waiting, current.activity, runningActivity) });
             const decision = data.decision || approval?.deciding;
             if (approval && decision) addEventLog(rt(decision === "accept" || decision === "acceptForSession" ? "approvalGranted" : "approvalCanceled"), approval.reason || approval.method, approval);
+        });
+        source.addEventListener("claude_approval", (event) => {
+            if (!isCurrentConnection()) return;
+            const data = parseEventData<AgentPendingApproval>(event);
+            if (!data || !isCurrentThreadEvent(data)) return;
+            setAgentState({ pendingApprovals: [...useAgentStore.getState().pendingApprovals.filter((item) => item.requestId !== data.requestId), data], activity: rt("awaitingApproval") });
+            addEventLog(rt("awaitingApproval"), data.title || data.toolName || data.method, data);
+        });
+        source.addEventListener("claude_approval_resolved", (event) => {
+            if (!isCurrentConnection()) return;
+            const data = parseEventData<{ requestId?: string; decision?: "accept" | "acceptForSession" | "decline" }>(event);
+            if (!data?.requestId) return;
+            const current = useAgentStore.getState();
+            const approval = current.pendingApprovals.find((item) => item.requestId === data.requestId);
+            const pendingApprovals = current.pendingApprovals.filter((item) => item.requestId !== data.requestId);
+            setAgentState({ pendingApprovals, activity: approvalActivity(pendingApprovals, current.waiting, current.activity, runningActivity) });
+            const decision = data.decision || approval?.deciding;
+            if (approval && decision) addEventLog(rt(decision === "accept" || decision === "acceptForSession" ? "approvalGranted" : "approvalCanceled"), approval.title || approval.toolName || approval.method, approval);
         });
         source.addEventListener("agent_event", (event) => {
             const data = parseEventData<AgentEventPayload>(event);
@@ -781,6 +807,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         clientId: clientIdRef.current,
                         threadId: threadId || undefined,
                         sessionId: threadId || undefined,
+                        permissionMode: effectivePermissionMode,
                         model: model || undefined,
                     }),
                 });
@@ -904,7 +931,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     };
 
     const handleToolCall = async (endpoint: string, token: string, payload: AgentPendingToolCall) => {
-        if (confirmToolsRef.current && isCanvasWriteTool(payload.name)) {
+        if (effectiveAgentProvider === "codex" && confirmToolsRef.current && isCanvasWriteTool(payload.name)) {
             if (pendingToolRef.current) {
                 await postToolResult(endpoint, token, clientIdRef.current, { requestId: payload.requestId, error: rt("pendingCanvasTool") });
                 return;
@@ -984,9 +1011,10 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         if (!pending || pending.deciding) return;
         setAgentState({ pendingApprovals: current.pendingApprovals.map((item) => item.requestId === approval.requestId ? { ...item, deciding: decision } : item), activity: rt("submittingApproval") });
         try {
-            await postCodexApproval(endpoint, token, approval.requestId, decision);
+            if (approval.provider === "claude") await postClaudeApproval(endpoint, token, clientIdRef.current, approval.requestId, decision);
+            else await postCodexApproval(endpoint, token, approval.requestId, decision);
             const latest = useAgentStore.getState();
-            if (latest.pendingApprovals.some((item) => item.requestId === approval.requestId)) setAgentState({ activity: rt("waitingCodexApproval") });
+            if (latest.pendingApprovals.some((item) => item.requestId === approval.requestId)) setAgentState({ activity: rt(approval.provider === "claude" ? "waitingClaudeApproval" : "waitingCodexApproval") });
         } catch (error) {
             const latest = useAgentStore.getState();
             const expired = error instanceof Error && error.message.includes("审批请求已失效");
@@ -994,7 +1022,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             const pendingApprovals = resolved
                 ? latest.pendingApprovals.filter((item) => item.requestId !== approval.requestId)
                 : latest.pendingApprovals.map((item) => item.requestId === approval.requestId ? { ...item, deciding: undefined } : item);
-            setAgentState({ pendingApprovals, activity: approvalActivity(pendingApprovals, latest.waiting, latest.activity) });
+            setAgentState({ pendingApprovals, activity: approvalActivity(pendingApprovals, latest.waiting, latest.activity, runningActivity) });
             if (resolved) return;
             addEventLog(rt("approvalFailed"), error);
             message.error(error instanceof Error ? error.message : rt("approvalFailed"));
@@ -1003,13 +1031,18 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
 
     const changePermissionMode = (nextMode: AgentPermissionMode) => {
         const apply = () => {
-            localStorage.setItem("canvas-agent-permission-mode", nextMode);
-            setAgentState({ permissionMode: nextMode });
+            if (effectiveAgentProvider === "claude") {
+                localStorage.setItem("canvas-agent-permission-mode-claude", nextMode);
+                setAgentState({ claudePermissionMode: nextMode });
+            } else {
+                localStorage.setItem("canvas-agent-permission-mode", nextMode);
+                setAgentState({ permissionMode: nextMode });
+            }
         };
         if (nextMode !== "full") return apply();
         modal.confirm({
-            title: rt("enableFullAccess"),
-            content: rt("fullAccessDescription"),
+            title: rt(effectiveAgentProvider === "claude" ? "enableClaudeFullAccess" : "enableFullAccess"),
+            content: rt(effectiveAgentProvider === "claude" ? "claudeFullAccessDescription" : "fullAccessDescription"),
             okText: rt("enableFullAccessAction"),
             okType: "danger",
             cancelText: t("common.cancel"),
@@ -1669,9 +1702,9 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         onStop={stopTurn}
                         onAddFiles={providerCapabilities.attachments ? addAttachments : undefined}
                         onRemoveAttachment={providerCapabilities.attachments ? removeAttachment : undefined}
-                        confirmTools={confirmTools}
-                        onConfirmToolsChange={(confirmTools) => setAgentState({ confirmTools })}
-                        permissionMode={providerCapabilities.permission ? permissionMode : undefined}
+                        confirmTools={effectiveAgentProvider === "codex" ? confirmTools : false}
+                        onConfirmToolsChange={effectiveAgentProvider === "codex" ? (confirmTools) => setAgentState({ confirmTools }) : undefined}
+                        permissionMode={providerCapabilities.permission ? effectivePermissionMode : undefined}
                         onPermissionModeChange={providerCapabilities.permission ? changePermissionMode : undefined}
                         models={providerCapabilities.model ? models : []}
                         model={providerCapabilities.model ? model : ""}
@@ -1766,9 +1799,9 @@ function scopeEventChatItem(event: AgentEventPayload, item: AgentChatItem, itemI
     return scopeChatItem({ ...item, itemId }, scope.threadId, scope.turnId);
 }
 
-function approvalActivity(pendingApprovals: AgentPendingApproval[], waiting: boolean, fallback: string) {
+function approvalActivity(pendingApprovals: AgentPendingApproval[], waiting: boolean, fallback: string, running: string) {
     if (pendingApprovals.length) return rt("awaitingApproval");
-    return waiting ? rt("codexRunning") : fallback;
+    return waiting ? running : fallback;
 }
 
 async function attachmentNodeOps(endpoint: string, token: string, clientId: string, value: unknown): Promise<CanvasAgentOp[]> {

@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { isNavigationToolEnabled, navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
@@ -24,11 +25,12 @@ export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolea
     const connectAgent = useAgentStore((state) => state.connectAgent);
     const togglePanel = useAgentStore((state) => state.togglePanel);
     const panelOpen = useAgentStore((state) => state.panelOpen);
+    const agentSkillHubEnabled = isFeatureEnabled("agentSkillHub");
     const hideHeader = /^\/canvas\/[^/]+/.test(pathname);
     const slug = pathname.split("/").filter(Boolean)[0];
     const activeToolSlug = navigationTools.some((tool) => tool.slug === slug) ? (slug as NavigationToolSlug) : undefined;
     const generalTools = navigationTools.filter((tool) => isNavigationToolEnabled(tool) && tool.slug !== "canvas");
-    const createActive = slug === "canvas" || panelOpen;
+    const createActive = slug === "canvas" || slug === "agent" || panelOpen;
     const createItems = [
         { key: "canvas", icon: <SquareDashed className="size-4" />, label: t("navigation.canvas") },
         { key: "agent", icon: <Bot className="size-4" />, label: t("topNav.creativeAgent") },
@@ -37,7 +39,14 @@ export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolea
     const handleCreateMenuClick = ({ key }: { key: string }) => {
         setCreateMenuOpen(false);
         if (key === "canvas") navigate(withShellFeatureFlags("/canvas", search));
-        if (key === "agent") togglePanel();
+        if (key === "agent") {
+            if (agentSkillHubEnabled) navigate(withShellFeatureFlags("/agent", search));
+            else togglePanel();
+        }
+    };
+    const handleOpenAgent = () => {
+        if (agentSkillHubEnabled) navigate(withShellFeatureFlags("/agent", search));
+        else togglePanel();
     };
 
     useEffect(() => {
@@ -129,14 +138,14 @@ export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolea
                         </div>
 
                         <div className="my-auto flex h-9 min-w-0 items-center justify-end gap-1.5 justify-self-end whitespace-nowrap">
-                            <Tooltip title={t(panelOpen ? "topNav.closeAgent" : "topNav.openAgent")}>
+                            <Tooltip title={t(!agentSkillHubEnabled && panelOpen ? "topNav.closeAgent" : "topNav.openAgent")}>
                                 <Button
                                     type="text"
                                     shape="circle"
                                     className="!h-8 !w-8 !min-w-8 !text-stone-600 hover:!text-stone-950 dark:!text-stone-300 dark:hover:!text-white"
                                     icon={<Bot className="size-4" />}
-                                    onClick={togglePanel}
-                                    aria-label={t(panelOpen ? "topNav.closeAgent" : "topNav.openAgent")}
+                                    onClick={handleOpenAgent}
+                                    aria-label={t(!agentSkillHubEnabled && panelOpen ? "topNav.closeAgent" : "topNav.openAgent")}
                                 />
                             </Tooltip>
                             <span className="mx-1 hidden h-4 w-px shrink-0 bg-stone-200 sm:block dark:bg-stone-800" />
@@ -154,7 +163,8 @@ export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolea
                 onClose={() => setMobileNavOpen(false)}
                 onOpenAgent={() => {
                     setMobileNavOpen(false);
-                    togglePanel();
+                    if (agentSkillHubEnabled) navigate(withShellFeatureFlags("/agent", search));
+                    else togglePanel();
                 }}
                 onOpenPlugins={() => {
                     setMobileNavOpen(false);

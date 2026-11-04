@@ -22,6 +22,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useAgentStore, type AgentAttachment, type AgentBootstrapStatus, type AgentCanvasContext, type AgentCanvasReference, type AgentChatItem, type AgentConversationState, type AgentModel, type AgentPendingApproval, type AgentPendingToolCall, type AgentPermissionMode, type AgentReasoningEffort, type AgentThreadSummary } from "@/stores/use-agent-store";
 import { type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import { isSiteTool, runSiteTool } from "@/lib/agent/agent-site-tools";
+import { didAgentWorkspaceChange } from "@/lib/agent/agent-skill-catalog";
 import { acknowledgeCodexHistory, activateAgentClient, AgentApiError, discoverAgentConfig, fetchAgentJson, interruptCodexTurn, postCodexApproval, postState, postToolResult } from "@/services/api/canvas-agent";
 import { AgentChatTimeline, AgentTaskProgress, AgentUsageBar } from "./agent-chat";
 import { AgentChatComposer } from "./agent-chat-composer";
@@ -86,7 +87,7 @@ type AgentTurnResponse = { ok?: boolean; threadId?: string };
 type AgentModelsResponse = { ok?: boolean; data?: AgentModel[] };
 type AgentCodexState = { busy?: boolean; threadId?: string; turnId?: string };
 type AgentHelloEvent = { ok?: boolean; protocolVersion?: number; clientId?: string; workspace?: { activeThreadId?: string }; conversation?: AgentConversationState; codex?: AgentCodexState; pendingApprovals?: AgentPendingApproval[] };
-type AgentWorkspaceEvent = { activeThreadId?: string; threadId?: string; sourceClientId?: string; emptyThread?: boolean; draftThread?: boolean; conversation?: AgentConversationState };
+type AgentWorkspaceEvent = { activeThreadId?: string; threadId?: string; sourceClientId?: string; workspacePath?: string; emptyThread?: boolean; draftThread?: boolean; conversation?: AgentConversationState };
 type AgentChatEvent = { threadId?: string; turnId?: string; sourceClientId?: string; replayed?: boolean; message?: AgentChatItem };
 type AgentBootstrapEvent = { type?: "codex.preparing" | "codex.prepare_failed" | "mcp.startup" | "mcp.complete"; phase?: "preheat" | "runtime"; threadId?: string; name?: string; status?: "starting" | "ready" | "failed" | "cancelled"; error?: string | null; failureReason?: string | null };
 type AgentClientGlobal = typeof globalThis & { __infiniteCanvasAgentClientIdPromise?: Promise<string> };
@@ -192,6 +193,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const liveTurnKeysRef = useRef(new Set<string>());
     const threadOperationRef = useRef(0);
     const threadOperationSequenceRef = useRef(0);
+    const workspacePathRef = useRef(useAgentStore.getState().workspacePath);
     const endpoint = useMemo(() => url.trim().replace(/\/$/, ""), [url]);
     const urlAgentAutoConnect = searchParams.has("agentUrl") && searchParams.has("agentToken");
     useEffect(() => {
@@ -305,6 +307,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             const currentThreadId = current.activeThreadId || data.workspace?.activeThreadId || "";
             if (!data.conversation && currentThreadId !== current.activeThreadId) sequence = applyWorkspaceChange({ activeThreadId: currentThreadId });
             if (sequence !== loadThreadsSequenceRef.current || useAgentStore.getState().activeThreadId !== currentThreadId) return;
+            if (data.workspace?.workspacePath) workspacePathRef.current = data.workspace.workspacePath;
             setAgentState({ threads: data.data || [], workspacePath: data.workspace?.workspacePath || "" });
             if (currentThreadId && !skipHistory) {
                 await loadThreadSnapshot(currentThreadId, sequence, undefined, expectedTurnId);
@@ -506,6 +509,14 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             enqueueEvent(() => {
                 if (data.conversation) applyConversationState(data.conversation);
                 else applyWorkspaceChange(data);
+                if (data.workspacePath) {
+                    const workspaceChanged = didAgentWorkspaceChange(workspacePathRef.current, data.workspacePath);
+                    workspacePathRef.current = data.workspacePath;
+                    if (workspaceChanged) {
+                        useAgentSkillStore.getState().reset();
+                        void loadSkills(endpoint, token, true);
+                    }
+                }
                 if (!data.draftThread) void loadThreads(Boolean(data.emptyThread));
             });
         });

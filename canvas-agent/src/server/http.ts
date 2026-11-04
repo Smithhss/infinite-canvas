@@ -55,7 +55,7 @@ export function startHttpServer() {
         const workspace = updateSiteWorkspace(config, { activeThreadId: activeThreadId || undefined });
         if (!preserveConversation) session.activateConversation(activeThreadId, String(payload.sourceClientId || "") || undefined);
         if (!session.codexBusy && session.codexThreadId !== activeThreadId) session.setCodexState({ threadId: activeThreadId, turnId: "" });
-        session.emitThread("workspace_changed", activeThreadId, { ...payload, activeThreadId, conversation: session.conversationStateSnapshot });
+        session.emitThread("workspace_changed", activeThreadId, { ...payload, activeThreadId, workspacePath: workspace.workspacePath, conversation: session.conversationStateSnapshot });
         return workspace;
     };
     let draftThreadStart: ReturnType<typeof startCodexThread> | null = null;

@@ -7,6 +7,7 @@ export const FEATURE_FLAG_DEFAULTS = {
     fytBackend: false,
     libtvShell: false,
     pluginHub: false,
+    agentSkillHub: false,
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAG_DEFAULTS;

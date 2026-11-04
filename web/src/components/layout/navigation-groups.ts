@@ -38,6 +38,7 @@ export function getShellToolNavigation(): ShellNavigationItem[] {
 
 export function isShellNavigationActive(item: ShellNavigationItem, pathname: string, search = "") {
     if (item.action === "plugins") return pathname === "/plugins";
+    if (item.action === "agent") return pathname === "/agent";
     if (!item.to) return false;
     const target = new URL(item.to, "http://localhost");
     const pathMatches = item.exactPath ? pathname === target.pathname : pathname === target.pathname || pathname.startsWith(`${target.pathname}/`);

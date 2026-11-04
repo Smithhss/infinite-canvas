@@ -2,11 +2,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Tooltip } from "antd";
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { getShellToolNavigation, isShellNavigationActive, shellCreateNavigation, shellPrimaryNavigation, withShellFeatureFlags, type ShellNavigationAction, type ShellNavigationItem } from "@/components/layout/navigation-groups";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import { cn } from "@/lib/utils";
 import { useAgentStore } from "@/stores/use-agent-store";
 
@@ -17,8 +18,10 @@ type AppSidebarProps = {
 export function AppSidebar({ onOpenPlugins }: AppSidebarProps) {
     const { t } = useTranslation();
     const { pathname, search } = useLocation();
+    const navigate = useNavigate();
     const panelOpen = useAgentStore((state) => state.panelOpen);
     const togglePanel = useAgentStore((state) => state.togglePanel);
+    const agentSkillHubEnabled = isFeatureEnabled("agentSkillHub");
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem("libtv-sidebar-collapsed") === "1");
     const immersiveRoute = /^\/canvas\/[^/]+/.test(pathname);
 
@@ -29,11 +32,14 @@ export function AppSidebar({ onOpenPlugins }: AppSidebarProps) {
     if (immersiveRoute) return null;
 
     const runAction = (action: ShellNavigationAction) => {
-        if (action === "agent") togglePanel();
+        if (action === "agent") {
+            if (agentSkillHubEnabled) navigate(withShellFeatureFlags("/agent", search));
+            else togglePanel();
+        }
         if (action === "plugins") onOpenPlugins();
     };
 
-    const itemActive = (item: ShellNavigationItem) => (item.action === "agent" ? panelOpen : isShellNavigationActive(item, pathname, search));
+    const itemActive = (item: ShellNavigationItem) => (item.action === "agent" ? (agentSkillHubEnabled ? isShellNavigationActive(item, pathname, search) : panelOpen) : isShellNavigationActive(item, pathname, search));
 
     const navItem = (item: ShellNavigationItem, options?: { group?: boolean }) => {
         const active = itemActive(item);

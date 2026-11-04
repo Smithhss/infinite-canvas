@@ -86,7 +86,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
 
     return (
         <motion.div
-            className="relative z-[60] flex h-full shrink-0 max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:max-w-[calc(100vw-48px)]"
+            className="relative z-[60] flex h-full shrink-0 max-sm:absolute max-sm:bottom-0 max-sm:left-0 max-sm:top-12 max-sm:h-auto max-sm:max-w-[calc(100vw-48px)]"
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: panelOpen ? width + 1 : 0, opacity: panelOpen ? 1 : 0 }}
             transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}

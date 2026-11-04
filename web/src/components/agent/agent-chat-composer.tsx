@@ -33,6 +33,7 @@ export function AgentChatComposer({
     onReasoningEffortChange,
     agentProvider,
     onAgentProviderChange,
+    acceptedImageTypes,
     left,
 }: {
     prompt: string;
@@ -57,6 +58,7 @@ export function AgentChatComposer({
     onReasoningEffortChange?: (effort: AgentReasoningEffort) => void;
     agentProvider?: AgentProvider;
     onAgentProviderChange?: (provider: AgentProvider) => void;
+    acceptedImageTypes?: string;
     left?: ReactNode;
 }) {
     const { t } = useTranslation();
@@ -72,8 +74,8 @@ export function AgentChatComposer({
                             <div key={item.id} className="group relative size-14 shrink-0 overflow-hidden rounded-xl border" style={{ borderColor: theme.node.stroke }} title={item.name}>
                                 <img src={item.url} alt={item.name} className="size-full object-cover" />
                                 {onRemoveAttachment ? (
-                                    <button type="button" className="absolute right-1 top-1 grid size-5 place-items-center rounded-full border opacity-0 shadow-sm transition group-hover:opacity-100" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text }} onClick={() => onRemoveAttachment(item.id)} aria-label={t("agent.composer.removeImage")}>
-                                        <X className="size-3" />
+                                    <button type="button" className="absolute right-1 top-1 grid size-8 place-items-center rounded-full border shadow-sm transition focus-visible:outline-2 focus-visible:outline-offset-2" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text }} onClick={() => onRemoveAttachment(item.id)} aria-label={t("agent.composer.removeImage")}>
+                                        <X className="size-3.5" />
                                     </button>
                                 ) : null}
                             </div>
@@ -86,7 +88,7 @@ export function AgentChatComposer({
                         {agentProvider && onAgentProviderChange ? <AgentProviderMenu provider={agentProvider} theme={theme} onChange={onAgentProviderChange} /> : null}
                         {onAddFiles ? (
                             <>
-                                <input ref={fileInputRef} hidden type="file" accept="image/*" multiple onChange={(event) => {
+                                <input ref={fileInputRef} hidden type="file" accept={acceptedImageTypes || "image/*"} multiple onChange={(event) => {
                                     void onAddFiles(event.target.files);
                                     event.target.value = "";
                                 }} />

@@ -1,9 +1,12 @@
+import crypto from "node:crypto";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 
+import { withAttachmentContext } from "./claude-attachments.js";
+import { normalizeClaudeHistory } from "./claude-sessions.js";
 import { MessageMetadataStore } from "./message-metadata.js";
 
 test("message metadata survives Agent restarts", async (context) => {
@@ -55,6 +58,73 @@ test("history metadata is matched by thread and turn instead of client message i
 
     const [message] = await fixture.store.mergeThread("thread-1", [{ role: "user", threadId: "thread-1", turnId: "turn-2", clientMessageId: "message-1" }]);
     assert.equal(message.skill, undefined);
+});
+
+test("Claude history restores metadata by the SDK user message UUID", async (context) => {
+    const fixture = await createFixture(context);
+    await fixture.store.recordPending("message-1", sampleMetadata());
+    await fixture.store.bindTurn("message-1", "session-1", "user-1");
+    const history = normalizeClaudeHistory("session-1", [{
+        uuid: "user-1",
+        type: "user",
+        message: { content: [{ type: "text", text: "比较这两张图" }] },
+    }]);
+
+    const [message] = await fixture.store.mergeThread("session-1", history);
+    assert.equal(message.clientMessageId, "message-1");
+    assert.equal(message.attachments?.[0].name, "image.png");
+    assert.equal(message.canvasReferences?.[0].nodeId, "node-1");
+});
+
+test("Claude history restores attachment and canvas metadata from a combined context prompt", async (context) => {
+    const fixture = await createFixture(context);
+    await fixture.store.recordPending("message-1", sampleMetadata());
+    await fixture.store.bindTurn("message-1", "session-1", "user-1");
+    const prompt = withAttachmentContext([
+        "比较这两张图",
+        "本轮引用的当前画布素材：",
+        '1. mention="@Image_1", nodeId="node-1", title="Product image", type=image',
+        "需要读取或操作这些素材时，先调用 canvas_get_state，并使用上面的 nodeId 精确定位，不要按标题猜测节点。",
+    ].join("\n\n"), [{ id: "image-1", name: "image.png" }]);
+    const history = normalizeClaudeHistory("session-1", [{
+        uuid: "user-1",
+        type: "user",
+        message: { content: [{ type: "text", text: prompt }] },
+    }]);
+
+    const [message] = await fixture.store.mergeThread("session-1", history);
+    assert.equal(message.text, "比较这两张图");
+    assert.equal(message.clientMessageId, "message-1");
+    assert.equal(message.attachments?.[0].name, "image.png");
+    assert.equal(message.canvasReferences?.[0].nodeId, "node-1");
+    assert.equal(message.skill?.name, "product-grid");
+    assert.doesNotMatch(JSON.stringify(message), /本轮可用图片附件|本轮引用的当前画布素材/);
+});
+
+test("Claude metadata binds thread and turn in one committed record", async (context) => {
+    const fixture = await createFixture(context);
+    await fixture.store.recordPending("message-1", sampleMetadata());
+    await fixture.store.bindThreadAndTurn("message-1", "session-1", "user-1");
+
+    const [message] = await fixture.reopen().mergeThread("session-1", [{ role: "user", threadId: "session-1", turnId: "user-1" }]);
+    assert.equal(message.clientMessageId, "message-1");
+    assert.equal(message.attachments?.[0].name, "image.png");
+});
+
+test("failed Claude metadata binding can remove its pending record", async (context) => {
+    const fixture = await createFixture(context);
+    await fixture.store.recordPending("message-1", sampleMetadata());
+    const threadKey = crypto.createHash("sha256").update("session-1").digest("hex");
+    const blocker = path.join(fixture.storeDirectory, "threads", threadKey);
+    await fs.writeFile(blocker, "not a directory");
+
+    await assert.rejects(() => fixture.store.bindThreadAndTurn("message-1", "session-1", "user-1"));
+    await fixture.store.remove("message-1");
+    await fs.rm(blocker);
+
+    const [message] = await fixture.store.mergeThread("session-1", [{ role: "user", threadId: "session-1", turnId: "user-1" }]);
+    assert.equal(message.clientMessageId, undefined);
+    assert.equal(message.attachments, undefined);
 });
 
 test("unknown storage versions are never overwritten", async (context) => {

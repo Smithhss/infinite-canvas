@@ -86,14 +86,14 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
 
     return (
         <motion.div
-            className="relative z-[60] flex h-full shrink-0"
+            className="relative z-[60] flex h-full shrink-0 max-sm:absolute max-sm:bottom-0 max-sm:left-0 max-sm:top-12 max-sm:h-auto max-sm:max-w-[calc(100vw-48px)]"
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: panelOpen ? width + 1 : 0, opacity: panelOpen ? 1 : 0 }}
             transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
             style={{ overflow: "clip", pointerEvents: panelClosing ? "none" : undefined }}
         >
             <motion.aside
-                className="relative flex h-full shrink-0 flex-col overflow-hidden border-r"
+                className="relative flex h-full min-w-0 max-w-full shrink-0 flex-col overflow-hidden border-r"
                 initial={{ x: -48 }}
                 animate={{ x: panelClosing ? -28 : 0 }}
                 transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
@@ -114,7 +114,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
                         <CanvasPromptsTab onInsert={onInsertAsset} theme={theme} />
                     )}
                 </div>
-                <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label={t("canvas.sidePanel.resize")} />
+                <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize max-sm:hidden" onPointerDown={startResize} aria-label={t("canvas.sidePanel.resize")} />
             </motion.aside>
         </motion.div>
     );

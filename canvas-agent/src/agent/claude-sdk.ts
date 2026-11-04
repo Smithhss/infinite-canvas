@@ -1,13 +1,14 @@
 import crypto from "node:crypto";
 
-import { createSdkMcpServer, query, tool, type CanUseTool, type McpServerConfig, type ModelInfo, type Options as ClaudeSdkOptions, type PermissionResult, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query, tool, type CanUseTool, type McpServerConfig, type ModelInfo, type Options as ClaudeSdkOptions, type PermissionResult, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 
 import { toolDescriptions, toolInputSchemas, toolNames, type ToolName } from "../canvas/schemas.js";
 import { AGENT_PROMPT, loadConfig, type CanvasAgentConfig, VERSION } from "../config.js";
 import { redactAgentLog } from "../utils/agent-runtime.js";
 import { errorMessage } from "../utils/value.js";
+import { claudePromptWithImages } from "./claude-attachments.js";
 import { ClaudeEventState } from "./claude-events.js";
-import type { AgentEmit, AgentPermissionMode } from "./types.js";
+import type { AgentAttachment, AgentEmit, AgentPermissionMode } from "./types.js";
 import { callCanvasAgentTool } from "../server/mcp.js";
 import { listProjectClaudeSkillNames } from "./claude-skills.js";
 
@@ -17,7 +18,7 @@ type ClaudeSdkQuery = AsyncIterable<unknown> & {
     supportedModels?: () => Promise<ModelInfo[]>;
     supportedCommands?: () => Promise<SlashCommand[]>;
 };
-type QueryFactory = (params: { prompt: string; options: ClaudeSdkOptions }) => ClaudeSdkQuery;
+type QueryFactory = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options: ClaudeSdkOptions }) => ClaudeSdkQuery;
 type McpServerFactory = () => McpServerConfig;
 type RunOptions = {
     clientId: string;
@@ -28,6 +29,9 @@ type RunOptions = {
     permissionMode?: AgentPermissionMode;
     skill?: string;
     effort?: "low" | "medium" | "high" | "xhigh" | "max";
+    messageId?: string;
+    isClientActive?: () => boolean;
+    onSessionId?: (sessionId: string) => void;
     onFinish?: () => void;
 };
 type PermissionDecision = "accept" | "acceptForSession" | "decline";
@@ -49,6 +53,13 @@ type ActiveRun = {
     state: ClaudeEventState;
     emit: AgentEmit;
     options: RunOptions;
+};
+export type ClaudeRunReservation = {
+    token: symbol;
+    runId: string;
+    clientId: string;
+    abort: AbortController;
+    cancelled: boolean;
 };
 
 const CLAUDE_WRITE_TOOLS = new Set<ToolName>([
@@ -82,6 +93,7 @@ const CLAUDE_WRITE_TOOLS = new Set<ToolName>([
 /** 使用 Claude Agent SDK 运行画布 Agent，并管理会话与中断。 */
 export class ClaudeSdkAdapter {
     private active = new Map<string, ActiveRun>();
+    private starting = new Map<symbol, ClaudeRunReservation>();
     private permissions = new Map<string, PendingPermission>();
     private sessionApprovals = new Map<string, Set<ToolName>>();
 
@@ -93,7 +105,21 @@ export class ClaudeSdkAdapter {
 
     /** 返回当前是否有 Claude turn 正在运行。 */
     get busy() {
-        return this.active.size > 0;
+        return this.active.size > 0 || this.starting.size > 0;
+    }
+
+    /** 在任何异步校验之前占位，确保断线回调也能取消尚未注册查询的 turn。 */
+    reserve(clientId: string) {
+        if (this.busy) throw new Error("Claude 正在执行其他任务，请先停止当前任务");
+        const reservation: ClaudeRunReservation = {
+            token: Symbol("claude-run"),
+            runId: this.runIdFactory(),
+            clientId,
+            abort: new AbortController(),
+            cancelled: false,
+        };
+        this.starting.set(reservation.token, reservation);
+        return reservation;
     }
 
     /** 将网页的权限决定交还给等待中的 SDK 工具调用。 */
@@ -185,36 +211,79 @@ export class ClaudeSdkAdapter {
     }
 
     /** 启动一轮 SDK 调用；事件通过 SSE 异步返回。 */
-    async run(prompt: string, emit: AgentEmit, options: RunOptions) {
-        if (!prompt.trim()) throw new Error("请输入任务内容");
-        if (this.active.size) throw new Error("Claude 正在执行其他任务，请先停止当前任务");
-        if (options.skill && !(await listProjectClaudeSkillNames(options.cwd)).includes(options.skill)) throw new Error("Claude Skill 不存在或不可用");
-        const runId = this.runIdFactory();
-        const abort = new AbortController();
-        const state = new ClaudeEventState({ clientId: options.clientId, threadId: options.threadId || options.sessionId || runId, turnId: runId });
-        let activeQuery: ClaudeSdkQuery;
+    async run(prompt: string, emit: AgentEmit, options: RunOptions, attachments: AgentAttachment[] = [], reservation?: ClaudeRunReservation) {
+        const activeReservation = reservation || this.reserve(options.clientId);
+        const state = new ClaudeEventState({
+            clientId: options.clientId,
+            threadId: options.threadId || options.sessionId || activeReservation.runId,
+            turnId: activeReservation.runId,
+            onSessionId: options.onSessionId,
+        });
         try {
-            activeQuery = this.queryFactory({ prompt, options: this.queryOptions(abort, options, runId, emit) });
+            if (!prompt.trim()) throw new Error("请输入任务内容");
+            if (activeReservation.cancelled || !this.starting.has(activeReservation.token)) throw new Error("Claude 任务已停止");
+            this.assertClientActive(options);
+            if (options.skill && !(await listProjectClaudeSkillNames(options.cwd)).includes(options.skill)) throw new Error("Claude Skill 不存在或不可用");
+            if (activeReservation.cancelled || !this.starting.has(activeReservation.token)) throw new Error("Claude 任务已停止");
+            this.assertClientActive(options);
+            let activeQuery: ClaudeSdkQuery;
+            try {
+                activeQuery = this.queryFactory({
+                    prompt: claudePromptWithImages(prompt, attachments, options.messageId || crypto.randomUUID()),
+                    options: this.queryOptions(activeReservation.abort, options, activeReservation.runId, emit),
+                });
+            } catch (error) {
+                state.fail(error, emit);
+                options.onFinish?.();
+                return { runId: activeReservation.runId, sessionId: state.sessionId };
+            }
+            const run: ActiveRun = {
+                runId: activeReservation.runId,
+                clientId: options.clientId,
+                query: activeQuery,
+                abort: activeReservation.abort,
+                state,
+                emit,
+                options,
+            };
+            this.active.set(run.runId, run);
+            void this.consume(run);
+            return { runId: run.runId, sessionId: state.sessionId };
         } catch (error) {
+            if (activeReservation.cancelled) {
+                state.interrupted(emit);
+                options.onFinish?.();
+                return { runId: activeReservation.runId, sessionId: state.sessionId };
+            }
             state.fail(error, emit);
-            options.onFinish?.();
-            return { runId, sessionId: state.sessionId };
+            throw error;
+        } finally {
+            this.starting.delete(activeReservation.token);
         }
-        const run: ActiveRun = { runId, clientId: options.clientId, query: activeQuery, abort, state, emit, options };
-        this.active.set(runId, run);
-        void this.consume(run);
-        return { runId, sessionId: state.sessionId };
+    }
+
+    private assertClientActive(options: RunOptions) {
+        if (options.isClientActive && !options.isClientActive()) throw new Error("发起 Claude 任务的网页已断开，请重新连接后再试");
     }
 
     /** 只中断发起请求的网页所拥有的 Claude turn。 */
     async interrupt(clientId: string, runId = "") {
         const run = runId ? this.active.get(runId) : [...this.active.values()].find((item) => item.clientId === clientId);
-        if (!run || run.clientId !== clientId) return false;
-        run.state.interrupted(run.emit);
-        this.rejectPermissions(run.runId, "Claude 任务已停止");
-        void run.query.interrupt?.().catch(() => undefined);
-        run.abort.abort();
-        run.query.close?.();
+        if (run && run.clientId === clientId) {
+            run.state.interrupted(run.emit);
+            this.rejectPermissions(run.runId, "Claude 任务已停止");
+            void run.query.interrupt?.().catch(() => undefined);
+            run.abort.abort();
+            run.query.close?.();
+            return true;
+        }
+        const starting = runId
+            ? [...this.starting.values()].find((item) => item.runId === runId)
+            : [...this.starting.values()].find((item) => item.clientId === clientId);
+        if (!starting || starting.clientId !== clientId) return false;
+        starting.cancelled = true;
+        starting.abort.abort();
+        this.starting.delete(starting.token);
         return true;
     }
 

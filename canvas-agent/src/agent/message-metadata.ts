@@ -60,6 +60,19 @@ export class MessageMetadataStore {
         });
     }
 
+    bindThreadAndTurn(clientMessageId: string, threadId: string, turnId: string) {
+        return this.run(async () => {
+            if (!clientMessageId || !threadId || !turnId) return;
+            await this.ensureReady();
+            const pendingFile = this.pendingFile(clientMessageId);
+            const targetFile = this.threadFile(threadId, clientMessageId);
+            const record = await readRecord(targetFile) || await readRecord(pendingFile);
+            if (!record) return;
+            await writeJson(targetFile, { ...record, threadId, turnId });
+            await removeFile(pendingFile);
+        });
+    }
+
     mergeThread<T extends MetadataMessage>(threadId: string, messages: T[]) {
         return this.run<Array<T & AgentMessageMetadata>>(async () => {
             await this.ensureReady();

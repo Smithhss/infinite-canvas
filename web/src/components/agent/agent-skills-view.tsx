@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { activeAgentProvider } from "@/lib/agent/agent-provider";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { createCodexSkill, createCodexSkillDraft, deleteCodexSkill, fetchCodexSkill, postState, setCodexSkillEnabled, updateCodexSkill, type AgentSkillDetail, type AgentSkillDraft, type AgentSkillInterface, type AgentSkillScope, type AgentSkillSummary } from "@/services/api/canvas-agent";
+import { AgentSkillResources } from "@/components/agent/agent-skill-resources";
 import { useAgentSkillStore } from "@/stores/use-agent-skill-store";
 import { useAgentStore, type AgentChatItem } from "@/stores/use-agent-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -431,6 +432,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
                             ),
                         }]}
                     />
+                    {editor?.mode === "edit" ? <AgentSkillResources endpoint={endpoint} token={token} skillName={editor.detail.name} /> : null}
                 </Form>
             </Modal>
         </div>

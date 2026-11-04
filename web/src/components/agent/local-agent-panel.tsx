@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
-import { activeAgentProvider, agentProviderCapabilities, type AgentProvider } from "@/lib/agent/agent-provider";
+import { activeAgentProvider, agentProviderCapabilities, agentProviderSupportsImageType, type AgentProvider } from "@/lib/agent/agent-provider";
 import { recoverPendingApprovals } from "@/lib/agent/agent-pending-approvals";
 import { rememberAgentPluginDetected, resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
 import { readAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
@@ -75,10 +75,11 @@ import { AgentSkillsView } from "./agent-skills-view";
 
 const MAX_ATTACHMENTS = 6;
 const MAX_ATTACHMENT_PAYLOAD_BYTES = 28 * 1024 * 1024;
+const CLAUDE_IMAGE_ACCEPT = "image/png,image/jpeg,image/jpg,image/gif,image/webp";
 const MESSAGE_PREVIEW_LONG_EDGE = 192;
 const MESSAGE_PREVIEW_MAX_LENGTH = 500_000;
 const DEFAULT_AGENT_URL = "http://127.0.0.1:17371";
-const AGENT_PROTOCOL_VERSION = 7;
+const AGENT_PROTOCOL_VERSION = 8;
 const HISTORY_RETRY_DELAYS_MS = [0, 150, 350, 700, 1200];
 const AGENT_REASONING_EFFORTS = new Set<AgentReasoningEffort>(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 const AGENT_MODEL_STORAGE_KEYS: Record<AgentProvider, string> = { codex: "canvas-agent-model-codex", claude: "canvas-agent-model-claude" };
@@ -145,7 +146,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     // canvasContext is intentionally excluded because project updates it every frame during dragging and resizing.
     // The panel uses it only for ref synchronization and debounced postState calls, never during rendering.
     // Subscribing here would rerender the panel every frame and amplify the #185 crash, so it is observed imperatively below.
-    const { width, url, token, connected, enabled, pluginDetected, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, claudePermissionMode, models, model, reasoningEffort, agentProvider, activity, conversation, connectError, pendingTool, pendingApprovals } = useAgentStore(
+    const { width, url, token, connected, enabled, pluginDetected, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, claudePermissionMode, models, model, reasoningEffort, agentProvider, activity, conversation, connectError, pendingTools, pendingApprovals } = useAgentStore(
         useShallow((state) => ({
             width: state.width,
             url: state.url,
@@ -174,7 +175,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             activity: state.activity,
             conversation: state.conversation,
             connectError: state.connectError,
-            pendingTool: state.pendingTool,
+            pendingTools: state.pendingTools,
             pendingApprovals: state.pendingApprovals,
         })),
     );
@@ -183,6 +184,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const effectivePermissionMode = effectiveAgentProvider === "claude" ? claudePermissionMode : permissionMode;
     const runningActivity = effectiveAgentProvider === "claude" ? rt("claudeRunning") : rt("codexRunning");
     const setAgentState = useAgentStore((state) => state.setAgentState);
+    const enqueuePendingTool = useAgentStore((state) => state.enqueuePendingTool);
+    const removePendingTool = useAgentStore((state) => state.removePendingTool);
     const conversationReady = conversation.status === "ready" || conversation.status === "warning";
     const conversationBusy = conversation.status === "preparing" || conversation.status === "running";
     const closePanel = useAgentStore((state) => state.closePanel);
@@ -195,7 +198,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const messageCount = useAgentStore((state) => state.messages.length);
     const canvasContextRef = useRef<AgentCanvasContext | null>(useAgentStore.getState().canvasContext);
     const confirmToolsRef = useRef(confirmTools);
-    const pendingToolRef = useRef<AgentPendingToolCall | null>(null);
+    const toolExecutionRef = useRef<Promise<void>>(Promise.resolve());
     const claudeRunIdRef = useRef("");
     const autoConnectRef = useRef(false);
     const connectedRef = useRef(false);
@@ -290,13 +293,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             : emptyThread ? []
                 : threadChanged ? threadMessagesRef.current.get(nextThreadId) || []
                     : current.messages;
-        pendingToolRef.current = null;
         setAgentState({
             activeThreadId: nextThreadId,
             activeTurnId: threadChanged || emptyThread ? "" : current.activeTurnId,
             messages,
             tokenUsage: threadChanged || emptyThread ? null : current.tokenUsage,
-            pendingTool: null,
+            pendingTools: [],
             pendingApprovals: threadChanged || emptyThread ? [] : current.pendingApprovals,
         });
         return loadThreadsSequenceRef.current;
@@ -363,9 +365,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     useEffect(() => {
         confirmToolsRef.current = confirmTools;
     }, [confirmTools]);
-    useEffect(() => {
-        pendingToolRef.current = pendingTool;
-    }, [pendingTool]);
     useEffect(() => () => attachmentUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
     useEffect(() => {
@@ -393,7 +392,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 protocolRejected = true;
                 source.close();
                 connectedRef.current = false;
-                setAgentState({ enabled: false, connected: false, waiting: false, sending: false, activity: rt("restartRequired"), connectError: text, silentConnect: false, fragmentBootstrap: false, pendingTool: null, pendingApprovals: [] });
+                setAgentState({ enabled: false, connected: false, waiting: false, sending: false, activity: rt("restartRequired"), connectError: text, silentConnect: false, fragmentBootstrap: false, pendingTools: [], pendingApprovals: [] });
                 useAgentSkillStore.getState().reset();
                 addEventLog(rt("versionMismatch"), text, hello);
                 if (!headless) message.error(text);
@@ -627,7 +626,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             }
             errorLoggedRef.current = true;
             connectedRef.current = false;
-            pendingToolRef.current = null;
             setAgentState({
                 activity: rt(wasConnected ? "connectionLost" : "connectionFailed"),
                 connected: false,
@@ -636,7 +634,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 connectError: silent ? "" : text,
                 silentConnect: false,
                 fragmentBootstrap: false,
-                pendingTool: null,
+                pendingTools: [],
                 pendingApprovals: [],
             });
             useAgentSkillStore.getState().reset();
@@ -742,14 +740,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         const requestPrompt = promptWithCanvasReferences(promptWithAttachments(text, files), canvasReferences);
         const conversationAllowed = claudeMode || ["ready", "warning"].includes(currentState.conversation.status);
         if (!currentState.connected || !requestPrompt || currentState.sending || currentState.waiting || currentState.loadingThreads || !conversationAllowed) return;
-        if (claudeMode && files.length) {
-            message.warning(rt("providerClaudeMediaUnsupported"));
-            return;
-        }
-        if (claudeMode && canvasReferences.some((item) => item.kind === "image")) {
-            message.warning(rt("providerClaudeMediaUnsupported"));
-            return;
-        }
         let referenceImages: AgentAttachment[] = [];
         if (canvasReferences.some((item) => item.kind === "image")) {
             setAgentState({ sending: true, activity: rt("readingCanvasImages") });
@@ -762,6 +752,11 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             }
         }
         const requestFiles = [...files, ...referenceImages.filter((reference) => !files.some((file) => file.dataUrl === reference.dataUrl))];
+        if (claudeMode && requestFiles.some((file) => !agentProviderSupportsImageType("claude", file.type))) {
+            setAgentState({ sending: false, activity: rt("unsupportedImageFormat") });
+            addMessage({ role: "error", title: rt("unsupportedImageFormat"), text: rt("claudeImageTypeLimit") });
+            return;
+        }
         if (requestFiles.length > MAX_ATTACHMENTS) {
             setAgentState({ sending: false, activity: rt("tooManyImages") });
             addMessage({ role: "error", title: rt("tooManyImages"), text: rt("imageCountLimit", { count: MAX_ATTACHMENTS }) });
@@ -804,9 +799,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         clientId: clientIdRef.current,
                         threadId: threadId || undefined,
                         sessionId: threadId || undefined,
+                        messageId,
                         permissionMode: effectivePermissionMode,
                         model: model || undefined,
                         skill: selectedSkill ? { name: selectedSkill.name, path: selectedSkill.path } : undefined,
+                        attachments: requestFiles.map(({ id, name, type, size, width, height, dataUrl }) => ({ id, name, type, size, width, height, dataUrl })),
+                        messageMetadata,
                     }),
                 });
                 if (!accepted.runId) throw new Error(rt("startConversationFailed"));
@@ -893,10 +891,14 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const addAttachments = async (files: FileList | File[] | null) => {
         if (!files) return;
         const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
+        const supported = images.filter((file) => agentProviderSupportsImageType(effectiveAgentProvider, file.type));
+        if (supported.length !== images.length) {
+            addMessage({ role: "error", title: rt("unsupportedImageFormat"), text: rt("claudeImageTypeLimit") });
+        }
         const prev = useAgentStore.getState().attachments;
         try {
             const next = await Promise.all(
-                images.slice(0, Math.max(0, MAX_ATTACHMENTS - prev.length)).map(async (file) => {
+                supported.slice(0, Math.max(0, MAX_ATTACHMENTS - prev.length)).map(async (file) => {
                     const dataUrl = await readDataUrl(file);
                     const meta = await readImageMeta(dataUrl);
                     const url = URL.createObjectURL(file);
@@ -930,13 +932,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
 
     const handleToolCall = async (endpoint: string, token: string, payload: AgentPendingToolCall) => {
         if (effectiveAgentProvider === "codex" && confirmToolsRef.current && isCanvasWriteTool(payload.name)) {
-            if (pendingToolRef.current) {
-                await postToolResult(endpoint, token, clientIdRef.current, { requestId: payload.requestId, error: rt("pendingCanvasTool") });
-                return;
+            const alreadyQueued = useAgentStore.getState().pendingTools.some((item) => item.requestId === payload.requestId);
+            enqueuePendingTool(payload);
+            if (!alreadyQueued) {
+                setAgentState({ activity: rt("awaitingConfirmation") });
+                addEventLog(rt("awaitingConfirmation"), payload, payload);
             }
-            pendingToolRef.current = payload;
-            setAgentState({ pendingTool: payload });
-            addEventLog(rt("awaitingConfirmation"), payload, payload);
             return;
         }
         await runToolCall(endpoint, token, payload);
@@ -988,19 +989,24 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         }
     };
 
-    const rejectPendingTool = async () => {
-        if (!pendingTool) return;
-        await postToolResult(endpoint, token, clientIdRef.current, { requestId: pendingTool.requestId, error: rt("canvasToolCanceled") });
-        pendingToolRef.current = null;
-        setAgentState({ pendingTool: null });
+    const rejectPendingTool = async (requestId: string) => {
+        const tool = useAgentStore.getState().pendingTools.find((item) => item.requestId === requestId);
+        if (!tool) return;
+        removePendingTool(requestId);
+        const current = useAgentStore.getState();
+        setAgentState({ activity: current.pendingTools.length ? rt("awaitingConfirmation") : current.waiting ? runningActivity : current.activity });
+        await postToolResult(endpoint, token, clientIdRef.current, { requestId: tool.requestId, error: rt("canvasToolCanceled") });
     };
 
-    const approvePendingTool = async () => {
-        if (!pendingTool) return;
-        const tool = pendingTool;
-        pendingToolRef.current = null;
-        setAgentState({ pendingTool: null });
-        await runToolCall(endpoint, token, tool);
+    const approvePendingTool = (requestId: string) => {
+        const tool = useAgentStore.getState().pendingTools.find((item) => item.requestId === requestId);
+        if (!tool) return;
+        removePendingTool(requestId);
+        const current = useAgentStore.getState();
+        setAgentState({ activity: current.pendingTools.length ? rt("awaitingConfirmation") : runningActivity });
+        toolExecutionRef.current = toolExecutionRef.current
+            .catch(() => undefined)
+            .then(() => runToolCall(endpoint, token, tool));
     };
 
     const decideApproval = async (approval: AgentPendingApproval, decision: "accept" | "acceptForSession" | "decline") => {
@@ -1056,7 +1062,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             return;
         }
         const nextCapabilities = agentProviderCapabilities(nextProvider);
-        const droppedAttachments = nextCapabilities.attachments ? [] : current.attachments;
+        const droppedAttachments = nextCapabilities.attachments ? current.attachments.filter((item) => !agentProviderSupportsImageType(nextProvider, item.type)) : current.attachments;
         const imageReferences = nextCapabilities.imageReferences ? [] : current.canvasReferences.filter((item) => item.kind === "image");
         droppedAttachments.forEach((item) => {
             URL.revokeObjectURL(item.url);
@@ -1066,10 +1072,9 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         loadThreadsSequenceRef.current += 1;
         useAgentSkillStore.getState().reset();
         claudeRunIdRef.current = "";
-        pendingToolRef.current = null;
         setAgentState({
             agentProvider: nextProvider,
-            attachments: droppedAttachments.length ? [] : current.attachments,
+            attachments: nextCapabilities.attachments ? current.attachments.filter((item) => agentProviderSupportsImageType(nextProvider, item.type)) : [],
             canvasReferences: imageReferences.length ? current.canvasReferences.filter((item) => item.kind !== "image") : current.canvasReferences,
             activeTab: nextCapabilities.history || nextCapabilities.skills || !["history", "skills"].includes(current.activeTab) ? current.activeTab : "chat",
             activeThreadId: "",
@@ -1081,12 +1086,13 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             model: "",
             reasoningEffort: "",
             tokenUsage: null,
-            pendingTool: null,
+            pendingTools: [],
             pendingApprovals: [],
         });
         if (nextProvider === "claude") {
             addEventLog(rt("providerClaudeSelected"), rt("providerClaudeHint"));
-            if (droppedAttachments.length || imageReferences.length) message.info(rt("providerClaudeMediaDropped"));
+            if (droppedAttachments.length) message.info(rt("claudeImageTypeLimit"));
+            if (imageReferences.length) message.info(rt("providerClaudeMediaDropped"));
         }
     };
 
@@ -1183,7 +1189,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             waiting: false,
             sending: false,
             fragmentBootstrap: false,
-            pendingTool: null,
+            pendingTools: [],
             pendingApprovals: [],
             conversation: { revision: 0, conversationId: "", threadId: "", status: "idle", mcpStatuses: {} },
             bootstrapStatus: null,
@@ -1191,7 +1197,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             ...patch,
         });
         useAgentSkillStore.getState().reset();
-        pendingToolRef.current = null;
     }
 
     const beginThreadOperation = () => {
@@ -1214,7 +1219,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             loadThreadsSequenceRef.current += 1;
             threadMessagesRef.current.clear();
             clearSkillSelection();
-            pendingToolRef.current = null;
             claudeRunIdRef.current = "";
             setAgentState({
                 activeTab: "chat",
@@ -1222,7 +1226,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 activeTurnId: "",
                 messages: [],
                 tokenUsage: null,
-                pendingTool: null,
+                pendingTools: [],
                 pendingApprovals: [],
                 activity: rt("newConversation"),
             });
@@ -1663,24 +1667,24 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 <AgentLogView
                     logs={eventLogs}
                     theme={theme}
-                    context={{ endpoint, connected, enabled, activity, waiting, sending, messages: messageCount, pendingTool: pendingTool?.name }}
+                    context={{ endpoint, connected, enabled, activity, waiting, sending, messages: messageCount, pendingTool: pendingTools.map((tool) => toolName(tool.name)).join(", ") }}
                     onClear={clearEventLogs}
                     onCopied={(text) => message.success(text)}
                     onCopyBlocked={(text) => message.warning(text)}
                 />
             ) : (
                 <>
-                    {agentPanelChromeEnabled && (sending || waiting || pendingTool || pendingApprovals.length) ? (
+                    {agentPanelChromeEnabled && (sending || waiting || pendingTools.length || pendingApprovals.length) ? (
                         <AgentRuntimeStatus
                             activity={activity || t("agent.message.running")}
                             sending={sending}
                             waiting={waiting}
-                            pendingTool={pendingTool}
+                            pendingTools={pendingTools}
                             pendingApprovals={pendingApprovals}
                             theme={theme}
                         />
                     ) : null}
-                    <AgentChatTimeline theme={theme} pendingTool={pendingTool} pendingApprovals={pendingApprovals} sending={sending} waiting={waiting} onRejectTool={rejectPendingTool} onApproveTool={approvePendingTool} onApprovalDecision={decideApproval} />
+                    <AgentChatTimeline theme={theme} pendingTools={pendingTools} pendingApprovals={pendingApprovals} sending={sending} waiting={waiting} onRejectTool={rejectPendingTool} onApproveTool={approvePendingTool} onApprovalDecision={decideApproval} />
                     <AgentTaskProgress theme={theme} busy={sending || waiting} />
                     {tokenUsage ? <AgentUsageBar usage={tokenUsage} theme={theme} /> : null}
                     <AgentChatComposer
@@ -1722,10 +1726,11 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         } : undefined}
                         agentProvider={agentProviderSwitchEnabled ? agentProvider : undefined}
                         onAgentProviderChange={agentProviderSwitchEnabled ? changeAgentProvider : undefined}
+                        acceptedImageTypes={effectiveAgentProvider === "claude" ? CLAUDE_IMAGE_ACCEPT : undefined}
                         left={
                             attachments.length ? (
                                 <span className="hidden text-[11px] @min-[660px]:inline" style={{ color: theme.node.muted }}>
-                                    {formatBytes(attachmentPayloadBytes(attachments))} / 30MB
+                                    {formatBytes(attachmentPayloadBytes(attachments))} / {MAX_ATTACHMENT_PAYLOAD_BYTES / (1024 * 1024)}MB
                                 </span>
                             ) : null
                         }

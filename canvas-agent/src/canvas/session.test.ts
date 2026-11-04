@@ -62,6 +62,27 @@ test("画布写操作只发送给当前激活网页", async (t) => {
     assert.deepEqual(await result, { ok: true });
 });
 
+test("并行画布工具请求可按任意顺序返回结果", async (t) => {
+    const session = new CanvasSession();
+    const first = connect(session, "first");
+    t.after(() => first.close());
+    session.updateState(snapshot("canvas-first"), "first");
+    session.activateClient("first");
+
+    const firstResult = session.callTool("canvas_create_text_node", { text: "first" });
+    const secondResult = session.callTool("canvas_create_text_node", { text: "second" });
+    const calls = first.events("tool_call");
+    assert.equal(calls.length, 2);
+    const firstRequestId = String(field(calls[0], "requestId"));
+    const secondRequestId = String(field(calls[1], "requestId"));
+    assert.notEqual(firstRequestId, secondRequestId);
+
+    assert.equal(session.resolveResult("first", { requestId: secondRequestId, result: { order: "second" } }), true);
+    assert.deepEqual(await secondResult, { order: "second" });
+    assert.equal(session.resolveResult("first", { requestId: firstRequestId, result: { order: "first" } }), true);
+    assert.deepEqual(await firstResult, { order: "first" });
+});
+
 test("当前 turn 的图片附件可在发起标签页画布创建图片节点", async (t) => {
     const session = new CanvasSession();
     const first = connect(session, "first");
@@ -92,6 +113,23 @@ test("当前 turn 的图片附件可在发起标签页画布创建图片节点",
     assert.throws(() => session.getTurnAttachment("first", "attachment-1"), /找不到/);
 });
 
+test("画布附件工具会去重重复 ID 并拒绝超量参数", async (t) => {
+    const session = new CanvasSession();
+    const first = connect(session, "first");
+    t.after(() => first.close());
+    session.setTurnAttachments("first", [{ id: "attachment-1", name: "商品.png", type: "image/png", width: 1200, height: 600, dataUrl: "data:image/png;base64,aW1hZ2U=" }]);
+    session.bindClient("first");
+
+    const result = session.callTool("canvas_create_attachment_nodes", { attachmentIds: ["attachment-1", "attachment-1"] });
+    const call = first.event("tool_call");
+    const nodes = field(field(call, "input"), "nodes") as Array<Record<string, unknown>>;
+    assert.equal(nodes.length, 1);
+    session.resolveResult("first", { requestId: String(field(call, "requestId")), result: { ok: true } });
+    assert.equal(((await result) as { nodes: unknown[] }).nodes.length, 1);
+
+    await assert.rejects(session.callTool("canvas_create_attachment_nodes", { attachmentIds: Array.from({ length: 7 }, (_, index) => `attachment-${index}`) }), /Too big|最多|less than or equal/i);
+});
+
 test("图片附件只允许发起 turn 的标签页读取和落入画布", async (t) => {
     const session = new CanvasSession();
     const first = connect(session, "first");
@@ -103,10 +141,66 @@ test("图片附件只允许发起 turn 的标签页读取和落入画布", async
     session.setTurnAttachments("first", [{ id: "attachment-1", name: "商品.png", type: "image/png", dataUrl: "data:image/png;base64,aW1hZ2U=" }]);
     session.bindClient("second");
 
-    await assert.rejects(session.callTool("canvas_create_attachment_nodes", { attachmentIds: ["attachment-1"] }), /发起标签页/);
-    assert.throws(() => session.getTurnAttachment("second", "attachment-1"), /发起标签页/);
+    await assert.rejects(session.callTool("canvas_create_attachment_nodes", { attachmentIds: ["attachment-1"] }), /找不到/);
+    assert.throws(() => session.getTurnAttachment("second", "attachment-1"), /找不到/);
     assert.equal(first.event("tool_call"), undefined);
     assert.equal(second.event("tool_call"), undefined);
+});
+
+test("不同网页的 turn 附件互不清理", () => {
+    const session = new CanvasSession();
+    session.setTurnAttachments("first", [{ id: "first-attachment", name: "first.png", dataUrl: "data:image/png;base64,b25l" }]);
+    session.setTurnAttachments("second", [{ id: "second-attachment", name: "second.png", dataUrl: "data:image/png;base64,dHdv" }]);
+    assert.equal(session.getTurnAttachment("first", "first-attachment").name, "first.png");
+    assert.equal(session.getTurnAttachment("second", "second-attachment").name, "second.png");
+    session.setTurnAttachments("first", [{ id: "replacement", name: "replacement.png", dataUrl: "data:image/png;base64,dGhyZWU=" }]);
+    assert.throws(() => session.getTurnAttachment("first", "first-attachment"), /找不到/);
+    assert.equal(session.getTurnAttachment("second", "second-attachment").name, "second.png");
+});
+
+test("不同网页使用相同附件 id 时互不覆盖", () => {
+    const session = new CanvasSession();
+    session.setTurnAttachments("first", [{ id: "shared", name: "first.png", dataUrl: "data:image/png;base64,b25l" }]);
+    session.setTurnAttachments("second", [{ id: "shared", name: "second.png", dataUrl: "data:image/png;base64,dHdv" }]);
+
+    assert.equal(session.getTurnAttachment("first", "shared").name, "first.png");
+    assert.equal(session.getTurnAttachment("second", "shared").name, "second.png");
+    session.clearTurnAttachments("first");
+    assert.throws(() => session.getTurnAttachment("first", "shared"), /找不到/);
+    assert.equal(session.getTurnAttachment("second", "shared").name, "second.png");
+});
+
+test("同一网页不能并发占用第二个 Agent turn", (t) => {
+    const session = new CanvasSession();
+    const client = connect(session, "first");
+    t.after(() => client.close());
+
+    assert.equal(session.beginAgentTurn("first"), true);
+    assert.equal(session.beginAgentTurn("first"), false);
+    session.releaseClient("first");
+    assert.equal(session.beginAgentTurn("first"), true);
+});
+
+test("网页断开后清理该网页的本轮附件", (t) => {
+    const session = new CanvasSession();
+    const client = connect(session, "first");
+    t.after(() => client.close());
+    session.setTurnAttachments("first", [{ id: "attachment-1", name: "image.png", dataUrl: "data:image/png;base64,aW1hZ2U=" }]);
+
+    client.close();
+
+    assert.throws(() => session.getTurnAttachment("first", "attachment-1"), /找不到/);
+});
+
+test("网页断开后通知 Agent 中止归属于该网页的运行", (t) => {
+    const session = new CanvasSession();
+    const disconnected: string[] = [];
+    const client = connect(session, "first", "", (clientId) => disconnected.push(clientId));
+    t.after(() => client.close());
+
+    client.close();
+
+    assert.deepEqual(disconnected, ["first"]);
 });
 
 test("tool result is accepted only from the request client", async (t) => {
@@ -221,7 +315,7 @@ test("new clients receive the current Codex state and later updates", (t) => {
     t.after(() => client.close());
 
     const hello = client.event("hello");
-    assert.equal(field(hello, "protocolVersion"), 7);
+    assert.equal(field(hello, "protocolVersion"), 8);
     assert.deepEqual(field(hello, "workspace"), { activeThreadId: "thread-2" });
     assert.deepEqual(field(hello, "conversation"), { revision: 1, conversationId: "thread-2", threadId: "thread-2", status: "ready", mcpStatuses: {} });
     assert.deepEqual(field(hello, "codex"), { busy: true, threadId: "thread-2", turnId: "turn-1" });
@@ -535,9 +629,9 @@ test("切换活动线程会清除上一线程的实时快照", (t) => {
 });
 
 /** 创建用于测试的画布 SSE 连接。 */
-function connect(session: CanvasSession, clientId: string, activeThreadId = "") {
+function connect(session: CanvasSession, clientId: string, activeThreadId = "", onDisconnect?: (clientId: string) => void) {
     const response = new FakeSseResponse();
-    session.openEvents(new URL(`http://127.0.0.1/events?clientId=${clientId}`), response as unknown as ServerResponse, activeThreadId);
+    session.openEvents(new URL(`http://127.0.0.1/events?clientId=${clientId}`), response as unknown as ServerResponse, activeThreadId, onDisconnect);
     return response;
 }
 

@@ -56,6 +56,20 @@ test("Claude history accepts plain string messages and ignores unknown blocks", 
     assert.deepEqual(history.map(({ role, text }) => ({ role, text })), [{ role: "user", text: "继续完善场景" }]);
 });
 
+test("Claude history hides canvas reference context", () => {
+    const prompt = [
+        "沿用这张参考图",
+        "本轮引用的当前画布素材：",
+        '1. mention="@Image_1", nodeId="node-1", title="参考图", type=image',
+        "需要读取或操作这些素材时，先调用 canvas_get_state，并使用上面的 nodeId 精确定位，不要按标题猜测节点。",
+    ].join("\n\n");
+    const history = normalizeClaudeHistory("session-canvas", [
+        { uuid: "user-1", type: "user", message: { content: [{ type: "text", text: prompt }] } },
+    ]);
+
+    assert.deepEqual(history.map(({ text }) => text), ["沿用这张参考图"]);
+});
+
 test("Claude history marks failed and unmatched tools without exposing tool payloads", () => {
     const history = normalizeClaudeHistory("session-3", [
         {

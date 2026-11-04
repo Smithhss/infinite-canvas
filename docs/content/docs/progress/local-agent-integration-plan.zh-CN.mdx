@@ -191,7 +191,7 @@ Claude Code 侧已接入 `@anthropic-ai/claude-agent-sdk@0.3.317`，同时升级
 - SDK 模式关闭 Claude 内置文件与命令工具，只允许 `mcp__infinite-canvas__*`，并使用 `strictMcpConfig` 与空的 `settingSources` 隔离用户机器上的其他 MCP 和项目设置。
 - `GET /agent/claude/models` 通过 SDK `supportedModels()` 读取真实可用模型；查询创建后立即关闭，不提交用户 prompt 或触发模型生成。
 - `/agent/claude/turn` 把图片附件转换为 SDK 原生 text/image content block；附件按发起网页隔离，供 `canvas_create_attachment_nodes` 读取并写入当前画布。单轮最多 6 张、载荷最多 28MB，仅接受 PNG、JPEG、GIF 和 WebP。
-- 用户消息附件、画布图片引用和 Skill 元数据按 `clientMessageId`、`threadId` 与 SDK 用户消息 UUID 关联；历史恢复会显示缩略图并隐藏仅供模型执行的附件上下文。
+- 用户消息附件、画布图片引用和 Skill 元数据按 `clientMessageId`、`threadId` 与 SDK 用户消息 UUID 关联；历史恢复会显示缩略图并隐藏仅供模型执行的附件与画布引用上下文。
 - `/agent/claude/turn` 接收并透传所选 `model`；Codex 与 Claude 的模型选择分开保存，Claude 不发送尚未开放的思考强度。
 - `/agent/claude/turn` 接收 `permissionMode` 并映射到 SDK 原生 `default`、`auto` 或 `bypassPermissions`；请求模式的画布写入通过 `POST /agent/claude/approval` 审批，同一 SDK 会话的“本会话允许”跨 turn 保留。
 - `POST /agent/claude/interrupt` 按发起网页和 `runId` 取消，不会停止其他网页的任务。

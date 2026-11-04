@@ -9,6 +9,8 @@ const MAX_PAYLOAD_LENGTH = 28 * 1024 * 1024;
 const IMAGE_DATA_URL = /^data:(image\/(?:gif|jpe?g|png|webp));base64,([a-z0-9+/]+={0,2})$/i;
 const ATTACHMENT_CONTEXT_MARKER = "\n\n本轮可用图片附件（顺序与图片输入一致）：\n";
 const ATTACHMENT_CONTEXT_INSTRUCTION = "\n需要把附件放入画布或作为生成参考图时，先调用 canvas_create_attachment_nodes，再使用返回的画布节点 ID 创建生成流程。";
+const CANVAS_CONTEXT_MARKER = "\n\n本轮引用的当前画布素材：\n";
+const CANVAS_CONTEXT_INSTRUCTION = "\n需要读取或操作这些素材时，先调用 canvas_get_state，并使用上面的 nodeId 精确定位，不要按标题猜测节点。";
 
 /** 拒绝无法安全转换为 Claude Messages API 图片块的附件。 */
 export class ClaudeAttachmentError extends Error {}
@@ -86,9 +88,18 @@ export function withAttachmentContext(prompt: string, attachments: Array<{ id: s
 
 /** 从 Claude 会话记录恢复用户原文，隐藏仅供模型执行的附件上下文。 */
 export function withoutAttachmentContext(value: string) {
-    if (!value.endsWith(ATTACHMENT_CONTEXT_INSTRUCTION)) return value;
-    const index = value.lastIndexOf(ATTACHMENT_CONTEXT_MARKER);
-    return index < 0 ? value : value.slice(0, index);
+    const visible = value.trimEnd();
+    if (!visible.endsWith(ATTACHMENT_CONTEXT_INSTRUCTION)) return visible;
+    const index = visible.lastIndexOf(ATTACHMENT_CONTEXT_MARKER);
+    return index < 0 ? visible : visible.slice(0, index);
+}
+
+/** 从 Claude 会话记录恢复用户原文，隐藏附件和画布引用两类模型上下文。 */
+export function withoutClaudeModelContext(value: string) {
+    const withoutAttachments = withoutAttachmentContext(value);
+    if (!withoutAttachments.endsWith(CANVAS_CONTEXT_INSTRUCTION)) return withoutAttachments;
+    const index = withoutAttachments.lastIndexOf(CANVAS_CONTEXT_MARKER);
+    return index < 0 ? withoutAttachments : withoutAttachments.slice(0, index);
 }
 
 function claudeImageType(value: string) {

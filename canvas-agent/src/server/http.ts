@@ -506,6 +506,7 @@ export function startHttpServer() {
             });
         };
         try {
+            if (!session.hasClient(clientId)) throw new Error("发起 Claude 任务的网页已断开，请重新连接后再试");
             const attachmentRefs = session.setTurnAttachments(clientId, attachments);
             const run = await claudeAdapter.run(withAttachmentContext(prompt, attachmentRefs), emit, {
                 clientId,
@@ -517,6 +518,7 @@ export function startHttpServer() {
                 skill: skill || undefined,
                 effort: claudeEffort(req.body?.effort),
                 messageId: userMessageId,
+                isClientActive: () => session.hasClient(clientId),
                 onSessionId: bindMetadata,
                 onFinish: () => {
                     session.clearTurnAttachments(clientId);

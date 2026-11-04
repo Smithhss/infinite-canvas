@@ -1,6 +1,6 @@
 import { deleteSession, getSessionInfo, getSessionMessages, listSessions } from "@anthropic-ai/claude-agent-sdk";
 
-import { withoutAttachmentContext } from "./claude-attachments.js";
+import { withoutClaudeModelContext } from "./claude-attachments.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -30,8 +30,8 @@ export async function listClaudeThreads(cwd: string): Promise<ClaudeThreadSummar
     return sessions
         .map((session) => ({
             id: session.sessionId,
-            preview: session.firstPrompt || session.summary,
-            name: session.customTitle || session.summary,
+            preview: visiblePreview(session.firstPrompt, session.summary),
+            name: session.customTitle || withoutClaudeModelContext(session.summary || ""),
             cwd: session.cwd || cwd,
             createdAt: seconds(session.createdAt || session.lastModified),
             updatedAt: seconds(session.lastModified),
@@ -47,8 +47,8 @@ export async function readClaudeThread(sessionId: string, cwd: string) {
     return {
         thread: {
             id: info.sessionId,
-            preview: info.firstPrompt || info.summary,
-            name: info.customTitle || info.summary,
+            preview: visiblePreview(info.firstPrompt, info.summary),
+            name: info.customTitle || withoutClaudeModelContext(info.summary || ""),
             cwd: info.cwd || cwd,
             createdAt: seconds(info.createdAt || info.lastModified),
             updatedAt: seconds(info.lastModified),
@@ -81,7 +81,7 @@ export function normalizeClaudeHistory(sessionId: string, messages: unknown[]): 
             const type = text(block.type);
             if (type === "text") {
                 const body = text(block.text);
-                const visibleBody = role === "user" ? withoutAttachmentContext(body) : body;
+                const visibleBody = role === "user" ? withoutClaudeModelContext(body) : body;
                 if (visibleBody) history.push(historyItem(sessionId, uuid, index, role, visibleBody));
                 return;
             }
@@ -95,6 +95,10 @@ export function normalizeClaudeHistory(sessionId: string, messages: unknown[]): 
         });
     }
     return history;
+}
+
+function visiblePreview(primary?: string, fallback?: string) {
+    return withoutClaudeModelContext(primary || "") || withoutClaudeModelContext(fallback || "");
 }
 
 function claudeToolStatuses(messages: unknown[]) {

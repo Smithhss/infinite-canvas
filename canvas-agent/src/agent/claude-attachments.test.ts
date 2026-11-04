@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ClaudeAttachmentError, claudePromptWithImages, normalizeClaudeImageAttachments, withAttachmentContext, withoutAttachmentContext } from "./claude-attachments.js";
+import { ClaudeAttachmentError, claudePromptWithImages, normalizeClaudeImageAttachments, withAttachmentContext, withoutAttachmentContext, withoutClaudeModelContext } from "./claude-attachments.js";
 
 const PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFElEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==";
 
@@ -84,4 +84,11 @@ test("Claude 历史隐藏仅供模型执行的附件上下文", () => {
     assert.match(prompt, /attachmentId=image-1/);
     assert.equal(withoutAttachmentContext(prompt), "比较两张图");
     assert.equal(withoutAttachmentContext("保留原文"), "保留原文");
+    const canvasContext = "\n\n本轮引用的当前画布素材：\n1. mention=\"@Image_1\", nodeId=\"node-1\", title=\"参考图\", type=image\n需要读取或操作这些素材时，先调用 canvas_get_state，并使用上面的 nodeId 精确定位，不要按标题猜测节点。";
+    assert.equal(withoutClaudeModelContext(`比较两张图${canvasContext}`), "比较两张图");
+    assert.equal(withoutClaudeModelContext(withAttachmentContext(`比较两张图${canvasContext}`, [
+        { id: "image-1", name: "first.png" },
+        { id: "image-2", name: "second.png" },
+    ])), "比较两张图");
+    assert.equal(withoutClaudeModelContext(`比较两张图${canvasContext}\n`), "比较两张图");
 });

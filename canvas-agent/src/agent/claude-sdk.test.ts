@@ -41,6 +41,24 @@ test("SDK Adapter 使用隔离配置并只允许画布 MCP", async () => {
     assert.equal(events.filter((item) => item.type === "agent_done").length, 1);
 });
 
+test("Claude run 在网页启动前已断开时拒绝创建无人控制的任务", async () => {
+    let queried = false;
+    const adapter = new ClaudeSdkAdapter(({ options }) => {
+        queried = true;
+        return Object.assign((async function* () {
+            yield { type: "result", session_id: "session-1", subtype: "success", is_error: false, result: "完成", usage: {}, modelUsage: {} };
+        })(), { close: () => undefined });
+    });
+
+    await assert.rejects(adapter.run("读取画布", () => undefined, {
+        clientId: "client-1",
+        cwd: "/tmp/canvas",
+        isClientActive: () => false,
+    }), /网页已断开/);
+    assert.equal(queried, false);
+    assert.equal(adapter.busy, false);
+});
+
 test("请求模式把 Claude 写工具转入网页审批，并支持本会话批准", async () => {
     let canUseTool: any;
     let release = () => undefined;

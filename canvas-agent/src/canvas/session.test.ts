@@ -103,10 +103,55 @@ test("图片附件只允许发起 turn 的标签页读取和落入画布", async
     session.setTurnAttachments("first", [{ id: "attachment-1", name: "商品.png", type: "image/png", dataUrl: "data:image/png;base64,aW1hZ2U=" }]);
     session.bindClient("second");
 
-    await assert.rejects(session.callTool("canvas_create_attachment_nodes", { attachmentIds: ["attachment-1"] }), /发起标签页/);
-    assert.throws(() => session.getTurnAttachment("second", "attachment-1"), /发起标签页/);
+    await assert.rejects(session.callTool("canvas_create_attachment_nodes", { attachmentIds: ["attachment-1"] }), /找不到/);
+    assert.throws(() => session.getTurnAttachment("second", "attachment-1"), /找不到/);
     assert.equal(first.event("tool_call"), undefined);
     assert.equal(second.event("tool_call"), undefined);
+});
+
+test("不同网页的 turn 附件互不清理", () => {
+    const session = new CanvasSession();
+    session.setTurnAttachments("first", [{ id: "first-attachment", name: "first.png", dataUrl: "data:image/png;base64,b25l" }]);
+    session.setTurnAttachments("second", [{ id: "second-attachment", name: "second.png", dataUrl: "data:image/png;base64,dHdv" }]);
+    assert.equal(session.getTurnAttachment("first", "first-attachment").name, "first.png");
+    assert.equal(session.getTurnAttachment("second", "second-attachment").name, "second.png");
+    session.setTurnAttachments("first", [{ id: "replacement", name: "replacement.png", dataUrl: "data:image/png;base64,dGhyZWU=" }]);
+    assert.throws(() => session.getTurnAttachment("first", "first-attachment"), /找不到/);
+    assert.equal(session.getTurnAttachment("second", "second-attachment").name, "second.png");
+});
+
+test("不同网页使用相同附件 id 时互不覆盖", () => {
+    const session = new CanvasSession();
+    session.setTurnAttachments("first", [{ id: "shared", name: "first.png", dataUrl: "data:image/png;base64,b25l" }]);
+    session.setTurnAttachments("second", [{ id: "shared", name: "second.png", dataUrl: "data:image/png;base64,dHdv" }]);
+
+    assert.equal(session.getTurnAttachment("first", "shared").name, "first.png");
+    assert.equal(session.getTurnAttachment("second", "shared").name, "second.png");
+    session.clearTurnAttachments("first");
+    assert.throws(() => session.getTurnAttachment("first", "shared"), /找不到/);
+    assert.equal(session.getTurnAttachment("second", "shared").name, "second.png");
+});
+
+test("同一网页不能并发占用第二个 Agent turn", (t) => {
+    const session = new CanvasSession();
+    const client = connect(session, "first");
+    t.after(() => client.close());
+
+    assert.equal(session.beginAgentTurn("first"), true);
+    assert.equal(session.beginAgentTurn("first"), false);
+    session.releaseClient("first");
+    assert.equal(session.beginAgentTurn("first"), true);
+});
+
+test("网页断开后清理该网页的本轮附件", (t) => {
+    const session = new CanvasSession();
+    const client = connect(session, "first");
+    t.after(() => client.close());
+    session.setTurnAttachments("first", [{ id: "attachment-1", name: "image.png", dataUrl: "data:image/png;base64,aW1hZ2U=" }]);
+
+    client.close();
+
+    assert.throws(() => session.getTurnAttachment("first", "attachment-1"), /找不到/);
 });
 
 test("tool result is accepted only from the request client", async (t) => {

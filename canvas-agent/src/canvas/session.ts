@@ -87,6 +87,11 @@ export class CanvasSession {
         return this.codexState.busy;
     }
 
+    /** 返回 Codex 是否正在执行 turn 或切换会话。 */
+    get codexOperationBusy() {
+        return this.codexState.busy || this.codexMutationBusy;
+    }
+
     get codexThreadId() {
         return this.codexState.threadId;
     }
@@ -289,6 +294,7 @@ export class CanvasSession {
             this.clients.delete(clientId);
             this.clientFocusOrder.delete(clientId);
             this.canvasStates.delete(clientId);
+            this.clearTurnAttachments(clientId);
             this.pending.forEach((item, requestId) => {
                 if (item.clientId !== clientId) return;
                 this.pending.delete(requestId);
@@ -329,6 +335,15 @@ export class CanvasSession {
         logger.debug("Canvas client bound to turn", { clientId });
     }
 
+    /** 原子占用当前 Agent turn 的网页绑定，避免并发请求互相覆盖。 */
+    beginAgentTurn(clientId: string) {
+        if (!this.clients.has(clientId)) throw new Error("当前网页未连接");
+        if (this.boundClientId) return false;
+        this.boundClientId = clientId;
+        logger.debug("Canvas client bound to turn", { clientId });
+        return true;
+    }
+
     /** 解除当前 Agent turn 的网页绑定。 */
     releaseClient(clientId: string) {
         if (this.boundClientId === clientId) this.boundClientId = "";
@@ -337,7 +352,7 @@ export class CanvasSession {
 
     /** 保存当前 turn 可用的图片附件并返回安全引用。 */
     setTurnAttachments(clientId: string, attachments: AgentAttachment[]) {
-        this.turnAttachments.clear();
+        this.clearTurnAttachments(clientId);
         return attachments.flatMap((item, index) => {
             if (!item.dataUrl?.startsWith("data:image/")) return [];
             const id = item.id?.trim() || `attachment-${crypto.randomUUID()}`;
@@ -351,7 +366,7 @@ export class CanvasSession {
                 height: positiveNumber(item.height, 1024),
                 dataUrl: item.dataUrl,
             };
-            this.turnAttachments.set(id, attachment);
+            this.turnAttachments.set(this.turnAttachmentKey(clientId, id), attachment);
             return [{ id, name: attachment.name, type: attachment.type, size: attachment.size, width: attachment.width, height: attachment.height }];
         });
     }
@@ -365,10 +380,13 @@ export class CanvasSession {
 
     /** 获取属于指定网页 turn 的图片附件。 */
     getTurnAttachment(clientId: string, attachmentId: string) {
-        const attachment = this.turnAttachments.get(attachmentId);
+        const attachment = this.turnAttachments.get(this.turnAttachmentKey(clientId, attachmentId));
         if (!attachment) throw new Error(`找不到本轮图片附件：${attachmentId}`);
-        if (attachment.clientId !== clientId) throw new Error("图片附件不属于当前 turn 的发起标签页");
         return attachment;
+    }
+
+    private turnAttachmentKey(clientId: string, attachmentId: string) {
+        return `${clientId}\0${attachmentId}`;
     }
 
     /** 接收网页返回的工具调用结果。 */

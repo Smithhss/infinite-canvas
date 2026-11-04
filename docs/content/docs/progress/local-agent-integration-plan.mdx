@@ -13,7 +13,7 @@ Allow locally authenticated coding agents to read and modify the active browser 
 
 Canvas Agent is the single local bridge. The browser synchronizes structured canvas state to it over authenticated HTTP and SSE. Codex and future Claude adapters use MCP tools exposed by Canvas Agent. Browser-side writes remain structured, reviewable, and undoable.
 
-The service is divided into agent adapters, canvas state and tool handling, HTTP/SSE transport, and MCP exposure. Codex is the first adapter through `codex app-server`; Claude uses the Claude Agent SDK rather than duplicating canvas logic. The web sidebar exposes Codex / Claude switching behind the default-off `agentProviderSwitch`; Claude supports SDK-native models, permissions, read-only project Skills from `.claude/skills`, local session history, text chat, and canvas tools. Image attachments remain a Codex feature.
+The service is divided into agent adapters, canvas state and tool handling, HTTP/SSE transport, and MCP exposure. Codex is the first adapter through `codex app-server`; Claude uses the Claude Agent SDK rather than duplicating canvas logic. The web sidebar exposes Codex / Claude switching behind the default-off `agentProviderSwitch`; Claude supports SDK-native models, permissions, read-only project Skills from `.claude/skills`, local session history, image attachments, canvas image references, text chat, and canvas tools.
 
 ## Tool design
 
@@ -36,6 +36,6 @@ The browser panel manages connection state, conversations, streaming events, mod
 1. Expose canvas state and operations to local Codex through MCP.
 2. Add the browser Codex panel with streaming conversations and history.
 3. Add a Claude Agent SDK adapter using the same canvas tools.
-4. Improve native permissions, approvals, diagnostics, multi-tab behavior, Skills, and recovery.
+4. Improve native permissions, approvals, diagnostics, multi-tab behavior, Skills, image inputs, and recovery.
 
 The MVP is complete when an agent can connect to the active canvas, read state and selection, apply visible node operations, start a generation workflow, return structured errors, and remain isolated across tabs.

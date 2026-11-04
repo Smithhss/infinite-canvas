@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口、P2-D 本机会话历史与续聊、P2-E Claude 原生模型列表和 P2-F Claude SDK 原生权限已合并到 `dev`。P2-G Claude 原生项目 Skill 已实现，等待 PR 合并和人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口、P2-D 本机会话历史与续聊、P2-E Claude 原生模型列表、P2-F Claude SDK 原生权限和 P2-G Claude 原生项目 Skill 已合并到 `dev`。P2-H Claude 图片附件与图片引用已实现，等待提交、CI 和人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 
@@ -351,7 +351,7 @@ P2-C 初始实现：
 
 1. 输入框工具栏增加 Agent 类型菜单；切换前若有任务运行则拒绝并提示先完成或停止。
 2. Claude 模式最初隐藏 Codex 模型、思考强度、权限、Skill 和图片上传入口，仅保留文本输入、历史、画布工具确认、日志和停止；后续 P2-E、P2-F 已分别补齐原生模型与权限。
-3. 从 Codex 切到 Claude 时移除图片附件和图片引用，保留文本画布引用；发送前再次校验，避免绕过 UI 提交不支持的内容。
+3. P2-C 初始切换会移除图片附件和图片引用；P2-H 已改为在 Claude capability 中支持两类能力，切换时不再丢失有效图片。
 4. 连接设置页在 Claude 模式显示 Claude Agent SDK 说明，使用本机 Claude Code 登录态，不再展示 Codex 插件安装步骤。
 5. Claude 事件复用现有 `thread.started`、`turn.started`、`item.*`、`usage.updated`、`turn.completed` 渲染；按 `runId` 适配会话线程，助手消息标题显示 Claude，终态清理运行状态。
 6. 顶部连接文案改为中性的「Agent 已连接」，因为同一 Canvas Agent 可承载两种本地 Agent。
@@ -359,13 +359,13 @@ P2-C 初始实现：
 不在本轮范围：
 
 - 真实工具队列。当前仍是单槽 `pendingTool`，同时到达的第二个工具会被拒绝；需要 Agent 协议升级后才能提供真实队列。
-- P2-C 时尚未覆盖 Claude 模型列表、权限模式、Skill 选择和图片附件；模型与权限已分别由 P2-E、P2-F 补齐，Skill 和图片附件继续留在后续任务。
+- P2-C 时尚未覆盖 Claude 模型列表、权限模式、Skill 选择和图片附件；后续已分别由 P2-E、P2-F、P2-G、P2-H 补齐。
 - Claude 登录态预检。侧栏不伪造已登录状态，首次发送时由 Canvas Agent 返回真实错误。
 
 验收：
 
 - 开关关闭时，即使浏览器保存过 Claude，也必须完整保持 Codex 侧栏、四页签和原控件。
-- 开关打开后可切换 Codex / Claude；P2-C 基线显示 Chat、History 和 Logs，并隐藏 Skill、上传和当时尚未接入的 Codex 控件；模型和权限入口由后续 P2-E、P2-F 补齐。
+- 开关打开后可切换 Codex / Claude；P2-C 基线当时只显示 Chat、History 和 Logs，后续已补齐模型、权限、项目 Skill、图片附件和图片引用。
 - Claude 用户消息、流式助手消息、Usage、工具确认、批准/拒绝、停止和终态都能正确归属到当前 `threadId` / `turnId`。
 - 未连接时 Claude 设置页只提供真实连接动作，不展示 Codex 插件安装步骤。
 - 1440px、390px、中英文和浅深色无横向溢出。
@@ -390,7 +390,7 @@ P2-C 初始实现：
 
 不在本轮范围：
 
-- P2-D 时尚未覆盖 Claude 权限模式；已由 P2-F 补齐。Skill 选择和图片附件仍待后续。
+- P2-D 时尚未覆盖 Claude 权限模式、Skill 选择和图片附件；后续已分别由 P2-F、P2-G、P2-H 补齐。
 - 跨工作空间或跨项目读取 Claude 会话。
 - 多个工具同时等待确认的真实队列；当前仍保持单槽 `pendingTool`。
 
@@ -425,7 +425,7 @@ P2-C 初始实现：
 
 不在本轮范围：
 
-- P2-E 时尚未覆盖 Claude 思考强度、权限模式、Skill 选择和图片附件；权限模式已由 P2-F 补齐，其余继续留在后续任务。
+- P2-E 时尚未覆盖 Claude 思考强度、权限模式、Skill 选择和图片附件；权限、Skill 和图片已由后续阶段补齐，思考强度仍只由 Codex 提供。
 - 模型别名与实际计费能力的二次校验；当前只信任 SDK 返回的可用模型。
 - 多工具并发确认队列。
 
@@ -460,7 +460,6 @@ P2-C 初始实现：
 
 不在本轮范围：
 
-- Claude Skill 选择和图片附件。
 - 多工具并发确认队列；当前仍按 Agent 单槽运行，一次只处理一个 turn。
 - 真实 Claude 云端账号的收费验收。
 
@@ -475,7 +474,7 @@ P2-C 初始实现：
 
 ### P2-G：Claude 原生项目 Skill
 
-状态：已实现，沿用 `agentProviderSwitch`，等待 PR 合并和人工验收。
+状态：已实现并合并 `dev`（PR #32），沿用 `agentProviderSwitch`，等待人工验收。
 
 目标：
 
@@ -495,7 +494,6 @@ P2-C 初始实现：
 不在本轮范围：
 
 - Skill 市场、远端安装、评分和云端收藏。
-- Claude 图片附件与图片引用。
 - 多个 Skill 同时选择或多工具并发队列。
 - 真实 Claude 云端账号的收费验收。
 
@@ -506,6 +504,40 @@ P2-C 初始实现：
 - Skill 运行只暴露 `Skill` 与画布 MCP，项目 hooks 不执行；画布写入在请求模式下仍触发 Claude 原生审批。
 - 项目没有 Skill、Skill 列表读取失败、Agent 未连接和切换 Agent 时均不残留旧列表。
 - 1440px、390px、中英文和浅深色无横向溢出。
+
+### P2-H：Claude 图片附件与图片引用
+
+状态：已实现，沿用 `agentProviderSwitch`，等待提交、CI 和人工验收。
+
+目标：
+
+- 让 Claude 与 Codex 共用现有上传、粘贴、画布图片引用和消息缩略图入口，不新增第二套附件 UI。
+- 使用 Claude Agent SDK 原生图片 content block，不把 Data URL 拼进文本 prompt。
+- 当前轮附件可被 `canvas_create_attachment_nodes` 读取并写入发起请求的网页画布。
+
+已实现：
+
+1. `/agent/claude/turn` 接收图片附件，校验最多 6 张、请求载荷最多 28MB，仅接受 PNG、JPEG、GIF 和 WebP Data URL。
+2. SDK 输入转换为原生 `SDKUserMessage` text/image content block，并按原顺序传入本轮图片。
+3. 本轮附件注册到发起网页的 `clientId`；画布附件工具只允许该网页读取并创建图片节点，清理时不影响其他标签页。
+4. 用户消息附件、画布引用和 Skill 元数据按 `clientMessageId` / `threadId` / SDK 用户消息 `uuid` 持久化，刷新历史后可恢复缩略图。
+5. Claude 历史过滤仅供模型执行的附件上下文，保留用户原始输入文本。
+6. Claude capability 开放 `attachments` 和 `imageReferences`；切换 Agent 时不再丢弃已添加图片。
+
+不在本轮范围：
+
+- 多个工具调用的真实并发队列。
+- 收费 Claude 账号的端到端生成验收。
+- 附件云端上传或跨设备同步。
+
+验收：
+
+- Claude 模式可上传、粘贴和移除图片，并在发送体中得到附件 Data URL、`messageId` 和消息元数据。
+- 画布图片引用进入本轮附件，`canvas_create_attachment_nodes` 只能由发起网页读取并写入对应节点。
+- 刷新 Claude History 后用户消息仍显示附件缩略图和画布引用，且不展示内部附件说明。
+- Codex 原有附件、图片引用、审批、停止和历史恢复不回归。
+- 超量、非法类型和超限载荷返回可读错误；切换 Agent 时有效附件按当前 capability 保留或清理。
+- 1440px、390px、中英文和浅深色无横向溢出；只使用零收费 mock。
 
 ### P3：需要服务端或产品契约的能力
 
@@ -582,7 +614,8 @@ P2-C 初始实现：
 | 9    | P2-E Claude 原生模型列表   | 是         | SDK 模型接口和现有模型选择器          |
 | 10   | P2-F Claude SDK 原生权限   | 是         | SDK 权限接口、现有审批 UI             |
 | 11   | P2-G Claude 原生项目 Skill | 是         | SDK Skill 发现、现有 Skill 视图       |
-| 12   | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
+| 12   | P2-H Claude 图片附件与引用 | 是         | SDK 原生图片块、附件元数据            |
+| 13   | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
 
 先做 P1-A 的原因：
 

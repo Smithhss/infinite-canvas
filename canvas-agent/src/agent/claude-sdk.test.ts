@@ -221,7 +221,7 @@ test("模型列表使用 SDK 原生能力且不执行用户任务", async () => 
     let closed = 0;
     const adapter = new ClaudeSdkAdapter(
         ({ prompt, options }) => {
-            receivedPrompt = prompt;
+            receivedPrompt = typeof prompt === "string" ? prompt : "<stream>";
             receivedOptions = options as unknown as Record<string, unknown>;
             return Object.assign((async function* () {
                 throw new Error("模型列表不应消费生成事件");
@@ -270,7 +270,7 @@ test("Skill 列表读取项目内非内置命令且不执行用户任务", async
     let closed = 0;
     const adapter = new ClaudeSdkAdapter(
         ({ prompt, options }) => {
-            receivedPrompt = prompt;
+            receivedPrompt = typeof prompt === "string" ? prompt : "<stream>";
             receivedOptions = options as unknown as Record<string, unknown>;
             return Object.assign((async function* () {
                 throw new Error("Skill 列表不应消费生成事件");
@@ -341,6 +341,54 @@ test("没有项目 Skill 时不启动 Claude 查询，未知 Skill 也会被拒�
     } finally {
         await fs.rm(cwd, { recursive: true, force: true });
     }
+});
+
+test("Claude 图片附件使用 SDK 原生图文消息并通知真实会话 ID", async () => {
+    const messageId = "8ebaf34b-7110-4bd7-a194-3888f03f7bf0";
+    let receivedPrompt: unknown;
+    let sessionId = "";
+    const adapter = new ClaudeSdkAdapter(
+        ({ prompt }) => {
+            receivedPrompt = prompt;
+            return Object.assign((async function* () {
+                yield { type: "system", subtype: "init", session_id: "session-image" };
+                yield { type: "result", session_id: "session-image", subtype: "success", is_error: false, result: "完成", usage: {}, modelUsage: {} };
+            })(), { close: () => undefined });
+        },
+        () => ({ type: "sdk", name: "infinite-canvas", instance: {} } as never),
+    );
+    await adapter.run("查看参考图", () => undefined, {
+        clientId: "client-1",
+        cwd: "/tmp/canvas",
+        messageId,
+        onSessionId: (value) => {
+            sessionId = value;
+        },
+    }, [{
+        id: "attachment-1",
+        name: "reference.png",
+        type: "image/png",
+        size: 12,
+        width: 320,
+        height: 180,
+        dataUrl: "data:image/png;base64,aW1hZ2U=",
+    }]);
+
+    assert.equal(typeof (receivedPrompt as AsyncIterable<unknown>)[Symbol.asyncIterator], "function");
+    const iterator = (receivedPrompt as AsyncIterable<Record<string, any>>)[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    assert.equal(first.done, false);
+    assert.equal(first.value?.uuid, messageId);
+    assert.deepEqual(first.value?.message, {
+        role: "user",
+        content: [
+            { type: "text", text: "查看参考图" },
+            { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } },
+        ],
+    });
+    assert.equal((await iterator.next()).done, true);
+    await waitFor(() => !adapter.busy);
+    assert.equal(sessionId, "session-image");
 });
 
 test("中断只作用于发起网页且完成后释放运行状态", async () => {

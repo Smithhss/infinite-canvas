@@ -1,13 +1,14 @@
 import crypto from "node:crypto";
 
-import { createSdkMcpServer, query, tool, type CanUseTool, type McpServerConfig, type ModelInfo, type Options as ClaudeSdkOptions, type PermissionResult, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query, tool, type CanUseTool, type McpServerConfig, type ModelInfo, type Options as ClaudeSdkOptions, type PermissionResult, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 
 import { toolDescriptions, toolInputSchemas, toolNames, type ToolName } from "../canvas/schemas.js";
 import { AGENT_PROMPT, loadConfig, type CanvasAgentConfig, VERSION } from "../config.js";
 import { redactAgentLog } from "../utils/agent-runtime.js";
 import { errorMessage } from "../utils/value.js";
+import { claudePromptWithImages } from "./claude-attachments.js";
 import { ClaudeEventState } from "./claude-events.js";
-import type { AgentEmit, AgentPermissionMode } from "./types.js";
+import type { AgentAttachment, AgentEmit, AgentPermissionMode } from "./types.js";
 import { callCanvasAgentTool } from "../server/mcp.js";
 import { listProjectClaudeSkillNames } from "./claude-skills.js";
 
@@ -17,7 +18,7 @@ type ClaudeSdkQuery = AsyncIterable<unknown> & {
     supportedModels?: () => Promise<ModelInfo[]>;
     supportedCommands?: () => Promise<SlashCommand[]>;
 };
-type QueryFactory = (params: { prompt: string; options: ClaudeSdkOptions }) => ClaudeSdkQuery;
+type QueryFactory = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options: ClaudeSdkOptions }) => ClaudeSdkQuery;
 type McpServerFactory = () => McpServerConfig;
 type RunOptions = {
     clientId: string;
@@ -28,6 +29,8 @@ type RunOptions = {
     permissionMode?: AgentPermissionMode;
     skill?: string;
     effort?: "low" | "medium" | "high" | "xhigh" | "max";
+    messageId?: string;
+    onSessionId?: (sessionId: string) => void;
     onFinish?: () => void;
 };
 type PermissionDecision = "accept" | "acceptForSession" | "decline";
@@ -185,16 +188,24 @@ export class ClaudeSdkAdapter {
     }
 
     /** 启动一轮 SDK 调用；事件通过 SSE 异步返回。 */
-    async run(prompt: string, emit: AgentEmit, options: RunOptions) {
+    async run(prompt: string, emit: AgentEmit, options: RunOptions, attachments: AgentAttachment[] = []) {
         if (!prompt.trim()) throw new Error("请输入任务内容");
         if (this.active.size) throw new Error("Claude 正在执行其他任务，请先停止当前任务");
         if (options.skill && !(await listProjectClaudeSkillNames(options.cwd)).includes(options.skill)) throw new Error("Claude Skill 不存在或不可用");
         const runId = this.runIdFactory();
         const abort = new AbortController();
-        const state = new ClaudeEventState({ clientId: options.clientId, threadId: options.threadId || options.sessionId || runId, turnId: runId });
+        const state = new ClaudeEventState({
+            clientId: options.clientId,
+            threadId: options.threadId || options.sessionId || runId,
+            turnId: runId,
+            onSessionId: options.onSessionId,
+        });
         let activeQuery: ClaudeSdkQuery;
         try {
-            activeQuery = this.queryFactory({ prompt, options: this.queryOptions(abort, options, runId, emit) });
+            activeQuery = this.queryFactory({
+                prompt: claudePromptWithImages(prompt, attachments, options.messageId || crypto.randomUUID()),
+                options: this.queryOptions(abort, options, runId, emit),
+            });
         } catch (error) {
             state.fail(error, emit);
             options.onFinish?.();

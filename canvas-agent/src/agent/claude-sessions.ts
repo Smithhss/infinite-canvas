@@ -1,5 +1,7 @@
 import { deleteSession, getSessionInfo, getSessionMessages, listSessions } from "@anthropic-ai/claude-agent-sdk";
 
+import { withoutAttachmentContext } from "./claude-attachments.js";
+
 type JsonRecord = Record<string, unknown>;
 
 export type ClaudeThreadSummary = {
@@ -79,7 +81,8 @@ export function normalizeClaudeHistory(sessionId: string, messages: unknown[]): 
             const type = text(block.type);
             if (type === "text") {
                 const body = text(block.text);
-                if (body) history.push(historyItem(sessionId, uuid, index, role, body));
+                const visibleBody = role === "user" ? withoutAttachmentContext(body) : body;
+                if (visibleBody) history.push(historyItem(sessionId, uuid, index, role, visibleBody));
                 return;
             }
             if (role !== "assistant" || type !== "tool_use") return;
@@ -116,7 +119,7 @@ function historyItem(sessionId: string, uuid: string, index: number, role: "user
         id,
         itemId: id,
         threadId: sessionId,
-        turnId: "",
+        turnId: role === "user" ? uuid : "",
         role,
         ...(role === "assistant" ? { title: "Claude" } : {}),
         text: body,

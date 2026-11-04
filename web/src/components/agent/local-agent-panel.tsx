@@ -217,6 +217,14 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         return () => { disposed = true; };
     }, []);
     const loadThreadSnapshot = useCallback(async (threadId: string, sequence: number, response?: AgentThreadResponse, expectedTurnId = "") => {
+        if (effectiveAgentProvider === "claude") {
+            const thread = response || await fetchAgentJson<AgentThreadResponse>(endpoint, token, `/agent/claude/threads/${encodeURIComponent(threadId)}`);
+            if (sequence !== loadThreadsSequenceRef.current || useAgentStore.getState().activeThreadId !== threadId) return false;
+            const messages = thread.messages || [];
+            threadMessagesRef.current.set(threadId, messages);
+            setAgentState({ messages, connectError: "" });
+            return true;
+        }
         let thread = response;
         let lastError: unknown;
         for (const delayMs of HISTORY_RETRY_DELAYS_MS) {
@@ -248,7 +256,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         }
         if (lastError) throw lastError;
         return false;
-    }, [endpoint, setAgentState, token]);
+    }, [effectiveAgentProvider, endpoint, setAgentState, token]);
     const applyWorkspaceChange = useCallback((data: AgentWorkspaceEvent) => {
         const nextThreadId = data.activeThreadId ?? data.threadId ?? "";
         const current = useAgentStore.getState();
@@ -307,15 +315,15 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         let sequence = ++loadThreadsSequenceRef.current;
         setAgentState({ loadingThreads: true });
         try {
-            const data = await fetchAgentJson<AgentThreadsResponse>(endpoint, token, `/agent/codex/threads`);
+            const data = await fetchAgentJson<AgentThreadsResponse>(endpoint, token, effectiveAgentProvider === "claude" ? `/agent/claude/threads` : `/agent/codex/threads`);
             if (sequence !== loadThreadsSequenceRef.current) return;
-            if (data.conversation) {
+            if (effectiveAgentProvider === "codex" && data.conversation) {
                 applyConversationState(data.conversation);
                 sequence = loadThreadsSequenceRef.current;
             }
             const current = useAgentStore.getState();
-            const currentThreadId = current.activeThreadId || data.workspace?.activeThreadId || "";
-            if (!data.conversation && currentThreadId !== current.activeThreadId) sequence = applyWorkspaceChange({ activeThreadId: currentThreadId });
+            const currentThreadId = current.activeThreadId || (effectiveAgentProvider === "codex" ? data.workspace?.activeThreadId || "" : "");
+            if (effectiveAgentProvider === "codex" && !data.conversation && currentThreadId !== current.activeThreadId) sequence = applyWorkspaceChange({ activeThreadId: currentThreadId });
             if (sequence !== loadThreadsSequenceRef.current || useAgentStore.getState().activeThreadId !== currentThreadId) return;
             if (data.workspace?.workspacePath) workspacePathRef.current = data.workspace.workspacePath;
             setAgentState({ threads: data.data || [], workspacePath: data.workspace?.workspacePath || "" });
@@ -330,7 +338,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         } finally {
             if (sequence === loadThreadsSequenceRef.current && !threadOperationRef.current) setAgentState({ loadingThreads: false });
         }
-    }, [applyConversationState, applyWorkspaceChange, endpoint, loadThreadSnapshot, setAgentState, token]);
+    }, [applyConversationState, applyWorkspaceChange, effectiveAgentProvider, endpoint, loadThreadSnapshot, setAgentState, token]);
     // Imperatively subscribe to canvasContext to keep the ref current and debounce snapshot reports without rerendering the panel.
     useEffect(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -353,7 +361,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         pendingToolRef.current = pendingTool;
     }, [pendingTool]);
     useEffect(() => {
-        if (effectiveAgentProvider === "claude" && (activeTab === "history" || activeTab === "skills")) setAgentState({ activeTab: "chat" });
+        if (effectiveAgentProvider === "claude" && activeTab === "skills") setAgentState({ activeTab: "chat" });
     }, [activeTab, effectiveAgentProvider, setAgentState]);
     useEffect(() => () => attachmentUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
@@ -485,7 +493,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                     const current = useAgentStore.getState();
                     const owned = !current.activeThreadId || scope.threadId === current.activeThreadId || (current.activeTurnId && scope.turnId === current.activeTurnId);
                     if (!scope.threadId || !owned) return;
-                    setAgentState({ activeThreadId: scope.threadId, activeTurnId: scope.turnId || current.activeTurnId });
+                    const previousThreadId = current.activeThreadId;
+                    setAgentState({
+                        activeThreadId: scope.threadId,
+                        activeTurnId: scope.turnId || current.activeTurnId,
+                        messages: current.messages.map((item) => item.threadId === previousThreadId ? { ...item, threadId: scope.threadId } : item),
+                    });
                 }
                 if (!isCurrentThreadEvent(data)) return;
                 const shouldProcess = registerLiveAgentTurn(data, authoritativeHistoryTurnsRef.current, liveTurnKeysRef.current);
@@ -739,6 +752,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         prompt: requestPrompt,
                         clientId: clientIdRef.current,
                         threadId: threadId || undefined,
+                        sessionId: threadId || undefined,
                         effort: reasoningEffort || undefined,
                     }),
                 });
@@ -990,13 +1004,23 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             attachmentUrlsRef.current.delete(item.url);
         });
         localStorage.setItem("canvas-agent-provider", nextProvider);
+        loadThreadsSequenceRef.current += 1;
         claudeRunIdRef.current = "";
+        pendingToolRef.current = null;
         setAgentState({
             agentProvider: nextProvider,
             attachments: droppedAttachments.length ? [] : current.attachments,
             canvasReferences: imageReferences.length ? current.canvasReferences.filter((item) => item.kind !== "image") : current.canvasReferences,
             activeTab: nextCapabilities.history || nextCapabilities.skills || !["history", "skills"].includes(current.activeTab) ? current.activeTab : "chat",
-            ...(nextProvider === "claude" ? { model: "", reasoningEffort: "", tokenUsage: null } : {}),
+            activeThreadId: "",
+            activeTurnId: "",
+            messages: [],
+            threads: [],
+            loadingThreads: false,
+            tokenUsage: null,
+            pendingTool: null,
+            pendingApprovals: [],
+            ...(nextProvider === "claude" ? { model: "", reasoningEffort: "" } : {}),
         });
         if (nextProvider === "claude") {
             addEventLog(rt("providerClaudeSelected"), rt("providerClaudeHint"));
@@ -1124,6 +1148,24 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const startNewThread = async () => {
         const current = useAgentStore.getState();
         if (!current.connected || current.sending || current.waiting || current.loadingThreads || ["preparing", "running"].includes(current.conversation.status)) return;
+        if (effectiveAgentProvider === "claude") {
+            loadThreadsSequenceRef.current += 1;
+            threadMessagesRef.current.clear();
+            clearSkillSelection();
+            pendingToolRef.current = null;
+            claudeRunIdRef.current = "";
+            setAgentState({
+                activeTab: "chat",
+                activeThreadId: "",
+                activeTurnId: "",
+                messages: [],
+                tokenUsage: null,
+                pendingTool: null,
+                pendingApprovals: [],
+                activity: rt("newConversation"),
+            });
+            return;
+        }
         const operation = beginThreadOperation();
         clearSkillSelection();
         setAgentState({ activeTab: "chat", activity: rt("creatingConversation") });
@@ -1146,6 +1188,21 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const resumeThread = async (threadId: string) => {
         const current = useAgentStore.getState();
         if (!current.connected || !threadId || current.sending || current.waiting || current.loadingThreads || ["preparing", "running"].includes(current.conversation.status)) return;
+        if (effectiveAgentProvider === "claude") {
+            const operation = beginThreadOperation();
+            try {
+                const result = await fetchAgentJson<AgentThreadResponse>(endpoint, token, `/agent/claude/threads/${encodeURIComponent(threadId)}`);
+                const messages = result.messages || [];
+                threadMessagesRef.current.set(threadId, messages);
+                setAgentState({ activeTab: "chat", activeThreadId: threadId, activeTurnId: "", messages, tokenUsage: null, activity: rt("conversationResumed") });
+            } catch (error) {
+                addEventLog(rt("resumeConversationFailed"), error);
+                message.error(error instanceof Error ? error.message : rt("resumeConversationFailed"));
+            } finally {
+                finishThreadOperation(operation);
+            }
+            return;
+        }
         const operation = beginThreadOperation();
         try {
             const result = await fetchAgentJson<AgentThreadResponse>(endpoint, token, `/agent/codex/threads/${encodeURIComponent(threadId)}/resume`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ permissionMode, clientId: clientIdRef.current }) });
@@ -1166,11 +1223,13 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const deleteThreads = async (threadIds: string[]) => {
         if (!connected || !threadIds.length || sending || waiting || loadingThreads) return;
         const operation = beginThreadOperation();
+        const deletedIds = new Set<string>();
         let deletedCount = 0;
         try {
             for (const threadId of new Set(threadIds)) {
-                await fetchAgentJson(endpoint, token, `/agent/codex/threads/${encodeURIComponent(threadId)}/delete`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId: clientIdRef.current }) });
+                await fetchAgentJson(endpoint, token, effectiveAgentProvider === "claude" ? `/agent/claude/threads/${encodeURIComponent(threadId)}/delete` : `/agent/codex/threads/${encodeURIComponent(threadId)}/delete`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId: clientIdRef.current }) });
                 threadMessagesRef.current.delete(threadId);
+                deletedIds.add(threadId);
                 deletedCount += 1;
             }
             await loadThreads();
@@ -1180,6 +1239,9 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             addEventLog(rt("deleteConversationFailed"), error);
             message.error(error instanceof Error ? error.message : rt("deleteConversationFailed"));
         } finally {
+            if (effectiveAgentProvider === "claude" && deletedIds.has(useAgentStore.getState().activeThreadId)) {
+                setAgentState({ activeThreadId: "", activeTurnId: "", messages: [], tokenUsage: null });
+            }
             finishThreadOperation(operation);
         }
     };

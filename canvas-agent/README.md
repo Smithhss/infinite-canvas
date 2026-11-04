@@ -155,7 +155,7 @@ curl -X POST http://127.0.0.1:17371/agent/claude/turn \
   -d '{"clientId":"current-page-client-id","prompt":"读取当前画布"}'
 ```
 
-SDK 使用本机已有的 Claude Code 登录态，不上传登录凭证。网页侧边栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换；Claude 当前只开放文本对话和画布工具，模型、权限、历史、Skill 和图片附件仍只属于 Codex。
+SDK 使用本机已有的 Claude Code 登录态，不上传登录凭证。网页侧边栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换；Claude 当前开放本机会话历史、文本对话和画布工具，模型、权限、Skill 和图片附件仍只属于 Codex。
 
 需要兼容旧的 print 模式时，可在请求里传 `"transport": "cli"`。这条路径仍调用本机 `claude -p --output-format stream-json`，并默认允许 `mcp__infinite-canvas__*`。
 

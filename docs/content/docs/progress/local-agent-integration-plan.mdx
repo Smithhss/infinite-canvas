@@ -13,7 +13,7 @@ Allow locally authenticated coding agents to read and modify the active browser 
 
 Canvas Agent is the single local bridge. The browser synchronizes structured canvas state to it over authenticated HTTP and SSE. Codex and future Claude adapters use MCP tools exposed by Canvas Agent. Browser-side writes remain structured, reviewable, and undoable.
 
-The service is divided into agent adapters, canvas state and tool handling, HTTP/SSE transport, and MCP exposure. Codex is the first adapter through `codex app-server`; Claude uses the Claude Agent SDK rather than duplicating canvas logic. The web sidebar exposes Codex / Claude switching behind the default-off `agentProviderSwitch`; Claude currently supports text chat and canvas tools only, while models, permissions, history, Skills, and image attachments remain Codex features.
+The service is divided into agent adapters, canvas state and tool handling, HTTP/SSE transport, and MCP exposure. Codex is the first adapter through `codex app-server`; Claude uses the Claude Agent SDK rather than duplicating canvas logic. The web sidebar exposes Codex / Claude switching behind the default-off `agentProviderSwitch`; Claude supports native local session history, text chat, and canvas tools; models, permissions, Skills, and image attachments remain Codex features.
 
 ## Tool design
 

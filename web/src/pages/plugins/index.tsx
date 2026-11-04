@@ -151,7 +151,7 @@ function PluginHubPage() {
                             />
                         </Panel>
                         <Panel title={t("pluginHub.stepTwo")} description={t("pluginHub.stepTwoDescription")}>
-                            <div className="flex items-center gap-3 rounded-xl border border-dashed border-stone-300 px-3.5 py-3 dark:border-stone-700">
+                            <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-3 rounded-xl border border-dashed border-stone-300 px-3.5 py-3 dark:border-stone-700">
                                 <span className={`grid size-8 shrink-0 place-items-center rounded-full ${phase === "connected" ? "bg-teal-500/10 text-teal-600 dark:text-teal-400" : "bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400"}`}>
                                     {phase === "connected" ? <CheckCircle2 className="size-4" /> : <ArrowRight className="size-4" />}
                                 </span>
@@ -159,7 +159,7 @@ function PluginHubPage() {
                                     <div className="text-xs font-medium text-stone-900 dark:text-stone-100">{t("pluginHub.stepTwoStatus")}</div>
                                     <div className="mt-0.5 text-[11px] leading-4 text-stone-500 dark:text-stone-400">{t("pluginHub.stepTwoHint")}</div>
                                 </div>
-                                <Button size="small" className="!rounded-lg" onClick={openAgent}>
+                                <Button size="small" className="!h-8 !rounded-lg max-sm:w-full" onClick={openAgent}>
                                     {t("pluginHub.openAgent")}
                                 </Button>
                             </div>
@@ -172,7 +172,7 @@ function PluginHubPage() {
                         title={t("pluginHub.catalogTitle")}
                         description={t("pluginHub.catalogDescription")}
                         action={
-                            <Button type="text" size="small" icon={<RefreshCw className={`size-3.5 ${catalog.loadingOfficial ? "animate-spin" : ""}`} />} onClick={() => void catalog.loadOfficial()} disabled={catalog.loadingOfficial}>
+                            <Button type="text" size="small" className="!h-8" icon={<RefreshCw className={`size-3.5 ${catalog.loadingOfficial ? "animate-spin" : ""}`} />} onClick={() => void catalog.loadOfficial()} disabled={catalog.loadingOfficial}>
                                 {t("pluginHub.refresh")}
                             </Button>
                         }
@@ -225,7 +225,7 @@ function OfficialCatalog({ catalog }: { catalog: ReturnType<typeof usePluginCata
                             record ? (
                                 <InstalledActions record={record} catalog={catalog} officialEntry={entry} upgradable={upgradable} />
                             ) : (
-                                <Button type="primary" size="small" icon={<Download className="size-3.5" />} loading={catalog.busyId === entry.id} onClick={() => void catalog.installOfficial(entry)}>
+                                <Button type="primary" size="small" className="!h-8" icon={<Download className="size-3.5" />} loading={catalog.busyId === entry.id} onClick={() => void catalog.installOfficial(entry)}>
                                     {t("canvas.plugins.install")}
                                 </Button>
                             )
@@ -283,19 +283,20 @@ function InstalledActions({ record, catalog, officialEntry, upgradable = false }
     const { t } = useTranslation();
     return (
         <div className="flex shrink-0 items-center gap-1">
-            <Switch size="small" checked={record.enabled} loading={catalog.busyId === record.id} onChange={(checked) => void catalog.togglePlugin(record, checked)} />
+            <Switch checked={record.enabled} loading={catalog.busyId === record.id} onChange={(checked) => void catalog.togglePlugin(record, checked)} />
             {!record.local ? (
                 <>
                     <Button
                         type={upgradable ? "primary" : "text"}
                         size="small"
+                        className="!h-8 !w-8 !min-w-8"
                         icon={<RefreshCw className="size-3.5" />}
                         loading={catalog.busyId === record.id}
                         title={t(upgradable ? "canvas.plugins.upgradeAvailable" : "canvas.plugins.updateFromSource")}
                         onClick={() => void catalog.updateInstalled(record, officialEntry)}
                     />
                     <Popconfirm title={t("canvas.plugins.uninstallTitle")} okText={t("canvas.plugins.uninstall")} cancelText={t("canvas.editors.cancel")} onConfirm={() => void catalog.uninstall(record)}>
-                        <Button type="text" size="small" danger icon={<Trash2 className="size-3.5" />} title={t("canvas.plugins.uninstall")} />
+                        <Button type="text" size="small" className="!h-8 !w-8 !min-w-8" danger icon={<Trash2 className="size-3.5" />} title={t("canvas.plugins.uninstall")} />
                     </Popconfirm>
                 </>
             ) : null}
@@ -305,11 +306,11 @@ function InstalledActions({ record, catalog, officialEntry, upgradable = false }
 
 function PluginRow({ name, version, description, icon, installed, actions }: { name: string; version: string; description?: string; icon: ReactNode; installed?: boolean; actions: ReactNode }) {
     return (
-        <div className="flex items-center gap-3 rounded-2xl border border-stone-200/80 bg-white/70 px-3.5 py-3 transition hover:border-stone-300 dark:border-stone-800 dark:bg-stone-950/50 dark:hover:border-stone-700">
+        <div className="flex min-w-0 items-center gap-3 overflow-hidden rounded-2xl border border-stone-200/80 bg-white/70 px-3.5 py-3 transition hover:border-stone-300 dark:border-stone-800 dark:bg-stone-950/50 dark:hover:border-stone-700">
             <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400">{icon}</span>
             <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-sm font-medium text-stone-900 dark:text-stone-100">{name}</span>
+                    <span className="min-w-0 truncate text-sm font-medium text-stone-900 dark:text-stone-100">{name}</span>
                     <span className="shrink-0 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] text-stone-500 dark:bg-stone-800 dark:text-stone-400">v{version}</span>
                     {installed ? <span className="shrink-0 text-[10px] text-teal-600 dark:text-teal-400">●</span> : null}
                 </div>
@@ -348,7 +349,7 @@ function MetricCard({ icon, label, value, tone = "neutral" }: { icon: ReactNode;
 
 function Panel({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children: ReactNode }) {
     return (
-        <section className="rounded-2xl border border-stone-200/80 bg-white/70 p-4 dark:border-stone-800 dark:bg-stone-950/50">
+        <section className="min-w-0 rounded-2xl border border-stone-200/80 bg-white/70 p-4 dark:border-stone-800 dark:bg-stone-950/50">
             <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                     <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">{title}</h2>
@@ -366,7 +367,7 @@ function CommandBlock({ command, onCopy, theme }: { command: string; onCopy: () 
         <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
             <div className="flex items-start gap-2">
                 <code className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[11px] leading-5">{command}</code>
-                <Button type="text" size="small" className="!h-7 !w-7 !min-w-7" icon={<Copy className="size-3.5" />} onClick={onCopy} aria-label="copy command" />
+                <Button type="text" size="small" className="!h-8 !w-8 !min-w-8" icon={<Copy className="size-3.5" />} onClick={onCopy} aria-label="copy command" />
             </div>
         </div>
     );

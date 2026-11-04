@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { changeAppLocale, type AppLocale } from "@/i18n";
 import { DOCS_URL } from "@/constant/env";
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import { cn } from "@/lib/utils";
 import { getShellToolNavigation, isShellNavigationActive, shellCreateNavigation, shellPrimaryNavigation, withShellFeatureFlags, type ShellNavigationItem } from "@/components/layout/navigation-groups";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
@@ -25,6 +26,7 @@ export function MobileNavDrawer({ open, compact = false, onClose, onOpenAgent, o
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
     const panelOpen = useAgentStore((state) => state.panelOpen);
+    const agentSkillHubEnabled = isFeatureEnabled("agentSkillHub");
     const locale = i18n.resolvedLanguage as AppLocale;
     const nextLocale = locale === "zh-CN" ? "en-US" : "zh-CN";
     const languageLabel = t("topNav.switchLanguage", { language: t(nextLocale === "zh-CN" ? "locale.zhCN" : "locale.enUS") });
@@ -34,7 +36,7 @@ export function MobileNavDrawer({ open, compact = false, onClose, onOpenAgent, o
         if (item.action === "agent") onOpenAgent();
         if (item.action === "plugins") onOpenPlugins();
     };
-    const itemActive = (item: ShellNavigationItem) => (item.action === "agent" ? panelOpen : isShellNavigationActive(item, pathname, search));
+    const itemActive = (item: ShellNavigationItem) => (item.action === "agent" ? (agentSkillHubEnabled ? isShellNavigationActive(item, pathname, search) : panelOpen) : isShellNavigationActive(item, pathname, search));
     const navItem = (item: ShellNavigationItem) => {
         const Icon = item.icon;
         const active = itemActive(item);

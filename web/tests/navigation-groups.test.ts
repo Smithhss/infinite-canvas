@@ -29,6 +29,13 @@ test("plugin hub is active only on its standalone route", () => {
     expect(isShellNavigationActive(plugins, "/", "?ff_pluginHub=1")).toBe(false);
 });
 
+test("agent hub is active only on its standalone route", () => {
+    const agent = shellCreateNavigation.find((item) => item.key === "agent")!;
+    expect(isShellNavigationActive(agent, "/agent", "?ff_agentSkillHub=1")).toBe(true);
+    expect(isShellNavigationActive(agent, "/agent/archive", "?ff_agentSkillHub=1")).toBe(false);
+    expect(isShellNavigationActive(agent, "/", "?ff_agentSkillHub=1")).toBe(false);
+});
+
 test("shell navigation preserves feature flags but drops transient query state", () => {
     expect(withShellFeatureFlags("/assets", "?mode=new&ff_libtvShell=1&ff_director3d=1")).toBe("/assets?ff_libtvShell=1&ff_director3d=1");
     expect(withShellFeatureFlags("/canvas?mode=new", "?ff_libtvShell=1&mode=recent")).toBe("/canvas?mode=new&ff_libtvShell=1");

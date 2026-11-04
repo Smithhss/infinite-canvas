@@ -2,6 +2,7 @@ import { createBrowserRouter, Outlet } from "react-router-dom";
 
 import { AnalyticsTracker } from "@/components/layout/analytics-tracker";
 import UserLayout from "@/layouts/user-layout";
+import AgentPage from "@/pages/agent";
 import AssetsPage from "@/pages/assets";
 import CanvasPage from "@/pages/canvas";
 import CanvasProjectPage from "@/pages/canvas/project";
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
             { path: "/prompts", element: <PromptsPage /> },
             { path: "/workflows", element: <WorkflowsPage /> },
             { path: "/plugins", element: <PluginsPage /> },
+            { path: "/agent", element: <AgentPage /> },
             { path: "/canvas", element: <CanvasPage /> },
             { path: "/canvas/:id", element: <CanvasProjectPage /> },
             { path: "/config", element: <ConfigPage /> },

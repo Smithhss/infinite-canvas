@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式已实现并合并到 `dev`；`pluginHub` 插件中心已实现并通过本地桌面、移动端、开关回退、官方目录和安装启停卸载验收；Agent/Skills 资源页和画布浮动控制带尚处于计划阶段，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式已实现并合并到 `dev`；`pluginHub` 插件中心已实现并通过本地桌面、移动端、开关回退、官方目录和安装启停卸载验收；`agentSkillHub` Agent/Skills 资源页已实现并等待人工验收；画布浮动控制带尚处于计划阶段，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 
@@ -198,7 +198,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P1-C：Agent / Skills 资源首页
 
-状态：未开始。
+状态：已实现，等待人工验收。
 
 目标：
 
@@ -212,13 +212,14 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 3. 分类：优先使用 Skill 可选元数据；没有分类时按现有 scope、能力和用户自定义集合降级。
 4. 搜索与卡片：标题、短说明、来源、启用状态、连接状态和“使用”入口。
 5. 未连接状态：显示启动本地 Agent、安装插件、复制连接命令的真实步骤。
-6. 选择 Skill 后：关闭独立页并打开右侧 Agent 抽屉，写入 `$skill-name`，不直接发送。
+6. 选择 Skill 后：打开右侧 Agent 抽屉，写入 `$skill-name`，不直接发送。
 
 建议文件：
 
 - 新增 `web/src/pages/agent/index.tsx`
-- 新增 `web/src/pages/agent/components/skill-browser.tsx`
-- 新增 `web/src/pages/agent/components/skill-card.tsx`
+- 新增 `web/src/lib/agent/agent-skill-catalog.ts`
+- 新增 `web/src/stores/use-agent-skill-favorite-store.ts`
+- 新增 `web/src/hooks/use-agent-skill-favorites.ts`
 - 复用 `web/src/components/agent/agent-skills-view.tsx`
 - 复用 `web/src/stores/use-agent-skill-store.ts`
 - 修改 `web/src/router.tsx`
@@ -228,7 +229,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 实施步骤：
 
 1. 第一版只使用 `AgentSkillSummary` 已有字段，不伪造分类、图标或安装量。
-2. 收藏保存在浏览器本地，使用 Skill 的 `name + path + revision/fingerprint` 稳定识别，避免同名 Skill 冲突。
+2. 收藏保存在浏览器本地，使用 Skill 的 `scope + path` 稳定识别，避免同名 Skill 冲突。
 3. 分类先支持“全部、项目、个人、系统、管理员”和已启用状态；新增业务分类必须等 Agent 协议提供可选 `category/tags`。
 4. `agentSkillHub=0` 时保持现有侧栏“技能”页签，不创建重复入口。
 5. 未连接时只显示连接引导，不缓存或展示上次连接的其他工作区 Skill。

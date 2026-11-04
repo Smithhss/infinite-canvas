@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import i18n from "@/i18n";
 
+import type { AgentProvider } from "@/lib/agent/agent-provider";
 import { readAgentPluginDetected } from "@/lib/agent/agent-setup";
 import type { CanvasAgentOp, CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -76,6 +77,7 @@ type AgentStore = {
     models: AgentModel[];
     model: string;
     reasoningEffort: AgentReasoningEffort | "";
+    agentProvider: AgentProvider;
     activity: string;
     conversation: AgentConversationState;
     bootstrapStatus: AgentBootstrapStatus | null;
@@ -129,6 +131,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     models: [],
     model: typeof window === "undefined" ? "" : localStorage.getItem("canvas-agent-model") || "",
     reasoningEffort: typeof window === "undefined" ? "" : (localStorage.getItem("canvas-agent-reasoning-effort") as AgentReasoningEffort) || "",
+    agentProvider: typeof window === "undefined" ? "codex" : ((localStorage.getItem("canvas-agent-provider") as AgentProvider | null) ?? "codex"),
     activity: i18n.t("agent.state.ready"),
     conversation: { revision: 0, conversationId: "", threadId: "", status: "idle", mcpStatuses: {} },
     bootstrapStatus: null,

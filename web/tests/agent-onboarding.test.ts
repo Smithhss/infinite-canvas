@@ -97,4 +97,5 @@ test("Chinese and English onboarding expose the same copy", () => {
     expect(Object.keys(enUS.agent.workspace).sort()).toEqual(Object.keys(zhCN.agent.workspace).sort());
     expect(Object.keys(enUS.agent.scenePreset).sort()).toEqual(Object.keys(zhCN.agent.scenePreset).sort());
     expect(Object.keys(enUS.agent.runtimeStatus).sort()).toEqual(Object.keys(zhCN.agent.runtimeStatus).sort());
+    expect(Object.keys(enUS.agent.provider).sort()).toEqual(Object.keys(zhCN.agent.provider).sort());
 });

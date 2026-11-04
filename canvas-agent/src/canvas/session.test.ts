@@ -62,6 +62,27 @@ test("画布写操作只发送给当前激活网页", async (t) => {
     assert.deepEqual(await result, { ok: true });
 });
 
+test("并行画布工具请求可按任意顺序返回结果", async (t) => {
+    const session = new CanvasSession();
+    const first = connect(session, "first");
+    t.after(() => first.close());
+    session.updateState(snapshot("canvas-first"), "first");
+    session.activateClient("first");
+
+    const firstResult = session.callTool("canvas_create_text_node", { text: "first" });
+    const secondResult = session.callTool("canvas_create_text_node", { text: "second" });
+    const calls = first.events("tool_call");
+    assert.equal(calls.length, 2);
+    const firstRequestId = String(field(calls[0], "requestId"));
+    const secondRequestId = String(field(calls[1], "requestId"));
+    assert.notEqual(firstRequestId, secondRequestId);
+
+    assert.equal(session.resolveResult("first", { requestId: secondRequestId, result: { order: "second" } }), true);
+    assert.deepEqual(await secondResult, { order: "second" });
+    assert.equal(session.resolveResult("first", { requestId: firstRequestId, result: { order: "first" } }), true);
+    assert.deepEqual(await firstResult, { order: "first" });
+});
+
 test("当前 turn 的图片附件可在发起标签页画布创建图片节点", async (t) => {
     const session = new CanvasSession();
     const first = connect(session, "first");
@@ -221,7 +242,7 @@ test("new clients receive the current Codex state and later updates", (t) => {
     t.after(() => client.close());
 
     const hello = client.event("hello");
-    assert.equal(field(hello, "protocolVersion"), 7);
+    assert.equal(field(hello, "protocolVersion"), 8);
     assert.deepEqual(field(hello, "workspace"), { activeThreadId: "thread-2" });
     assert.deepEqual(field(hello, "conversation"), { revision: 1, conversationId: "thread-2", threadId: "thread-2", status: "ready", mcpStatuses: {} });
     assert.deepEqual(field(hello, "codex"), { busy: true, threadId: "thread-2", turnId: "turn-1" });

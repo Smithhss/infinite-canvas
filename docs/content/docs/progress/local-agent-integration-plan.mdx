@@ -21,7 +21,7 @@ Tools should cover state and selection reads, node creation and updates, connect
 
 ## Side panel
 
-The browser panel manages connection state, conversations, streaming events, model and reasoning settings, permissions, approvals, local Skills, diagnostics, and task cancellation. A turn is bound to its initiating `clientId` so focusing another browser tab cannot redirect its canvas operations.
+The browser panel manages connection state, conversations, streaming events, model and reasoning settings, permissions, approvals, local Skills, diagnostics, and task cancellation. Manual canvas-tool confirmation uses an ordered queue keyed by `requestId`, so multiple requests in one turn can be approved or rejected independently. A turn is bound to its initiating `clientId` so focusing another browser tab cannot redirect its canvas operations.
 
 ## Security
 
@@ -36,6 +36,6 @@ The browser panel manages connection state, conversations, streaming events, mod
 1. Expose canvas state and operations to local Codex through MCP.
 2. Add the browser Codex panel with streaming conversations and history.
 3. Add a Claude Agent SDK adapter using the same canvas tools.
-4. Improve native permissions, approvals, diagnostics, multi-tab behavior, Skills, and recovery.
+4. Improve native permissions, approvals, multi-request tool confirmation, diagnostics, multi-tab behavior, Skills, and recovery.
 
 The MVP is complete when an agent can connect to the active canvas, read state and selection, apply visible node operations, start a generation workflow, return structured errors, and remain isolated across tabs.

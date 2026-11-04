@@ -2,6 +2,7 @@ import { create } from "zustand";
 import i18n from "@/i18n";
 
 import type { AgentProvider } from "@/lib/agent/agent-provider";
+import { enqueuePendingTool, removePendingTool } from "@/lib/agent/agent-pending-tools";
 import { readAgentPluginDetected } from "@/lib/agent/agent-setup";
 import type { CanvasAgentOp, CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -89,15 +90,17 @@ type AgentStore = {
     bootstrapStatus: AgentBootstrapStatus | null;
     mcpStartupStatuses: Record<string, AgentBootstrapStatus>;
     connectError: string;
-    pendingTool: AgentPendingToolCall | null;
+    pendingTools: AgentPendingToolCall[];
     pendingApprovals: AgentPendingApproval[];
-    setAgentState: (patch: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext">>) => void;
+    setAgentState: (patch: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext" | "enqueuePendingTool" | "removePendingTool">>) => void;
     openPanel: () => void;
     closePanel: () => void;
     togglePanel: () => void;
     setCanvasContext: (context: AgentCanvasContext | null) => void;
     connectAgent: (options?: { silent?: boolean }) => void;
-    disconnectAgent: (patch?: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext">>) => void;
+    disconnectAgent: (patch?: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext" | "enqueuePendingTool" | "removePendingTool">>) => void;
+    enqueuePendingTool: (tool: AgentPendingToolCall) => void;
+    removePendingTool: (requestId: string) => void;
     addMessage: (item: AgentChatItem) => void;
     addEventLog: (item: AgentEventLog) => void;
     clearEventLogs: () => void;
@@ -144,7 +147,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     bootstrapStatus: null,
     mcpStartupStatuses: {},
     connectError: "",
-    pendingTool: null,
+    pendingTools: [],
     pendingApprovals: [],
     setAgentState: (patch) => set(patch),
     openPanel: () => set({ panelOpen: true, panelMounted: true, panelClosing: false }),
@@ -178,8 +181,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         agentSource = null;
         if (connectTimer) clearTimeout(connectTimer);
         connectTimer = null;
-        set({ enabled: false, connected: false, silentConnect: false, fragmentBootstrap: false, activity: i18n.t("agent.state.offline"), conversation: { revision: 0, conversationId: "", threadId: "", status: "idle", mcpStatuses: {} }, bootstrapStatus: null, mcpStartupStatuses: {}, ...patch });
+        set({ enabled: false, connected: false, silentConnect: false, fragmentBootstrap: false, activity: i18n.t("agent.state.offline"), conversation: { revision: 0, conversationId: "", threadId: "", status: "idle", mcpStatuses: {} }, bootstrapStatus: null, mcpStartupStatuses: {}, pendingTools: [], ...patch });
     },
+    enqueuePendingTool: (tool) => set((state) => ({ pendingTools: enqueuePendingTool(state.pendingTools, tool) })),
+    removePendingTool: (requestId) => set((state) => ({ pendingTools: removePendingTool(state.pendingTools, requestId) })),
     addMessage: (item) => set((state) => ({ messages: [...state.messages, item] })),
     addEventLog: (item) => set((state) => ({ eventLogs: [...state.eventLogs.slice(-160), item] })),
     clearEventLogs: () => set({ eventLogs: [] }),

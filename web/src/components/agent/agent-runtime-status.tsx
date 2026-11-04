@@ -9,19 +9,19 @@ export function AgentRuntimeStatus({
     activity,
     sending,
     waiting,
-    pendingTool,
+    pendingTools,
     pendingApprovals,
     theme,
 }: {
     activity: string;
     sending: boolean;
     waiting: boolean;
-    pendingTool: AgentPendingToolCall | null;
+    pendingTools: AgentPendingToolCall[];
     pendingApprovals: AgentPendingApproval[];
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
 }) {
     const { t } = useTranslation();
-    const runtime = summarizeAgentRuntime({ sending, waiting, pendingTool, pendingApprovals });
+    const runtime = summarizeAgentRuntime({ sending, waiting, pendingTools, pendingApprovals });
     const active = runtime.phase !== "idle";
     const color = runtime.phase === "approval" ? "#d97706" : runtime.phase === "tool" ? "#ea580c" : active ? "#16a34a" : theme.node.muted;
 
@@ -35,7 +35,7 @@ export function AgentRuntimeStatus({
                 {activity}
             </span>
             {runtime.pendingToolCount ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5" style={{ borderColor: theme.node.stroke, color: theme.node.text }} title={pendingTool?.name}>
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5" style={{ borderColor: theme.node.stroke, color: theme.node.text }} title={pendingTools.map((tool) => tool.name).join(", ")}>
                     <Wrench className="size-3" />
                     {t("agent.runtimeStatus.tool", { count: runtime.pendingToolCount })}
                 </span>

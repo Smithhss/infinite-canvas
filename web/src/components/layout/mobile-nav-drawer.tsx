@@ -1,5 +1,5 @@
 import { Drawer } from "antd";
-import { BookOpen, Moon, Sun } from "lucide-react";
+import { BookOpen, Bot, Maximize2, Moon, Puzzle, Sun } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -14,9 +14,11 @@ type MobileNavDrawerProps = {
     open: boolean;
     activeToolSlug?: NavigationToolSlug;
     onClose: () => void;
+    onOpenAgent: () => void;
+    onOpenPlugins: () => void;
 };
 
-export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDrawerProps) {
+export function MobileNavDrawer({ open, activeToolSlug, onClose, onOpenAgent, onOpenPlugins }: MobileNavDrawerProps) {
     const { i18n, t } = useTranslation();
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
@@ -29,7 +31,30 @@ export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDraw
     return (
         <Drawer title={t("topNav.navigation")} placement="left" size={280} open={open} onClose={onClose} className="md:hidden">
             <div className="space-y-1">
-                {navigationTools.filter(isNavigationToolEnabled).map((tool) => {
+                <p className="px-3 pb-1 pt-1 text-xs font-medium text-stone-400 dark:text-stone-500">{t("topNav.createGroup")}</p>
+                <Link
+                    to="/canvas"
+                    onClick={onClose}
+                    className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-3 text-base transition",
+                        activeToolSlug === "canvas" ? "bg-stone-100 font-medium text-stone-950 dark:bg-stone-800 dark:text-stone-100" : "text-stone-600 hover:bg-stone-100 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-stone-800 dark:hover:text-stone-100",
+                    )}
+                >
+                    <Maximize2 className="size-5" />
+                    <span>{t("navigation.canvas")}</span>
+                </Link>
+                <button type="button" className={`${utilityClass} w-full border-0 bg-transparent text-left`} onClick={onOpenAgent}>
+                    <Bot className="size-5" />
+                    <span>{t("topNav.creativeAgent")}</span>
+                </button>
+                <button type="button" className={`${utilityClass} w-full border-0 bg-transparent text-left`} onClick={onOpenPlugins}>
+                    <Puzzle className="size-5" />
+                    <span>{t("topNav.plugins")}</span>
+                </button>
+            </div>
+            <div className="mt-4 space-y-1 border-t border-stone-200 pt-3 dark:border-stone-800">
+                <p className="px-3 pb-1 text-xs font-medium text-stone-400 dark:text-stone-500">{t("topNav.tools")}</p>
+                {navigationTools.filter((tool) => isNavigationToolEnabled(tool) && tool.slug !== "canvas").map((tool) => {
                     const Icon = tool.icon;
                     const active = tool.slug === activeToolSlug;
                     return (

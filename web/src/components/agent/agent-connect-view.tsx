@@ -69,7 +69,7 @@ export function AgentConnectView({
         tokenPresent: Boolean(token.trim()),
     });
     const mcpCheck = checks.find((item) => item.key === "mcp");
-    const suggestions = getAgentSuggestionKeys(canvasSummary).map((key) => t(key));
+    const suggestions = getAgentSuggestionKeys(canvasSummary).slice(0, 3).map((key) => t(key));
     const status = setupStatus(phase, activity, t);
 
     useEffect(() => {

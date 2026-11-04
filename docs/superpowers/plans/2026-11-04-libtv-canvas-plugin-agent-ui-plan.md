@@ -245,7 +245,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P2-A：画布浮动控制带与工具分组
 
-状态：已实现，等待人工验收。
+状态：已实现并合并 `dev`（PR #26），等待人工验收。
 
 目标：
 
@@ -289,7 +289,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P2-B：Agent 空态、运行状态和侧栏细化
 
-状态：未开始。
+状态：已实现，开关 `agentPanelChrome` 默认关闭，等待人工验收。
 
 目标：
 
@@ -319,9 +319,16 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 1. 默认宽度保持约 400px，可拖拽范围建议 320–640px；390px 页面上面板全宽。
 2. 空态建议只填入输入框，不自动发送；禁止默认调用收费模型。
 3. 建议内容根据空画布、已有节点、选中节点、已有故事板和连接状态变化。
-4. 不新增第二套工具状态；队列数量直接使用现有 `pendingToolQueue`。
+4. 不新增第二套工具状态；画布工具确认取现有单槽 `pendingTool`，权限审批取 `pendingApprovals`，两者分别计数展示，不伪造工具队列。
 5. Codex/Claude 模式仍按现有规则隐藏或显示模型、权限、历史和 Skill 入口。
 6. 所有按钮补充中英文 aria label、键盘焦点和 reduced-motion 行为。
+
+本轮范围修订：
+
+- 不修改侧栏 360–760px 的现有拖拽边界，避免未经确认变更交互边界值。
+- 不开放 Codex/Claude 前端切换；该能力需要连接协议、登录检测、Usage 和终态事件配套，继续留在后续任务。
+- 不实现故事文件上传；空态只提供“原创剧本 / 改编故事 / 导演视角”三条只填 prompt 的场景入口。
+- 运行状态条直接复用 `sending`、`waiting`、`pendingTool`、`pendingApprovals`，不新增存储字段。
 
 验收：
 
@@ -356,6 +363,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 | `agentSkillHub` | 关闭 | `/agent` Skill 资源页 | 回到侧栏技能页签   |
 | `director3d`    | 关闭 | 3D 导演台入口和资源   | 保持现有行为       |
 | `canvasFloatingChrome` | 关闭 | 画布浮动顶栏、dock 和空态快捷入口 | 恢复原顶栏与横向工具条 |
+| `agentPanelChrome` | 关闭 | Agent 工作台空态、场景预设和运行状态条 | 恢复原 Agent 空态与布局 |
 
 实施约束：
 

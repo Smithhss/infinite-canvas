@@ -5,6 +5,7 @@ import dayjs from "dayjs";
 import { Bot, History, MessageSquare, PanelRightClose, PlugZap, Plus, Sparkles, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
 import { rememberAgentPluginDetected, resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
 import { readAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
@@ -67,6 +68,7 @@ import {
 import { AgentHistoryView } from "./agent-history-view";
 import { AgentLogView } from "./agent-log-view";
 import { AgentPanelTabs } from "./agent-panel-tabs";
+import { AgentRuntimeStatus } from "./agent-runtime-status";
 import { AgentSkillsView } from "./agent-skills-view";
 
 const MAX_ATTACHMENTS = 6;
@@ -128,6 +130,7 @@ function conversationBootstrapView(conversation: AgentConversationState) {
 export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?: boolean; headless?: boolean; autoConnect?: boolean }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const agentPanelChromeEnabled = isFeatureEnabled("agentPanelChrome");
     const { message, modal } = App.useApp();
     const { hash } = useLocation();
     const [searchParams] = useSearchParams();
@@ -1438,6 +1441,16 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 />
             ) : (
                 <>
+                    {agentPanelChromeEnabled && (sending || waiting || pendingTool || pendingApprovals.length) ? (
+                        <AgentRuntimeStatus
+                            activity={activity || t("agent.message.running")}
+                            sending={sending}
+                            waiting={waiting}
+                            pendingTool={pendingTool}
+                            pendingApprovals={pendingApprovals}
+                            theme={theme}
+                        />
+                    ) : null}
                     <AgentChatTimeline theme={theme} pendingTool={pendingTool} pendingApprovals={pendingApprovals} sending={sending} waiting={waiting} onRejectTool={rejectPendingTool} onApproveTool={approvePendingTool} onApprovalDecision={decideApproval} />
                     <AgentTaskProgress theme={theme} busy={sending || waiting} />
                     {tokenUsage ? <AgentUsageBar usage={tokenUsage} theme={theme} /> : null}

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useSpring, useTransform } from "motion/react";
 import { useTranslation } from "react-i18next";
 
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import { useAgentCanvasSummary } from "@/hooks/use-agent-canvas-summary";
 import { getAgentSuggestionKeys } from "@/lib/agent/agent-suggestions";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -10,6 +11,7 @@ import { useAgentStore, type AgentChatItem, type AgentPendingApproval, type Agen
 import { AgentApprovalCard, AgentChatMessage, AgentCommandGroup, AgentPendingToolCard, AgentToolCard, AgentWorkingMessage } from "./agent-chat-message";
 import { agentMessageToChatMessage, currentPlanMessage, isPlanMessage, latestPlanMessage, toolCallDetail, toolName, workingActivity } from "./agent-event-formatters";
 import { AgentScrollToBottom } from "./agent-scroll-to-bottom";
+import { AgentWorkspaceEmptyState } from "./agent-workspace-empty-state";
 
 const SCROLL_BOTTOM_THRESHOLD = 48;
 const historyMessageStyle = { contentVisibility: "auto", containIntrinsicSize: "0 80px" } as const;
@@ -87,7 +89,9 @@ export function AgentChatTimeline({
                     {timeline.map((entry) => entry.type === "commands"
                         ? <AgentCommandGroupRow key={entry.id} items={entry.items} theme={theme} />
                         : <AgentChatMessageRow key={entry.item.id} item={entry.item} theme={theme} />)}
-                    {showEmptyState ? <AgentChatEmptyState theme={theme} onUsePrompt={(prompt) => setAgentState({ prompt })} /> : null}
+                    {showEmptyState ? (isFeatureEnabled("agentPanelChrome")
+                        ? <AgentWorkspaceEmptyState theme={theme} onUsePrompt={(prompt) => setAgentState({ prompt })} onOpenSkills={() => setAgentState({ activeTab: "skills" })} />
+                        : <AgentChatEmptyState theme={theme} onUsePrompt={(prompt) => setAgentState({ prompt })} />) : null}
                     {pendingTool ? (
                         <AgentPendingToolCard
                             summary={summarizeCanvasAgentOps(pendingTool.input?.ops || []) || toolName(pendingTool.name)}
@@ -122,7 +126,7 @@ export function AgentTaskProgress({ theme, busy }: { theme: (typeof canvasThemes
 function AgentChatEmptyState({ theme, onUsePrompt }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onUsePrompt: (prompt: string) => void }) {
     const { t } = useTranslation();
     const canvasSummary = useAgentCanvasSummary();
-    const examples = getAgentSuggestionKeys(canvasSummary).map((key) => t(key));
+    const examples = getAgentSuggestionKeys(canvasSummary).slice(0, 3).map((key) => t(key));
     return (
         <div className="flex flex-1 flex-col justify-center py-8">
             <div className="mx-auto w-full max-w-md">

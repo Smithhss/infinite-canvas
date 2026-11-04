@@ -55,10 +55,30 @@ test("connection errors distinguish Token and MCP failures", () => {
 });
 
 test("suggestions follow the current canvas state", () => {
-    expect(getAgentSuggestionKeys({ nodeCount: 0, connectionCount: 0, selectedNodeCount: 0 })[0]).toBe("agent.connect.exampleCreateFlow");
-    expect(getAgentSuggestionKeys({ nodeCount: 4, connectionCount: 0, selectedNodeCount: 2 })[0]).toBe("agent.connect.exampleSelectedPrompts");
-    expect(getAgentSuggestionKeys({ nodeCount: 4, connectionCount: 3, selectedNodeCount: 0 })[0]).toBe("agent.connect.exampleReviewFlow");
-    expect(getAgentSuggestionKeys({ nodeCount: 4, connectionCount: 0, selectedNodeCount: 0 })[0]).toBe("agent.connect.exampleOrganize");
+    expect(getAgentSuggestionKeys({ nodeCount: 0, connectionCount: 0, selectedNodeCount: 0 })).toEqual([
+        "agent.connect.exampleCreateFlow",
+        "agent.connect.exampleCreateGrid",
+        "agent.connect.exampleCreateStoryboard",
+        "agent.connect.exampleCreateShotPlan",
+    ]);
+    expect(getAgentSuggestionKeys({ nodeCount: 4, connectionCount: 0, selectedNodeCount: 2 })).toEqual([
+        "agent.connect.exampleSelectedPrompts",
+        "agent.connect.exampleSelectedFlow",
+        "agent.connect.exampleSelectedDescribe",
+        "agent.connect.exampleSelectedStoryboard",
+    ]);
+    expect(getAgentSuggestionKeys({ nodeCount: 4, connectionCount: 3, selectedNodeCount: 0 })).toEqual([
+        "agent.connect.exampleReviewFlow",
+        "agent.connect.exampleFindGaps",
+        "agent.connect.exampleGenerateVariants",
+        "agent.connect.exampleReviewDependencies",
+    ]);
+    expect(getAgentSuggestionKeys({ nodeCount: 4, connectionCount: 0, selectedNodeCount: 0 })).toEqual([
+        "agent.connect.exampleOrganize",
+        "agent.connect.exampleConnectFlow",
+        "agent.connect.exampleRead",
+        "agent.connect.exampleOrganizeGroups",
+    ]);
 });
 
 test("canvas summary only depends on stable counts", () => {
@@ -74,4 +94,7 @@ test("Chinese and English onboarding expose the same copy", () => {
         expect(zhCN.agent.connect[key as keyof typeof zhCN.agent.connect]).not.toBe("");
         expect(enUS.agent.connect[key as keyof typeof enUS.agent.connect]).not.toBe("");
     }
+    expect(Object.keys(enUS.agent.workspace).sort()).toEqual(Object.keys(zhCN.agent.workspace).sort());
+    expect(Object.keys(enUS.agent.scenePreset).sort()).toEqual(Object.keys(zhCN.agent.scenePreset).sort());
+    expect(Object.keys(enUS.agent.runtimeStatus).sort()).toEqual(Object.keys(zhCN.agent.runtimeStatus).sort());
 });

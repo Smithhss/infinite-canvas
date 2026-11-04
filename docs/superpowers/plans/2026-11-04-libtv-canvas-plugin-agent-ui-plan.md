@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台和 P2-C Claude Agent SDK 侧边栏入口已合并到 `dev`。P2-D Claude 本机会话历史与续聊已实现，等待人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口和 P2-D 本机会话历史与续聊已合并到 `dev`。P2-E Claude 原生模型列表已实现，等待人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 
@@ -372,7 +372,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P2-D：Claude 本机会话历史与续聊
 
-状态：已实现，沿用 `agentProviderSwitch`，等待人工验收。
+状态：已合并 `dev`（PR #29），沿用 `agentProviderSwitch`，等待人工验收。
 
 目标：
 
@@ -390,7 +390,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 不在本轮范围：
 
-- Claude 模型列表、模型切换、权限模式、Skill 选择和图片附件。
+- Claude 权限模式、Skill 选择和图片附件。
 - 跨工作空间或跨项目读取 Claude 会话。
 - 多个工具同时等待确认的真实队列；当前仍保持单槽 `pendingTool`。
 
@@ -402,6 +402,40 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 - “新对话”只清空 Claude 当前状态，不删除历史文件和 Codex 会话。
 - Claude 与 Codex 来回切换后，两种 Agent 的消息、工具、审批和 Usage 不串线。
 - `ff_agentProviderSwitch=0` 时恢复 Codex 四页签与固定 Codex 行为。
+- 1440px、390px、中英文和浅深色无横向溢出。
+
+### P2-E：Claude 原生模型列表
+
+状态：已实现，沿用 `agentProviderSwitch`，等待人工验收。
+
+目标：
+
+- 从 Claude Agent SDK 原生初始化响应读取当前本机账号可用模型，不在前端硬编码模型名。
+- 让 Claude 与 Codex 分别保存模型选择，并把所选模型透传到 Claude turn。
+- 不把 Claude 未开放的思考强度、权限、Skill 或图片附件伪装成可用能力。
+
+已实现：
+
+1. Canvas Agent 新增 `GET /agent/claude/models`，通过 `Query.supportedModels()` 读取 SDK 模型列表；查询创建后立即关闭，不提交用户 prompt。
+2. 模型列表只返回 `id`、模型值、显示名、说明和空推理强度列表；SDK 或初始化失败时原样返回错误，不伪造模型。
+3. Claude capability 开放 `model`，继续关闭 `reasoning`、`permission`、`skills`、`attachments` 和 `imageReferences`。
+4. 前端模型选择按 Agent 类型使用独立浏览器存储；Claude 只显示模型选择，不显示思考强度，Codex 原有模型与强度行为保持不变。
+5. `/agent/claude/turn` 携带所选 `model`，不再发送 Claude 未开放的 `effort`。
+6. 模型列表读取失败只记录诊断日志并清空当前选择，不阻断后续文本对话。
+
+不在本轮范围：
+
+- Claude 思考强度、权限模式、Skill 选择和图片附件。
+- 模型别名与实际计费能力的二次校验；当前只信任 SDK 返回的可用模型。
+- 多工具并发确认队列。
+
+验收：
+
+- 使用真实本机 Claude Code 登录态请求 `/agent/claude/models` 能读到 SDK 返回的模型列表，且没有触发模型生成。
+- Claude 模型下拉只显示 SDK 返回项；切换后再切回 Codex，两个模型选择互不覆盖。
+- Claude 请求体包含所选 `model`，不包含 `effort`；Codex 请求仍携带模型与思考强度。
+- 模型列表读取失败时 Claude 文本对话仍可尝试发送，并由真实 Agent 返回后续错误。
+- `ff_agentProviderSwitch=0` 时忽略浏览器保存的 Claude 选择，恢复 Codex 四页签、Codex 模型和推理强度。
 - 1440px、390px、中英文和浅深色无横向溢出。
 
 ### P3：需要服务端或产品契约的能力
@@ -476,7 +510,8 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 | 6    | P2-B Agent 空态与运行状态  | 是         | P1-C 和 Agent 现有状态                |
 | 7    | P2-C Claude SDK 侧栏入口   | 是         | Claude 后端接口和现有事件渲染         |
 | 8    | P2-D Claude 历史与续聊     | 是         | SDK 会话 API 和现有 History 视图      |
-| 9    | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
+| 9    | P2-E Claude 原生模型列表   | 是         | SDK 模型接口和现有模型选择器          |
+| 10   | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
 
 先做 P1-A 的原因：
 

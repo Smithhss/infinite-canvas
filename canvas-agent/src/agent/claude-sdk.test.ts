@@ -43,6 +43,54 @@ test("画布 MCP Server 能按 Zod 4 Schema 注册", () => {
     assert.equal(server.name, "infinite-canvas");
 });
 
+test("模型列表使用 SDK 原生能力且不执行用户任务", async () => {
+    let receivedPrompt = "";
+    let receivedOptions: Record<string, unknown> | undefined;
+    let closed = 0;
+    const adapter = new ClaudeSdkAdapter(
+        ({ prompt, options }) => {
+            receivedPrompt = prompt;
+            receivedOptions = options as unknown as Record<string, unknown>;
+            return Object.assign((async function* () {
+                throw new Error("模型列表不应消费生成事件");
+            })(), {
+                supportedModels: async () => [
+                    { value: "sonnet", resolvedModel: "claude-sonnet-5", displayName: "Sonnet", description: "均衡模型" },
+                    { value: "opus", displayName: "Opus", description: "高能力模型" },
+                ],
+                close: () => {
+                    closed += 1;
+                },
+            });
+        },
+    );
+    assert.deepEqual(await adapter.listModels("/tmp/canvas"), [
+        { id: "sonnet", model: "sonnet", displayName: "Sonnet", description: "均衡模型", supportedReasoningEfforts: [] },
+        { id: "opus", model: "opus", displayName: "Opus", description: "高能力模型", supportedReasoningEfforts: [] },
+    ]);
+    assert.equal(receivedPrompt, "");
+    assert.equal(receivedOptions?.cwd, "/tmp/canvas");
+    assert.deepEqual(receivedOptions?.settingSources, []);
+    assert.deepEqual(receivedOptions?.tools, []);
+    assert.equal(closed, 1);
+});
+
+test("模型列表读取失败时不伪造模型并释放查询", async () => {
+    let closed = 0;
+    const adapter = new ClaudeSdkAdapter(() => Object.assign((async function* () {
+        yield undefined;
+    })(), {
+        supportedModels: async () => {
+            throw new Error("模型读取失败");
+        },
+        close: () => {
+            closed += 1;
+        },
+    }));
+    await assert.rejects(adapter.listModels("/tmp/canvas"), /模型读取失败/);
+    assert.equal(closed, 1);
+});
+
 test("中断只作用于发起网页且完成后释放运行状态", async () => {
     let interrupted = 0;
     let closed = 0;

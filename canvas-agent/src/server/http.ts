@@ -433,6 +433,10 @@ export function startHttpServer() {
         if (!result) return res.status(404).json({ ok: false, error: "Claude 会话不存在或不属于当前工作空间" });
         res.json({ ok: true, workspace, ...result });
     }));
+    app.get("/agent/claude/models", route(async (_req, res) => {
+        const workspace = ensureSiteWorkspace(config);
+        res.json({ ok: true, data: await claudeAdapter.listModels(workspace.workspacePath) });
+    }));
     app.post("/agent/claude/threads/:threadId/delete", route(async (req, res) => {
         const workspace = ensureSiteWorkspace(config);
         const deleted = await deleteClaudeThread(routeParam(req.params.threadId), workspace.workspacePath);

@@ -80,6 +80,8 @@ const DEFAULT_AGENT_URL = "http://127.0.0.1:17371";
 const AGENT_PROTOCOL_VERSION = 6;
 const HISTORY_RETRY_DELAYS_MS = [0, 150, 350, 700, 1200];
 const AGENT_REASONING_EFFORTS = new Set<AgentReasoningEffort>(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+const AGENT_MODEL_STORAGE_KEYS: Record<AgentProvider, string> = { codex: "canvas-agent-model-codex", claude: "canvas-agent-model-claude" };
+const AGENT_REASONING_STORAGE_KEY = "canvas-agent-reasoning-effort-codex";
 const rt = (key: string, options?: Record<string, unknown>) => i18n.t(`agent.runtime.${key}`, options);
 
 type AgentWorkspace = { workspacePath: string; activeThreadId?: string };
@@ -639,7 +641,23 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
 
     useEffect(() => {
         if (!connected) return;
-        void fetchAgentJson<AgentModelsResponse>(endpoint, token, "/agent/codex/models").then(({ data = [] }) => {
+        let disposed = false;
+        const provider = effectiveAgentProvider;
+        const modelPath = provider === "claude" ? "/agent/claude/models" : "/agent/codex/models";
+        void fetchAgentJson<AgentModelsResponse>(endpoint, token, modelPath).then(({ data = [] }) => {
+            if (disposed) return;
+            if (provider === "claude") {
+                const models = data.filter((item) => item.model && item.displayName).map((item) => ({ ...item, supportedReasoningEfforts: item.supportedReasoningEfforts || [] }));
+                if (!models.length) {
+                    setAgentState({ models: [], model: "", reasoningEffort: "" });
+                    return;
+                }
+                const savedModel = localStorage.getItem(AGENT_MODEL_STORAGE_KEYS.claude);
+                const current = models.find((item) => item.model === savedModel) || models[0];
+                localStorage.setItem(AGENT_MODEL_STORAGE_KEYS.claude, current.model);
+                setAgentState({ models, model: current.model, reasoningEffort: "" });
+                return;
+            }
             const names = new Set<string>();
             const models = data.flatMap((item) => {
                 const name = item.displayName || item.model;
@@ -649,17 +667,27 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 const defaultReasoningEffort = efforts.some((effort) => effort.reasoningEffort === item.defaultReasoningEffort) ? item.defaultReasoningEffort : efforts[0].reasoningEffort;
                 return [{ ...item, supportedReasoningEfforts: efforts, defaultReasoningEffort }];
             });
-            if (!models.length) return;
-            const savedModel = useAgentStore.getState().model;
+            if (!models.length) {
+                setAgentState({ models: [], model: "", reasoningEffort: "" });
+                return;
+            }
+            const savedModel = localStorage.getItem(AGENT_MODEL_STORAGE_KEYS.codex) || localStorage.getItem("canvas-agent-model");
             const current = models.find((item) => item.model === savedModel) || models.find((item) => item.isDefault) || models[0];
-            const savedEffort = useAgentStore.getState().reasoningEffort;
+            const savedEffort = localStorage.getItem(AGENT_REASONING_STORAGE_KEY) || localStorage.getItem("canvas-agent-reasoning-effort");
             const efforts = current.supportedReasoningEfforts.map((item) => item.reasoningEffort);
-            const nextEffort = efforts.includes(savedEffort as AgentReasoningEffort) ? savedEffort as AgentReasoningEffort : current.defaultReasoningEffort || efforts[0];
-            localStorage.setItem("canvas-agent-model", current.model);
-            localStorage.setItem("canvas-agent-reasoning-effort", nextEffort);
+            const nextEffort = savedEffort && efforts.includes(savedEffort as AgentReasoningEffort) ? savedEffort as AgentReasoningEffort : current.defaultReasoningEffort || efforts[0]!;
+            localStorage.setItem(AGENT_MODEL_STORAGE_KEYS.codex, current.model);
+            localStorage.setItem(AGENT_REASONING_STORAGE_KEY, nextEffort);
             setAgentState({ models, model: current.model, reasoningEffort: nextEffort });
-        }).catch((error) => addEventLog(rt("modelListFailed"), error));
-    }, [connected, endpoint, setAgentState, token]);
+        }).catch((error) => {
+            if (disposed) return;
+            setAgentState({ models: [], model: "", reasoningEffort: "" });
+            addEventLog(rt("modelListFailed"), error);
+        });
+        return () => {
+            disposed = true;
+        };
+    }, [connected, effectiveAgentProvider, endpoint, setAgentState, token]);
 
     useEffect(() => {
         if (!connected) return;
@@ -742,8 +770,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 ...(messageSkill ? { skill: messageSkill } : {}),
             };
             const modelName = models.find((item) => item.model === model)?.displayName || model || rt("defaultModel");
-            const effortName = reasoningEffort ? i18n.t(`agent.composer.effort.${reasoningEffort}`) : rt("defaultEffort");
-            addEventLog(rt("sendTask"), `${modelName} · ${effortName}${selectedSkill ? ` · Skill ${selectedSkill.name}` : ""}${files.length ? ` · ${rt("attachmentCount", { count: files.length })}` : ""}${canvasReferences.length ? ` · ${rt("canvasReferenceCount", { count: canvasReferences.length })}` : ""} · ${compactText(text) || rt(canvasReferences.length ? "canvasReferencesOnly" : "attachmentsOnly")}`);
+            const effortName = claudeMode ? "" : reasoningEffort ? i18n.t(`agent.composer.effort.${reasoningEffort}`) : rt("defaultEffort");
+            addEventLog(rt("sendTask"), `${modelName}${effortName ? ` · ${effortName}` : ""}${selectedSkill ? ` · Skill ${selectedSkill.name}` : ""}${files.length ? ` · ${rt("attachmentCount", { count: files.length })}` : ""}${canvasReferences.length ? ` · ${rt("canvasReferenceCount", { count: canvasReferences.length })}` : ""} · ${compactText(text) || rt(canvasReferences.length ? "canvasReferencesOnly" : "attachmentsOnly")}`);
             if (claudeMode) {
                 const accepted = await fetchAgentJson<AgentClaudeTurnResponse>(endpoint, token, "/agent/claude/turn", {
                     method: "POST",
@@ -753,7 +781,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         clientId: clientIdRef.current,
                         threadId: threadId || undefined,
                         sessionId: threadId || undefined,
-                        effort: reasoningEffort || undefined,
+                        model: model || undefined,
                     }),
                 });
                 if (!accepted.runId) throw new Error(rt("startConversationFailed"));
@@ -1017,10 +1045,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             messages: [],
             threads: [],
             loadingThreads: false,
+            models: [],
+            model: "",
+            reasoningEffort: "",
             tokenUsage: null,
             pendingTool: null,
             pendingApprovals: [],
-            ...(nextProvider === "claude" ? { model: "", reasoningEffort: "" } : {}),
         });
         if (nextProvider === "claude") {
             addEventLog(rt("providerClaudeSelected"), rt("providerClaudeHint"));
@@ -1650,12 +1680,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                             const selected = models.find((item) => item.model === model);
                             if (!selected) return;
                             const effort = selected.defaultReasoningEffort || selected.supportedReasoningEfforts[0]?.reasoningEffort;
-                            localStorage.setItem("canvas-agent-model", model);
-                            if (effort) localStorage.setItem("canvas-agent-reasoning-effort", effort);
+                            localStorage.setItem(AGENT_MODEL_STORAGE_KEYS[effectiveAgentProvider], model);
+                            if (effort) localStorage.setItem(AGENT_REASONING_STORAGE_KEY, effort);
                             setAgentState({ model, ...(effort ? { reasoningEffort: effort } : {}) });
                         } : undefined}
                         onReasoningEffortChange={providerCapabilities.reasoning ? (reasoningEffort) => {
-                            localStorage.setItem("canvas-agent-reasoning-effort", reasoningEffort);
+                            localStorage.setItem(AGENT_REASONING_STORAGE_KEY, reasoningEffort);
                             setAgentState({ reasoningEffort });
                         } : undefined}
                         agentProvider={agentProviderSwitchEnabled ? agentProvider : undefined}

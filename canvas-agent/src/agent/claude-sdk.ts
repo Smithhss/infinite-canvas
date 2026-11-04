@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { createSdkMcpServer, query, tool, type McpServerConfig, type Options as ClaudeSdkOptions } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query, tool, type McpServerConfig, type ModelInfo, type Options as ClaudeSdkOptions } from "@anthropic-ai/claude-agent-sdk";
 
 import { toolDescriptions, toolInputSchemas, toolNames, type ToolName } from "../canvas/schemas.js";
 import { AGENT_PROMPT, loadConfig, type CanvasAgentConfig, VERSION } from "../config.js";
@@ -13,6 +13,7 @@ import { callCanvasAgentTool } from "../server/mcp.js";
 type ClaudeSdkQuery = AsyncIterable<unknown> & {
     interrupt?: () => Promise<unknown>;
     close?: () => void;
+    supportedModels?: () => Promise<ModelInfo[]>;
 };
 type QueryFactory = (params: { prompt: string; options: ClaudeSdkOptions }) => ClaudeSdkQuery;
 type McpServerFactory = () => McpServerConfig;
@@ -48,6 +49,36 @@ export class ClaudeSdkAdapter {
     /** 返回当前是否有 Claude turn 正在运行。 */
     get busy() {
         return this.active.size > 0;
+    }
+
+    /** 通过 SDK 原生初始化响应读取当前账号可用模型，不提交用户任务。 */
+    async listModels(cwd: string) {
+        const abort = new AbortController();
+        const activeQuery = this.queryFactory({
+            prompt: "",
+            options: {
+                abortController: abort,
+                cwd,
+                settingSources: [],
+                permissionMode: "dontAsk",
+                strictMcpConfig: true,
+                mcpServers: {},
+                tools: [],
+                env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: `canvas-agent/${VERSION}` },
+            } satisfies ClaudeSdkOptions,
+        });
+        try {
+            if (!activeQuery.supportedModels) throw new Error("当前 Claude Agent SDK 不支持读取模型列表");
+            return (await activeQuery.supportedModels()).map((model) => ({
+                id: model.value,
+                model: model.value,
+                displayName: model.displayName,
+                description: model.description,
+                supportedReasoningEfforts: [],
+            }));
+        } finally {
+            activeQuery.close?.();
+        }
     }
 
     /** 启动一轮 SDK 调用；事件通过 SSE 异步返回。 */

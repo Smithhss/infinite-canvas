@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-+ [新增] 新增默认关闭的 `agentProviderSwitch`：Agent 侧栏可在 Codex 与 Claude Agent SDK 间切换，Claude 复用现有画布工具确认、流式事件、Usage 和中断，并可读取本机会话历史、恢复或删除当前工作空间会话；模型、权限、Skill 与图片附件仍归 Codex。
++ [新增] 新增默认关闭的 `agentProviderSwitch`：Agent 侧栏可在 Codex 与 Claude Agent SDK 间切换，Claude 复用现有画布工具确认、流式事件、Usage 和中断，并可读取原生模型、本机会话历史、恢复或删除当前工作空间会话；权限、Skill 与图片附件仍归 Codex。
++ [新增] Claude 模式新增 SDK 原生模型列表与模型切换，模型选择按 Agent 类型分别保存并在 `/agent/claude/turn` 中透传；思考强度仍只由 Codex 提供。
 + [修复] Claude 继续对话时改传真实 SDK `sessionId`，首次初始化若返回不同会话 ID 会同步当前消息归属，避免每轮都新建上下文。
 + [调整] 新增默认关闭的 `agentPanelChrome` Agent 工作台：空会话展示画布计数、四条随画布状态变化的建议和原创剧本/改编故事/导演视角场景入口，点击仅填入输入框；运行时按真实 `pendingTool` 与 `pendingApprovals` 分别显示工具和审批状态，不新增工具队列或自动发送。
 + [调整] 新增默认关闭的 `canvasFloatingChrome` 画布浮动控制带：顶部按返回/画布信息、工作流/故事板、保存与 Agent 分组，底部改为添加、选择、素材、历史、外观和更多菜单，并为空画布提供图片、视频、音频、剧本快捷入口及不可点击的智能剪辑占位。

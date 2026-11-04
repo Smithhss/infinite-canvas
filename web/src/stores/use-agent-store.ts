@@ -20,7 +20,8 @@ export type AgentModel = {
     id: string;
     model: string;
     displayName: string;
-    defaultReasoningEffort: AgentReasoningEffort;
+    description?: string;
+    defaultReasoningEffort?: AgentReasoningEffort;
     supportedReasoningEfforts: Array<{ reasoningEffort: AgentReasoningEffort; description?: string }>;
     isDefault?: boolean;
 };
@@ -42,6 +43,10 @@ export type AgentConversationState = {
 export type AgentPanelTab = "chat" | "setup" | "history" | "skills" | "log";
 
 const CONNECT_TIMEOUT_MS = 6000;
+const initialAgentProvider = typeof window === "undefined" ? "codex" : ((localStorage.getItem("canvas-agent-provider") as AgentProvider | null) ?? "codex");
+const initialModelStorageKey = `canvas-agent-model-${initialAgentProvider}`;
+const initialModel = typeof window === "undefined" ? "" : localStorage.getItem(initialModelStorageKey) || (initialAgentProvider === "codex" ? localStorage.getItem("canvas-agent-model") : "") || "";
+const initialReasoningEffort = typeof window === "undefined" || initialAgentProvider === "claude" ? "" : localStorage.getItem("canvas-agent-reasoning-effort-codex") || localStorage.getItem("canvas-agent-reasoning-effort") || "";
 let agentSource: EventSource | null = null;
 let connectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -129,9 +134,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     confirmTools: false,
     permissionMode: typeof window === "undefined" ? "request" : (localStorage.getItem("canvas-agent-permission-mode") as AgentPermissionMode) || "request",
     models: [],
-    model: typeof window === "undefined" ? "" : localStorage.getItem("canvas-agent-model") || "",
-    reasoningEffort: typeof window === "undefined" ? "" : (localStorage.getItem("canvas-agent-reasoning-effort") as AgentReasoningEffort) || "",
-    agentProvider: typeof window === "undefined" ? "codex" : ((localStorage.getItem("canvas-agent-provider") as AgentProvider | null) ?? "codex"),
+    model: initialModel,
+    reasoningEffort: initialReasoningEffort as AgentReasoningEffort | "",
+    agentProvider: initialAgentProvider,
     activity: i18n.t("agent.state.ready"),
     conversation: { revision: 0, conversationId: "", threadId: "", status: "idle", mcpStatuses: {} },
     bootstrapStatus: null,

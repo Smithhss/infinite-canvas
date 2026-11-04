@@ -94,7 +94,7 @@ function PluginHubPage() {
                     <Panel title={t("pluginHub.compatibilityTitle")} description={t("pluginHub.compatibilityDescription")}>
                         <div className="grid gap-2 sm:grid-cols-3">
                             <CompatibilityCard icon={<Code2 className="size-4" />} name="Codex" description={t("pluginHub.codexDescription")} status={t("pluginHub.available")} available />
-                            <CompatibilityCard icon={<Bot className="size-4" />} name="Claude" description={t("pluginHub.claudeDescription")} status={t("pluginHub.planned")} />
+                            <CompatibilityCard icon={<Bot className="size-4" />} name="Claude" description={t("pluginHub.claudeDescription")} status={t("pluginHub.available")} available />
                             <CompatibilityCard icon={<FileTerminal className="size-4" />} name="Claude Code" description={t("pluginHub.claudeCodeDescription")} status={t("pluginHub.planned")} />
                         </div>
                     </Panel>

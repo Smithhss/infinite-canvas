@@ -7,12 +7,9 @@ import { useTranslation } from "react-i18next";
 import { useAgentCanvasSummary } from "@/hooks/use-agent-canvas-summary";
 import { getAgentSetupChecks, resolveAgentSetupPhase, type AgentSetupCheckKey, type AgentSetupCheckState, type AgentSetupPhase } from "@/lib/agent/agent-setup";
 import { getAgentSuggestionKeys } from "@/lib/agent/agent-suggestions";
+import { AGENT_CLI_COMMAND, AGENT_MCP_REMOVE_COMMAND, AGENT_PLUGIN_INSTALL_COMMAND, AGENT_PLUGIN_REMOVE_COMMAND } from "@/lib/agent/plugin-commands";
 import { canvasThemes } from "@/lib/canvas-theme";
 import type { AgentConversationState } from "@/stores/use-agent-store";
-
-const AGENT_PLUGIN_REMOVE_COMMAND = "codex plugin remove infinite-canvas";
-const AGENT_MCP_REMOVE_COMMAND = "codex mcp remove infinite-canvas";
-const AGENT_PLUGIN_INSTALL_COMMAND = ["git clone https://github.com/Smithhss/infinite-canvas.git ~/plugins/infinite-canvas", "codex plugin marketplace add ~/plugins/infinite-canvas", "codex plugin add infinite-canvas@infinite-canvas-local"].join("\n");
 
 export function AgentConnectView({
     theme,
@@ -272,13 +269,7 @@ export function AgentConnectView({
                     </div>
                     {advancedOpen ? (
                         <div className="mt-2 grid gap-1.5">
-                            <CommandRow
-                                command="npx -y @smithhsiiiii/canvas-agent@latest"
-                                label={t("agent.connect.manualCommand")}
-                                onCopy={() => copyCommand("npx -y @smithhsiiiii/canvas-agent@latest")}
-                                theme={theme}
-                                copyLabel={t("agent.connect.copyCommand")}
-                            />
+                            <CommandRow command={AGENT_CLI_COMMAND} label={t("agent.connect.manualCommand")} onCopy={() => copyCommand(AGENT_CLI_COMMAND)} theme={theme} copyLabel={t("agent.connect.copyCommand")} />
                             <CommandRow command={AGENT_PLUGIN_REMOVE_COMMAND} label={t("agent.connect.removePlugin")} onCopy={() => copyCommand(AGENT_PLUGIN_REMOVE_COMMAND)} theme={theme} copyLabel={t("agent.connect.copyCommand")} />
                             <CommandRow command={AGENT_MCP_REMOVE_COMMAND} label={t("agent.connect.removeMcp")} onCopy={() => copyCommand(AGENT_MCP_REMOVE_COMMAND)} theme={theme} copyLabel={t("agent.connect.copyCommand")} />
                         </div>

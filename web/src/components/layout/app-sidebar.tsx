@@ -57,7 +57,7 @@ export function AppSidebar({ onOpenPlugins }: AppSidebarProps) {
                 {content}
             </Link>
         ) : (
-            <button type="button" className={className} onClick={() => item.action && runAction(item.action)}>
+            <button type="button" className={className} aria-current={active ? "page" : undefined} onClick={() => item.action && runAction(item.action)}>
                 {content}
             </button>
         );

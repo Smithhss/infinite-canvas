@@ -9,6 +9,7 @@ import ConfigPage from "@/pages/config";
 import HomePage from "@/pages/home";
 import ImagePage from "@/pages/image";
 import NotFound from "@/pages/not-found";
+import PluginsPage from "@/pages/plugins";
 import PromptsPage from "@/pages/prompts";
 import VideoPage from "@/pages/video";
 import WorkflowsPage from "@/pages/workflows";
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
             { path: "/assets", element: <AssetsPage /> },
             { path: "/prompts", element: <PromptsPage /> },
             { path: "/workflows", element: <WorkflowsPage /> },
+            { path: "/plugins", element: <PluginsPage /> },
             { path: "/canvas", element: <CanvasPage /> },
             { path: "/canvas/:id", element: <CanvasProjectPage /> },
             { path: "/config", element: <ConfigPage /> },

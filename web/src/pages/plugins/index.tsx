@@ -132,8 +132,10 @@ function PluginHubPage() {
                                 <button
                                     key={mode}
                                     type="button"
-                                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${installMode === mode ? "bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950" : "text-stone-500 hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100"}`}
+                                    className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                                    style={installMode === mode ? { background: theme.toolbar.activeBg, color: theme.toolbar.activeText } : { color: theme.node.muted }}
                                     onClick={() => setInstallMode(mode)}
+                                    aria-pressed={installMode === mode}
                                 >
                                     {t(mode === "plugin" ? "pluginHub.pluginMode" : "pluginHub.cliMode")}
                                 </button>

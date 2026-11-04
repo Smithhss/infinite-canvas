@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带和 `agentPanelChrome` Agent 工作台已合并到 `dev`。`agentProviderSwitch` 已接入 Claude Agent SDK 侧边栏入口，尚未合并。所有实验能力仍默认关闭，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台和 P2-C Claude Agent SDK 侧边栏入口已合并到 `dev`。P2-D Claude 本机会话历史与续聊已实现，等待人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 
@@ -340,7 +340,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P2-C：Claude Agent SDK 侧边栏入口
 
-状态：已实现，开关 `agentProviderSwitch` 默认关闭，等待人工验收。
+状态：已合并 `dev`（PR #28），开关 `agentProviderSwitch` 默认关闭，等待人工验收。
 
 目标：
 
@@ -350,7 +350,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 本轮实现：
 
 1. 输入框工具栏增加 Agent 类型菜单；切换前若有任务运行则拒绝并提示先完成或停止。
-2. Claude 模式隐藏 Codex 模型、思考强度、权限、历史、Skill 和图片上传入口，仅保留文本输入、画布工具确认、日志和停止。
+2. Claude 模式隐藏 Codex 模型、思考强度、权限、Skill 和图片上传入口，仅保留文本输入、历史、画布工具确认、日志和停止。
 3. 从 Codex 切到 Claude 时移除图片附件和图片引用，保留文本画布引用；发送前再次校验，避免绕过 UI 提交不支持的内容。
 4. 连接设置页在 Claude 模式显示 Claude Agent SDK 说明，使用本机 Claude Code 登录态，不再展示 Codex 插件安装步骤。
 5. Claude 事件复用现有 `thread.started`、`turn.started`、`item.*`、`usage.updated`、`turn.completed` 渲染；按 `runId` 适配会话线程，助手消息标题显示 Claude，终态清理运行状态。
@@ -359,15 +359,49 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 不在本轮范围：
 
 - 真实工具队列。当前仍是单槽 `pendingTool`，同时到达的第二个工具会被拒绝；需要 Agent 协议升级后才能提供真实队列。
-- Claude 模型列表、权限模式、历史会话、Skill 选择和图片附件；这些需要 `/agent/claude` 对应契约，继续留在后续任务。
+- Claude 模型列表、权限模式、Skill 选择和图片附件；这些需要 `/agent/claude` 对应契约，继续留在后续任务。
 - Claude 登录态预检。侧栏不伪造已登录状态，首次发送时由 Canvas Agent 返回真实错误。
 
 验收：
 
 - 开关关闭时，即使浏览器保存过 Claude，也必须完整保持 Codex 侧栏、四页签和原控件。
-- 开关打开后可切换 Codex / Claude；Claude 模式只显示 Chat 和 Logs，模型、权限、历史、Skill、上传控件全部消失。
+- 开关打开后可切换 Codex / Claude；Claude 模式显示 Chat、History 和 Logs，模型、权限、Skill、上传控件全部消失。
 - Claude 用户消息、流式助手消息、Usage、工具确认、批准/拒绝、停止和终态都能正确归属到当前 `threadId` / `turnId`。
 - 未连接时 Claude 设置页只提供真实连接动作，不展示 Codex 插件安装步骤。
+- 1440px、390px、中英文和浅深色无横向溢出。
+
+### P2-D：Claude 本机会话历史与续聊
+
+状态：已实现，沿用 `agentProviderSwitch`，等待人工验收。
+
+目标：
+
+- 直接读取 Claude Agent SDK 在当前工作空间持久化的本机会话，不建立第二套历史存储。
+- 让历史恢复后的下一轮继续使用同一个 SDK `sessionId`，避免每轮都新建上下文。
+
+已实现：
+
+1. Canvas Agent 新增 `GET /agent/claude/threads`、`GET /agent/claude/threads/:threadId` 和 `POST /agent/claude/threads/:threadId/delete`，读写均限制在当前工作空间。
+2. 历史只归一化用户文本、助手文本和工具名称/状态；不把工具输入、工具结果、本地路径、图片或其他附件内容返回浏览器。
+3. Claude 模式复用现有 History 页签，支持刷新、恢复、删除和多选删除；恢复后加载 SDK 历史消息。
+4. `/agent/claude/turn` 优先使用浏览器传入的真实 `sessionId` 执行 SDK `resume`；新会话首次收到 SDK session ID 后，将临时消息归属迁移到真实 ID。
+5. 切换 Codex / Claude、清空 Claude 当前会话和删除当前 Claude 会话时，同步清理不再适用的消息、线程、工具和 Usage 状态，避免跨 Agent 污染。
+6. 计划关闭功能开关时，即使浏览器保存过 Claude，也完整恢复 Codex 四页签与 Codex 历史行为。
+
+不在本轮范围：
+
+- Claude 模型列表、模型切换、权限模式、Skill 选择和图片附件。
+- 跨工作空间或跨项目读取 Claude 会话。
+- 多个工具同时等待确认的真实队列；当前仍保持单槽 `pendingTool`。
+
+验收：
+
+- 历史只显示当前工作空间会话；点击后恢复正确文本与工具摘要，刷新后仍可读取。
+- 恢复历史后发送续聊，请求同时携带同一个 `threadId` 和 `sessionId`。
+- 删除单条或多条 Claude 会话后列表与当前消息状态同步，不留下可继续操作的旧会话。
+- “新对话”只清空 Claude 当前状态，不删除历史文件和 Codex 会话。
+- Claude 与 Codex 来回切换后，两种 Agent 的消息、工具、审批和 Usage 不串线。
+- `ff_agentProviderSwitch=0` 时恢复 Codex 四页签与固定 Codex 行为。
 - 1440px、390px、中英文和浅深色无横向溢出。
 
 ### P3：需要服务端或产品契约的能力
@@ -441,7 +475,8 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 | 5    | P2-A 画布浮动控制带和 dock | 是         | P1-A 视觉基线                         |
 | 6    | P2-B Agent 空态与运行状态  | 是         | P1-C 和 Agent 现有状态                |
 | 7    | P2-C Claude SDK 侧栏入口   | 是         | Claude 后端接口和现有事件渲染         |
-| 7    | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
+| 8    | P2-D Claude 历史与续聊     | 是         | SDK 会话 API 和现有 History 视图      |
+| 9    | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
 
 先做 P1-A 的原因：
 

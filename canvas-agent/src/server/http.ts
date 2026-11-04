@@ -5,6 +5,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 
 import { runClaudeTurn } from "../agent/claude.js";
 import { ClaudeSdkAdapter } from "../agent/claude-sdk.js";
+import { deleteClaudeThread, listClaudeThreads, readClaudeThread } from "../agent/claude-sessions.js";
 import { archiveCodexThread, CodexSkillLookupError, configureCodexSkill, generateCodexSkillDraft, interruptCodexTurn, isRecoverableThreadError, listCodexModels, listCodexSkills, listCodexThreads, readCodexThread, resolveCodexApproval, resolveCodexSkill, resumeCodexThread, runCodexTurn, startCodexThread, summarizeCodexThread } from "../agent/codex.js";
 import type { CodexReasoningEffort, CodexSkillSelector } from "../agent/codex-protocol.js";
 import { messageMetadataStore } from "../agent/message-metadata.js";
@@ -422,6 +423,21 @@ export function startHttpServer() {
         const ok = await interruptCodexTurn(skillDraftRunning ? undefined : String(req.body?.threadId || ""));
         res.status(ok ? 200 : 409).json({ ok, ...(ok ? {} : { error: "当前没有可停止的任务" }) });
     }));
+    app.get("/agent/claude/threads", route(async (_req, res) => {
+        const workspace = ensureSiteWorkspace(config);
+        res.json({ ok: true, workspace, data: await listClaudeThreads(workspace.workspacePath) });
+    }));
+    app.get("/agent/claude/threads/:threadId", route(async (req, res) => {
+        const workspace = ensureSiteWorkspace(config);
+        const result = await readClaudeThread(routeParam(req.params.threadId), workspace.workspacePath);
+        if (!result) return res.status(404).json({ ok: false, error: "Claude 会话不存在或不属于当前工作空间" });
+        res.json({ ok: true, workspace, ...result });
+    }));
+    app.post("/agent/claude/threads/:threadId/delete", route(async (req, res) => {
+        const workspace = ensureSiteWorkspace(config);
+        const deleted = await deleteClaudeThread(routeParam(req.params.threadId), workspace.workspacePath);
+        res.status(deleted ? 200 : 404).json(deleted ? { ok: true, workspace } : { ok: false, error: "Claude 会话不存在或不属于当前工作空间" });
+    }));
     app.post("/agent/claude/turn", route(async (req, res) => {
         const prompt = String(req.body?.prompt || "");
         if (!prompt.trim()) return res.status(400).json({ ok: false, error: "请输入任务内容" });
@@ -438,7 +454,7 @@ export function startHttpServer() {
                 clientId,
                 cwd: workspace.workspacePath,
                 threadId: String(req.body?.threadId || "") || undefined,
-                sessionId: String(req.body?.sessionId || "") || undefined,
+                sessionId: String(req.body?.sessionId || req.body?.threadId || "") || undefined,
                 model: String(req.body?.model || "") || undefined,
                 effort: claudeEffort(req.body?.effort),
                 onFinish: () => session.releaseClient(clientId),

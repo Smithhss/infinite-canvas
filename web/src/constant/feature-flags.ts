@@ -8,6 +8,7 @@ export const FEATURE_FLAG_DEFAULTS = {
     libtvShell: false,
     pluginHub: false,
     agentSkillHub: false,
+    canvasFloatingChrome: false,
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAG_DEFAULTS;

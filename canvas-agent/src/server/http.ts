@@ -487,9 +487,17 @@ export function startHttpServer() {
         const userMessageId = crypto.randomUUID();
         const workspace = ensureSiteWorkspace(config);
         if (session.codexOperationBusy || claudeAdapter.busy || !session.beginAgentTurn(clientId)) return res.status(409).json({ ok: false, code: "AGENT_BUSY", error: "本地 Agent 正在执行其他任务，请稍后重试" });
+        let reservation: ReturnType<typeof claudeAdapter.reserve>;
+        try {
+            reservation = claudeAdapter.reserve(clientId);
+        } catch (error) {
+            session.releaseClient(clientId);
+            throw error;
+        }
         try {
             if (messageId) await messageMetadataStore.recordPending(messageId, req.body?.messageMetadata);
         } catch (error) {
+            await claudeAdapter.interrupt(clientId).catch(() => false);
             session.releaseClient(clientId);
             throw error;
         }
@@ -531,9 +539,10 @@ export function startHttpServer() {
                         else void removeUnbound();
                     }
                 },
-            }, attachments);
+            }, attachments, reservation);
             res.json({ ok: true, transport: "sdk", ...run });
         } catch (error) {
+            await claudeAdapter.interrupt(clientId).catch(() => false);
             session.clearTurnAttachments(clientId);
             session.releaseClient(clientId);
             if (messageId && !metadataBound) await messageMetadataStore.remove(messageId).catch((metadataError) => logger.warn("Failed to remove rejected Claude message metadata", { clientMessageId: messageId, error: metadataError }));

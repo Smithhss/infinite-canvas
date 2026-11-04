@@ -59,6 +59,41 @@ test("Claude run 在网页启动前已断开时拒绝创建无人控制的任务
     assert.equal(adapter.busy, false);
 });
 
+test("Claude 在启动校验期间断线会取消占位且不再创建查询", async () => {
+    const cwd = await projectWithSkill("cancel-skill");
+    let queried = false;
+    const adapter = new ClaudeSdkAdapter(({ options }) => {
+        queried = true;
+        return Object.assign((async function* () {
+            yield { type: "result", session_id: "session-1", subtype: "success", is_error: false, result: "完成", usage: {}, modelUsage: {} };
+        })(), { close: () => undefined });
+    });
+    try {
+        const running = adapter.run("/cancel-skill 写入画布", () => undefined, {
+            clientId: "client-1",
+            cwd,
+            skill: "cancel-skill",
+            isClientActive: () => true,
+        });
+        assert.equal(await adapter.interrupt("client-1"), true);
+        assert.equal((await running).runId.length > 0, true);
+        assert.equal(queried, false);
+        assert.equal(adapter.busy, false);
+    } finally {
+        await fs.rm(cwd, { recursive: true, force: true });
+    }
+});
+
+test("Claude 占位后未进入 run 就取消时不会留下永久 busy 状态", async () => {
+    const adapter = new ClaudeSdkAdapter(() => {
+        throw new Error("不应创建查询");
+    });
+    adapter.reserve("client-1");
+    assert.equal(adapter.busy, true);
+    assert.equal(await adapter.interrupt("client-1"), true);
+    assert.equal(adapter.busy, false);
+});
+
 test("请求模式把 Claude 写工具转入网页审批，并支持本会话批准", async () => {
     let canUseTool: any;
     let release = () => undefined;

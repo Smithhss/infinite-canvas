@@ -34,6 +34,7 @@ import { useTranslation } from "react-i18next";
 
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
+import { canvasTopBarLayout } from "@/lib/canvas/canvas-chrome";
 import { useCanvasSidePanelStore } from "@/stores/use-canvas-side-panel-store";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -127,10 +128,7 @@ export function CanvasTopBar({
     const nextLocale = locale === "zh-CN" ? "en-US" : "zh-CN";
     const languageLabel = t("topNav.switchLanguage", { language: t(nextLocale === "zh-CN" ? "locale.zhCN" : "locale.enUS") });
     const floating = variant === "floating";
-    const compactActions = floating ? agentOpen || topBarWidth < 1280 : topBarWidth < 768;
-    const minimalActions = topBarWidth > 0 && topBarWidth < (floating ? 760 : 640);
-    const ultraCompactActions = topBarWidth > 0 && topBarWidth < 420;
-    const singleClusterActions = floating && topBarWidth > 0 && topBarWidth < 260;
+    const { compactActions, minimalActions, ultraCompactActions, singleClusterActions } = canvasTopBarLayout({ width: topBarWidth, floating, agentOpen });
     const secondaryMenuItemClass = compactActions ? undefined : floating ? "xl:hidden" : "md:hidden";
     const floatingClusterStyle = floating ? { background: theme.toolbar.floating, borderColor: theme.toolbar.border, boxShadow: colorTheme === "dark" ? "0 8px 24px rgba(0,0,0,.18)" : "0 8px 24px rgba(28,25,23,.08)" } : undefined;
 
@@ -161,7 +159,7 @@ export function CanvasTopBar({
                 className={cn("pointer-events-none absolute left-0 right-0 top-0 z-50 grid h-12 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1", floating ? "px-2" : "border-b pl-1 pr-2 sm:pr-4")}
                 style={{ background: floating ? "transparent" : theme.toolbar.floating, borderColor: theme.toolbar.border }}
             >
-                <div className={cn("pointer-events-auto flex min-w-0 items-center gap-1.5 justify-self-start", floating && "h-9 rounded-xl border px-1 backdrop-blur-md")} style={floatingClusterStyle}>
+                <div className={cn("pointer-events-auto flex min-w-0 max-w-full items-center gap-1.5 justify-self-start", floating && "h-9 rounded-xl border px-1 backdrop-blur-md")} style={floatingClusterStyle}>
                     {workspaceView === "workflow" && !ultraCompactActions ? (
                         <Tooltip title={sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel")}>
                             <button
@@ -232,7 +230,7 @@ export function CanvasTopBar({
                     </Dropdown>
 
                     {singleClusterActions ? null : (
-                        <div ref={titleRef} className="flex min-w-0 items-center gap-2">
+                        <div ref={titleRef} className="flex min-w-0 flex-1 items-center gap-2">
                             {floating ? (
                                 <span className="hidden shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-[0.12em] sm:flex" style={{ color: theme.node.muted }}>
                                     {t("canvas.workspaceLabel")}
@@ -249,13 +247,13 @@ export function CanvasTopBar({
                                         if (event.key === "Enter") onFinishTitleEditing();
                                         if (event.key === "Escape") onCancelTitleEditing();
                                     }}
-                                    className={cn("min-w-0 bg-transparent p-0 text-left text-sm font-medium tracking-normal outline-none", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
+                                    className={cn("min-w-0 flex-1 bg-transparent p-0 text-left text-sm font-medium tracking-normal outline-none", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
                                     style={{ color: theme.node.text }}
                                 />
                             ) : (
                                 <button
                                     type="button"
-                                    className={cn("min-w-0 truncate border-b border-dashed border-transparent text-left text-sm font-medium tracking-normal transition hover:border-current", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
+                                    className={cn("min-w-0 flex-1 truncate border-b border-dashed border-transparent text-left text-sm font-medium tracking-normal transition hover:border-current", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
                                     onDoubleClick={onStartTitleEditing}
                                     title={t("canvas.renameHint")}
                                 >

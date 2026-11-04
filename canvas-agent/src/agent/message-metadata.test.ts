@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 
+import { withAttachmentContext } from "./claude-attachments.js";
 import { normalizeClaudeHistory } from "./claude-sessions.js";
 import { MessageMetadataStore } from "./message-metadata.js";
 
@@ -73,6 +74,31 @@ test("Claude history restores metadata by the SDK user message UUID", async (con
     assert.equal(message.clientMessageId, "message-1");
     assert.equal(message.attachments?.[0].name, "image.png");
     assert.equal(message.canvasReferences?.[0].nodeId, "node-1");
+});
+
+test("Claude history restores attachment and canvas metadata from a combined context prompt", async (context) => {
+    const fixture = await createFixture(context);
+    await fixture.store.recordPending("message-1", sampleMetadata());
+    await fixture.store.bindTurn("message-1", "session-1", "user-1");
+    const prompt = withAttachmentContext([
+        "比较这两张图",
+        "本轮引用的当前画布素材：",
+        '1. mention="@Image_1", nodeId="node-1", title="Product image", type=image',
+        "需要读取或操作这些素材时，先调用 canvas_get_state，并使用上面的 nodeId 精确定位，不要按标题猜测节点。",
+    ].join("\n\n"), [{ id: "image-1", name: "image.png" }]);
+    const history = normalizeClaudeHistory("session-1", [{
+        uuid: "user-1",
+        type: "user",
+        message: { content: [{ type: "text", text: prompt }] },
+    }]);
+
+    const [message] = await fixture.store.mergeThread("session-1", history);
+    assert.equal(message.text, "比较这两张图");
+    assert.equal(message.clientMessageId, "message-1");
+    assert.equal(message.attachments?.[0].name, "image.png");
+    assert.equal(message.canvasReferences?.[0].nodeId, "node-1");
+    assert.equal(message.skill?.name, "product-grid");
+    assert.doesNotMatch(JSON.stringify(message), /本轮可用图片附件|本轮引用的当前画布素材/);
 });
 
 test("Claude metadata binds thread and turn in one committed record", async (context) => {

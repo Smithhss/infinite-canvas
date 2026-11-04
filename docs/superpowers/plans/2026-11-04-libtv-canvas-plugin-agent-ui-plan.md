@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口、P2-D 本机会话历史与续聊、P2-E Claude 原生模型列表、P2-F Claude SDK 原生权限和 P2-G Claude 原生项目 Skill 已合并到 `dev`。P2-H Claude 图片附件与图片引用已由 PR #33 实现并通过 Quality CI 与零收费 mock 验收；插件中心模式切换文字不可见已由 PR #34 修复并通过 Quality CI，均等待合并和人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口、P2-D 本机会话历史与续聊、P2-E Claude 原生模型列表、P2-F Claude SDK 原生权限和 P2-G Claude 原生项目 Skill 已合并到 `dev`。P2-H Claude 图片附件与图片引用以及 PR #33–#37 的插件、移动端与顶栏修复已整合到 hardening 分支，自动化测试、构建和 390/760/767/768/1024/1200/1279px 浏览器回归通过，准备统一提交 PR；仍需人工真实 Claude 登录和完整验收。所有实验能力仍默认关闭，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 
@@ -507,7 +507,7 @@ P2-C 初始实现：
 
 ### P2-H：Claude 图片附件与图片引用
 
-状态：已实现并通过 PR #33 的 Quality CI 与零收费 mock 验收，沿用 `agentProviderSwitch`，等待合并和人工真实登录验收。
+状态：已整合到 hardening 分支并通过自动化测试、构建和零收费 mock 验收，沿用 `agentProviderSwitch`，等待统一 PR 合并和人工真实登录验收。
 
 目标：
 
@@ -523,6 +523,8 @@ P2-C 初始实现：
 4. 用户消息附件、画布引用和 Skill 元数据按 `clientMessageId` / `threadId` / SDK 用户消息 `uuid` 持久化，刷新历史后可恢复缩略图。
 5. Claude 历史过滤仅供模型执行的附件上下文，保留用户原始输入文本。
 6. Claude capability 开放 `attachments` 和 `imageReferences`；切换 Agent 时不再丢弃已添加图片。
+7. 启动 turn 在首次异步校验前登记占位；SSE 在启动校验期间断开时取消占位，避免未创建 SDK 查询的 turn 永久占用 Agent。
+8. Claude 历史恢复同时覆盖附件上下文和画布引用上下文，确保两者同时存在时仍只显示原始用户消息并恢复两类元数据。
 
 不在本轮范围：
 

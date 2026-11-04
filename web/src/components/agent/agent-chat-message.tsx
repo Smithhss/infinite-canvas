@@ -139,7 +139,8 @@ export function AgentChatMessage({ item, theme, onRejectTool, onApproveTool }: {
 }
 
 function AgentUserMessageContent({ text, references, skill, theme }: { text: string; references: AgentCanvasReference[]; skill?: AgentSkillReference; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
-    const tokens = parseAgentInlineTokens(text, references, skill);
+    const provider = skill?.path.startsWith("claude:") ? "claude" : "codex";
+    const tokens = parseAgentInlineTokens(text, references, skill, provider);
     return (
         <div className="whitespace-pre-wrap break-words">
             {tokens.map((token, index) => token.type === "text"

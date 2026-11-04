@@ -4,13 +4,15 @@ import { Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
+import { activeAgentProvider } from "@/lib/agent/agent-provider";
+import { agentSkillMarker } from "@/lib/agent/agent-skill-catalog";
 import { buildCanvasResourceReferences, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { isImeComposing, isPlainEnterKey } from "@/lib/keyboard-event";
 import type { AgentSkillSummary } from "@/services/api/canvas-agent";
 import { useAgentSkillStore } from "@/stores/use-agent-skill-store";
 import { useAgentStore, type AgentCanvasReference, type AgentSkillReference } from "@/stores/use-agent-store";
 import { AgentCanvasReferencePreview, canvasReferenceIcon, canvasReferenceKindLabel } from "./agent-canvas-reference-preview";
-import { agentInlineTokenClass, agentInlineTokenMediaClass, agentReferenceMarker, agentSkillMarker, parseAgentInlineTokens } from "./agent-chat-inline-tokens";
+import { agentInlineTokenClass, agentInlineTokenMediaClass, agentReferenceMarker, parseAgentInlineTokens } from "./agent-chat-inline-tokens";
 
 type ComposerCommand = { type: "skill" | "resource"; query: string; length: number };
 type ComposerCandidate = { type: "skill"; skill: AgentSkillSummary } | { type: "resource"; reference: CanvasResourceReference };
@@ -29,10 +31,12 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
     const lastEmittedRef = useRef(value);
+    const previousSkillKeyRef = useRef("");
     const skills = useAgentSkillStore((state) => state.skills);
     const skillsLoading = useAgentSkillStore((state) => state.loading);
     const selectedSkill = useAgentSkillStore((state) => state.selectedSkill);
     const canvasReferences = useAgentStore((state) => state.canvasReferences);
+    const provider = activeAgentProvider(useAgentStore((state) => state.agentProvider));
     const [command, setCommand] = useState<ComposerCommand | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [resourceCandidates, setResourceCandidates] = useState<CanvasResourceReference[]>([]);
@@ -43,7 +47,7 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
         path: selectedSkill.path,
         displayName: selectedSkill.interface?.displayName || undefined,
     } : undefined, [selectedSkill]);
-    const tokens = useMemo(() => parseAgentInlineTokens(value, canvasReferences, messageSkill), [canvasReferences, messageSkill, value]);
+    const tokens = useMemo(() => parseAgentInlineTokens(value, canvasReferences, messageSkill, provider), [canvasReferences, messageSkill, provider, value]);
     const selectedReferenceIds = useMemo(() => new Set(canvasReferences.map((item) => item.nodeId)), [canvasReferences]);
     const candidates = useMemo<ComposerCandidate[]>(() => {
         if (!command) return [];
@@ -60,15 +64,22 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
 
     useEffect(() => {
         const editor = editorRef.current;
+        const skillKey = selectedSkill?.path || "";
+        const shouldFocusSkill = Boolean(skillKey) && skillKey !== previousSkillKeyRef.current;
+        previousSkillKeyRef.current = skillKey;
         if (!editor || document.activeElement === editor && value === lastEmittedRef.current) return;
         editor.replaceChildren(...tokens.map((token) => {
             if (token.type === "text") return document.createTextNode(token.value);
             return token.type === "skill"
-                ? createSkillToken(token.skill, theme)
+                ? createSkillToken(token.skill, theme, provider)
                 : createReferenceToken(token.reference, theme);
         }));
         lastEmittedRef.current = value;
-    }, [theme, tokens, value]);
+        if (shouldFocusSkill) {
+            editor.focus();
+            placeCaretAtEnd(editor);
+        }
+    }, [selectedSkill?.path, theme, tokens, value]);
 
     const emit = (next: string) => {
         lastEmittedRef.current = next;
@@ -123,10 +134,14 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
                 closeCommand();
                 return;
             }
-            insertTokenAtCaret(editor, createSkillToken({ name: candidate.skill.name, path: candidate.skill.path, displayName: candidate.skill.interface?.displayName || undefined }, theme));
+            insertTokenAtCaret(editor, createSkillToken({ name: candidate.skill.name, path: candidate.skill.path, displayName: candidate.skill.interface?.displayName || undefined }, theme, provider));
             const next = serializeEditor(editor);
             emit(next);
             useAgentSkillStore.getState().selectSkill(candidate.skill);
+            requestAnimationFrame(() => {
+                editor.focus();
+                placeCaretAtEnd(editor);
+            });
         } else {
             const current = useAgentStore.getState().canvasReferences;
             if (!current.some((item) => item.nodeId === candidate.reference.nodeId)) useAgentStore.getState().setAgentState({ canvasReferences: [...current, candidate.reference] });
@@ -275,8 +290,8 @@ function ReferencePreview({ reference }: { reference: CanvasResourceReference })
     return <span className="grid size-9 shrink-0 place-items-center"><Icon className="size-4" /></span>;
 }
 
-function createSkillToken(skill: AgentSkillReference, theme: (typeof canvasThemes)[keyof typeof canvasThemes]) {
-    const token = createToken("skill", agentSkillMarker(skill), theme);
+function createSkillToken(skill: AgentSkillReference, theme: (typeof canvasThemes)[keyof typeof canvasThemes], provider: ReturnType<typeof activeAgentProvider>) {
+    const token = createToken("skill", agentSkillMarker(skill, provider), theme);
     token.dataset.skillName = skill.name;
     token.title = skill.path;
     token.textContent = `/${skill.displayName || skill.name}`;
@@ -342,6 +357,15 @@ function placeCaretAfter(node: Node) {
     selection?.addRange(range);
 }
 
+function placeCaretAtEnd(editor: HTMLElement) {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+}
+
 function removeTextBeforeCaret(length: number) {
     const selection = window.getSelection();
     if (!selection?.rangeCount) return;
@@ -403,17 +427,19 @@ function syncSelectedMetadata(editor: HTMLElement) {
 function textBeforeCaret(editor: HTMLElement | null) {
     const selection = window.getSelection();
     if (!editor || !selection?.rangeCount) return "";
-    const range = selection.getRangeAt(0).cloneRange();
-    if (!editor.contains(range.startContainer)) return "";
-    range.setStart(editor, 0);
-    return range.toString();
+    const caret = selection.getRangeAt(0);
+    if (!editor.contains(caret.startContainer)) return "";
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.setEnd(caret.startContainer, caret.startOffset);
+    return serializeNodes(range.cloneContents().childNodes, false);
 }
 
 function serializeEditor(editor: HTMLElement) {
     return serializeNodes(editor.childNodes).replace(/﻿/g, "");
 }
 
-function serializeNodes(nodes: NodeListOf<ChildNode>) {
+function serializeNodes(nodes: NodeListOf<ChildNode>, includeTokens = true) {
     let result = "";
     nodes.forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE) {
@@ -422,11 +448,11 @@ function serializeNodes(nodes: NodeListOf<ChildNode>) {
         }
         if (!(node instanceof HTMLElement)) return;
         const marker = node.dataset.agentToken;
-        if (marker) result += marker;
+        if (marker) result += includeTokens ? marker : " ";
         else if (node.tagName === "BR") result += "\n";
         else {
             if (["DIV", "P"].includes(node.tagName) && result && !result.endsWith("\n")) result += "\n";
-            result += serializeNodes(node.childNodes);
+            result += serializeNodes(node.childNodes, includeTokens);
         }
     });
     return result;

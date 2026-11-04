@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { createSdkMcpServer, query, tool, type CanUseTool, type McpServerConfig, type ModelInfo, type Options as ClaudeSdkOptions, type PermissionResult } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query, tool, type CanUseTool, type McpServerConfig, type ModelInfo, type Options as ClaudeSdkOptions, type PermissionResult, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 
 import { toolDescriptions, toolInputSchemas, toolNames, type ToolName } from "../canvas/schemas.js";
 import { AGENT_PROMPT, loadConfig, type CanvasAgentConfig, VERSION } from "../config.js";
@@ -9,11 +9,13 @@ import { errorMessage } from "../utils/value.js";
 import { ClaudeEventState } from "./claude-events.js";
 import type { AgentEmit, AgentPermissionMode } from "./types.js";
 import { callCanvasAgentTool } from "../server/mcp.js";
+import { listProjectClaudeSkillNames } from "./claude-skills.js";
 
 type ClaudeSdkQuery = AsyncIterable<unknown> & {
     interrupt?: () => Promise<unknown>;
     close?: () => void;
     supportedModels?: () => Promise<ModelInfo[]>;
+    supportedCommands?: () => Promise<SlashCommand[]>;
 };
 type QueryFactory = (params: { prompt: string; options: ClaudeSdkOptions }) => ClaudeSdkQuery;
 type McpServerFactory = () => McpServerConfig;
@@ -24,6 +26,7 @@ type RunOptions = {
     sessionId?: string;
     model?: string;
     permissionMode?: AgentPermissionMode;
+    skill?: string;
     effort?: "low" | "medium" | "high" | "xhigh" | "max";
     onFinish?: () => void;
 };
@@ -145,10 +148,47 @@ export class ClaudeSdkAdapter {
         }
     }
 
+    /** 从 SDK 原生初始化响应读取项目内非内置 Skill，不提交用户任务。 */
+    async listSkills(cwd: string) {
+        const projectSkills = await listProjectClaudeSkillNames(cwd);
+        if (!projectSkills.length) return [];
+        const abort = new AbortController();
+        const activeQuery = this.queryFactory({
+            prompt: "",
+            options: {
+                abortController: abort,
+                cwd,
+                settingSources: ["project"],
+                settings: { disableAllHooks: true },
+                permissionMode: "dontAsk",
+                strictMcpConfig: true,
+                mcpServers: {},
+                tools: [],
+                skills: projectSkills,
+                env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: `canvas-agent/${VERSION}` },
+            } satisfies ClaudeSdkOptions,
+        });
+        try {
+            if (!activeQuery.supportedCommands) throw new Error("当前 Claude Agent SDK 不支持读取 Skill 列表");
+            const commands = await activeQuery.supportedCommands();
+            const projectSkillNames = new Set(projectSkills);
+            const skills = new Map<string, { name: string; description: string }>();
+            commands.forEach((command) => {
+                const name = command.name.trim();
+                if (command.builtin || !projectSkillNames.has(name) || skills.has(name)) return;
+                skills.set(name, { name, description: command.description.trim() });
+            });
+            return [...skills.values()].sort((left, right) => left.name.localeCompare(right.name));
+        } finally {
+            activeQuery.close?.();
+        }
+    }
+
     /** 启动一轮 SDK 调用；事件通过 SSE 异步返回。 */
     async run(prompt: string, emit: AgentEmit, options: RunOptions) {
         if (!prompt.trim()) throw new Error("请输入任务内容");
         if (this.active.size) throw new Error("Claude 正在执行其他任务，请先停止当前任务");
+        if (options.skill && !(await listProjectClaudeSkillNames(options.cwd)).includes(options.skill)) throw new Error("Claude Skill 不存在或不可用");
         const runId = this.runIdFactory();
         const abort = new AbortController();
         const state = new ClaudeEventState({ clientId: options.clientId, threadId: options.threadId || options.sessionId || runId, turnId: runId });
@@ -180,6 +220,8 @@ export class ClaudeSdkAdapter {
 
     private queryOptions(abort: AbortController, options: RunOptions, runId: string, emit: AgentEmit) {
         const permissionMode = options.permissionMode || "request";
+        const skill = options.skill?.trim();
+        const projectSkill = Boolean(skill);
         const mcpServer = this.mcpServer(permissionMode);
         const sdkPermissionMode = claudePermissionMode(permissionMode);
         const usePermissionCallback = sdkPermissionMode === "default" || sdkPermissionMode === "auto";
@@ -191,11 +233,13 @@ export class ClaudeSdkAdapter {
             persistSession: true,
             permissionMode: sdkPermissionMode,
             ...(sdkPermissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
-            settingSources: [],
+            settingSources: projectSkill ? ["project"] : [],
+            ...(projectSkill ? { settings: { disableAllHooks: true } } : {}),
             strictMcpConfig: true,
             mcpServers: { "infinite-canvas": mcpServer },
-            allowedTools: sdkPermissionMode === "bypassPermissions" ? ["mcp__infinite-canvas__*"] : [],
-            tools: [],
+            allowedTools: sdkPermissionMode === "bypassPermissions" ? ["mcp__infinite-canvas__*", ...(projectSkill ? ["Skill"] : [])] : [],
+            tools: projectSkill ? ["Skill"] : [],
+            skills: skill ? [skill] : [],
             ...(options.sessionId ? { resume: options.sessionId } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...(options.effort ? { effort: options.effort } : {}),

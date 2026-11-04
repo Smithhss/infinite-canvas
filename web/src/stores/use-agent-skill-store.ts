@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import i18n from "@/i18n";
 
-import { fetchCodexSkills, type AgentSkillDraft, type AgentSkillSummary } from "@/services/api/canvas-agent";
+import { activeAgentProvider } from "@/lib/agent/agent-provider";
+import { agentSkillMarker } from "@/lib/agent/agent-skill-catalog";
+import { fetchClaudeSkills, fetchCodexSkills, type AgentSkillDraft, type AgentSkillSummary } from "@/services/api/canvas-agent";
 import { useAgentStore } from "@/stores/use-agent-store";
 
 let loadSequence = 0;
@@ -40,7 +42,8 @@ export const useAgentSkillStore = create<AgentSkillStore>((set, get) => ({
         const sequence = ++loadSequence;
         set({ loading: true });
         try {
-            const response = await fetchCodexSkills(endpoint, token, forceReload);
+            const provider = activeAgentProvider(useAgentStore.getState().agentProvider);
+            const response = provider === "claude" ? await fetchClaudeSkills(endpoint, token) : await fetchCodexSkills(endpoint, token, forceReload);
             if (sequence !== loadSequence) return;
             const skills = response.data || [];
             const current = get();
@@ -48,8 +51,9 @@ export const useAgentSkillStore = create<AgentSkillStore>((set, get) => ({
             const selectedSkill = selected ? skills.find((item) => item.name === selected.name && item.path === selected.path && item.enabled) || null : null;
             const selectionChanged = Boolean(selected && !selectedSkill);
             if (selectionChanged) clearSelectedSkillPrompt(current);
+            const marker = selectedSkill ? agentSkillMarker(selectedSkill, provider) : "";
             const autoPrompt = selectedSkill
-                ? replaceAutoPrompt(current.autoPrompt, selectedSkill.interface?.defaultPrompt?.trim() || `$${selectedSkill.name}`, false)
+                ? replaceAutoPrompt(current.autoPrompt, selectedSkill.interface?.defaultPrompt?.trim() || marker, false)
                 : "";
             set({ skills, selectedSkill, autoPrompt, selectionRevision: current.selectionRevision + (selectionChanged ? 1 : 0), loading: false, loaded: true, errors: (response.errors || []).map(skillErrorText) });
         } catch (error) {
@@ -60,8 +64,9 @@ export const useAgentSkillStore = create<AgentSkillStore>((set, get) => ({
     selectSkill: (selectedSkill, prompt) => {
         const current = get();
         const agent = useAgentStore.getState();
-        const marker = selectedSkill ? `$${selectedSkill.name}` : "";
-        const previousMarker = current.selectedSkill ? `$${current.selectedSkill.name}` : "";
+        const provider = activeAgentProvider(agent.agentProvider);
+        const marker = selectedSkill ? agentSkillMarker(selectedSkill, provider) : "";
+        const previousMarker = current.selectedSkill ? agentSkillMarker(current.selectedSkill, provider) : "";
         let nextPrompt = prompt;
         let autoPrompt = "";
         if (nextPrompt === undefined && selectedSkill) {
@@ -109,7 +114,7 @@ function clearSelectedSkillPrompt(selection: Pick<AgentSkillStore, "selectedSkil
         return;
     }
     if (!selection.selectedSkill) return;
-    const marker = `$${selection.selectedSkill.name}`;
+    const marker = agentSkillMarker(selection.selectedSkill, activeAgentProvider(agent.agentProvider));
     if (agent.prompt.includes(marker)) agent.setAgentState({ prompt: agent.prompt.replace(marker, "") });
 }
 

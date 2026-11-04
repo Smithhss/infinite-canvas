@@ -168,7 +168,7 @@ type AgentEvent =
   | { type: "turn.failed"; error: { message: string } };
 ```
 
-Claude 后端 Adapter 已接入并复用同一组结构化事件；网页侧栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换。Claude 当前开放原生模型、权限、本机会话历史、文本对话和画布工具，Skill 和图片附件仍只属于 Codex。
+Claude 后端 Adapter 已接入并复用同一组结构化事件；网页侧栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换。Claude 当前开放原生模型、权限、项目 Skill、本机会话历史、文本对话和画布工具；项目 Skill 只读读取 `.claude/skills`，图片附件仍只属于 Codex。
 
 ## Codex 接入优先级
 

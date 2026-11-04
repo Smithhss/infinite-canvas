@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
-import { agentProviderCapabilities, type AgentProvider } from "@/lib/agent/agent-provider";
+import { activeAgentProvider, agentProviderCapabilities, type AgentProvider } from "@/lib/agent/agent-provider";
 import { recoverPendingApprovals } from "@/lib/agent/agent-pending-approvals";
 import { rememberAgentPluginDetected, resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
 import { readAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
@@ -178,7 +178,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             pendingApprovals: state.pendingApprovals,
         })),
     );
-    const effectiveAgentProvider: AgentProvider = agentProviderSwitchEnabled ? agentProvider : "codex";
+    const effectiveAgentProvider: AgentProvider = activeAgentProvider(agentProvider);
     const providerCapabilities = agentProviderCapabilities(effectiveAgentProvider);
     const effectivePermissionMode = effectiveAgentProvider === "claude" ? claudePermissionMode : permissionMode;
     const runningActivity = effectiveAgentProvider === "claude" ? rt("claudeRunning") : rt("codexRunning");
@@ -366,9 +366,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     useEffect(() => {
         pendingToolRef.current = pendingTool;
     }, [pendingTool]);
-    useEffect(() => {
-        if (effectiveAgentProvider === "claude" && activeTab === "skills") setAgentState({ activeTab: "chat" });
-    }, [activeTab, effectiveAgentProvider, setAgentState]);
     useEffect(() => () => attachmentUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
     useEffect(() => {
@@ -663,7 +660,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
 
     useEffect(() => {
         if (connected) void loadSkills(endpoint, token);
-    }, [connected, endpoint, loadSkills, token]);
+    }, [connected, effectiveAgentProvider, endpoint, loadSkills, token]);
 
     useEffect(() => {
         if (!connected) return;
@@ -809,6 +806,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         sessionId: threadId || undefined,
                         permissionMode: effectivePermissionMode,
                         model: model || undefined,
+                        skill: selectedSkill ? { name: selectedSkill.name, path: selectedSkill.path } : undefined,
                     }),
                 });
                 if (!accepted.runId) throw new Error(rt("startConversationFailed"));
@@ -1066,6 +1064,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         });
         localStorage.setItem("canvas-agent-provider", nextProvider);
         loadThreadsSequenceRef.current += 1;
+        useAgentSkillStore.getState().reset();
         claudeRunIdRef.current = "";
         pendingToolRef.current = null;
         setAgentState({

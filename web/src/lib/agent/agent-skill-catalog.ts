@@ -1,4 +1,5 @@
 import type { AgentSkillScope, AgentSkillSummary } from "@/services/api/canvas-agent";
+import type { AgentProvider } from "@/lib/agent/agent-provider";
 
 export type AgentSkillScopeFilter = "all" | AgentSkillScope;
 export type AgentSkillCollection = "all" | "favorites" | "mine";
@@ -18,6 +19,10 @@ const agentSkillScopes: AgentSkillScope[] = ["repo", "user", "system", "admin"];
 
 export function agentSkillKey(skill: Pick<AgentSkillSummary, "scope" | "path">) {
     return `${skill.scope}\u0000${skill.path}`;
+}
+
+export function agentSkillMarker(skill: Pick<AgentSkillSummary, "name">, provider: AgentProvider) {
+    return `${provider === "claude" ? "/" : "$"}${skill.name}`;
 }
 
 export function normalizeAgentSkillFavoriteKeys(value: unknown) {

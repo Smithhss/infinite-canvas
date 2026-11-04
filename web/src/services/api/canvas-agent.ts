@@ -99,6 +99,10 @@ export function fetchCodexSkills(endpoint: string, token: string, forceReload = 
     return fetchAgentJson<AgentSkillsResponse>(endpoint, token, `/agent/codex/skills${forceReload ? "?forceReload=1" : ""}`);
 }
 
+export function fetchClaudeSkills(endpoint: string, token: string) {
+    return fetchAgentJson<AgentSkillsResponse>(endpoint, token, "/agent/claude/skills");
+}
+
 export function fetchCodexSkill(endpoint: string, token: string, name: string) {
     return fetchAgentJson<AgentSkillResponse>(endpoint, token, `/agent/codex/skills/${encodeURIComponent(name)}`);
 }

@@ -162,9 +162,11 @@ curl http://127.0.0.1:17371/agent/claude/models \
   -H "x-canvas-agent-token: $TOKEN"
 ```
 
-SDK 使用本机已有的 Claude Code 登录态，不上传登录凭证。网页侧边栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换；Claude 当前开放原生模型、本机会话历史、文本对话、画布工具和 SDK 原生权限，Skill 和图片附件仍只属于 Codex。网页选择 Claude 模型后会把它作为 `model` 传给 `/agent/claude/turn`。
+SDK 使用本机已有的 Claude Code 登录态，不上传登录凭证。网页侧边栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换；Claude 当前开放原生模型、项目 Skill、本机会话历史、文本对话、画布工具和 SDK 原生权限，图片附件仍只属于 Codex。网页选择 Claude 模型后会把它作为 `model` 传给 `/agent/claude/turn`。
 
 Claude 权限模式通过 `/agent/claude/turn` 的 `permissionMode` 传入：`request` 映射到 SDK `default`，`automatic` 映射到 `auto`，`full` 映射到 `bypassPermissions`。请求模式下的画布写入通过 `POST /agent/claude/approval` 返回 `accept`、`acceptForSession` 或 `decline`；同一 SDK 会话中的“本会话允许”会跨 turn 保留，中断或 turn 结束时会自动拒绝仍未处理的审批。
+
+`GET /agent/claude/skills` 通过 SDK `supportedCommands()` 读取当前工作空间 `.claude/skills` 中非内置 Skill，不提交 prompt 或触发模型生成。选择 Skill 后，`/agent/claude/turn` 接收 `skill.name` 并只开放 `Skill` 与画布 MCP；项目 hooks 会被关闭，Skill 文件仍由项目自身管理，网页只读。
 
 需要兼容旧的 print 模式时，可在请求里传 `"transport": "cli"`。这条路径仍调用本机 `claude -p --output-format stream-json`，并默认允许 `mcp__infinite-canvas__*`。
 

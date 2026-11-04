@@ -43,12 +43,12 @@ export function MobileNavDrawer({ open, compact = false, onClose, onOpenAgent, o
             active ? "bg-stone-100 font-medium text-stone-950 dark:bg-stone-800 dark:text-stone-100" : "text-stone-600 hover:bg-stone-100 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-stone-800 dark:hover:text-stone-100",
         );
         return item.to ? (
-            <Link key={item.key} to={withShellFeatureFlags(item.to, search)} onClick={onClose} className={className}>
+            <Link key={item.key} to={withShellFeatureFlags(item.to, search)} aria-current={active ? "page" : undefined} onClick={onClose} className={className}>
                 <Icon className="size-5" />
                 <span>{t(item.labelKey)}</span>
             </Link>
         ) : (
-            <button key={item.key} type="button" className={cn(className, "w-full border-0 bg-transparent text-left")} onClick={() => runAction(item)}>
+            <button key={item.key} type="button" className={cn(className, "w-full border-0 bg-transparent text-left")} aria-current={active ? "page" : undefined} onClick={() => runAction(item)}>
                 <Icon className="size-5" />
                 <span>{t(item.labelKey)}</span>
             </button>

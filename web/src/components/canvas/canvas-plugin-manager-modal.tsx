@@ -1,100 +1,25 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { App, Button, Input, Modal, Popconfirm, Switch, Tabs } from "antd";
+import type { ReactNode } from "react";
+import { Button, Input, Modal, Popconfirm, Switch, Tabs } from "antd";
 import { AlertTriangle, Download, Puzzle, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { usePluginCatalog, isPluginUpgradable } from "@/hooks/use-plugin-catalog";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { installPluginFromUrl, setPluginEnabled, uninstallPlugin, updatePlugin } from "@/lib/canvas/plugin-loader";
-import { fetchOfficialPlugins, hasUpgrade, type OfficialPluginEntry } from "@/lib/canvas/plugin-registry";
+import { type OfficialPluginEntry } from "@/lib/canvas/plugin-registry";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { usePluginStore, type InstalledPlugin } from "@/stores/canvas/use-plugin-store";
+import { type InstalledPlugin } from "@/stores/canvas/use-plugin-store";
 
 export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const { message } = App.useApp();
-    const plugins = usePluginStore((state) => state.plugins);
-    const [url, setUrl] = useState("");
-    const [installing, setInstalling] = useState(false);
-    const [busyId, setBusyId] = useState<string | null>(null);
-
-    const [official, setOfficial] = useState<OfficialPluginEntry[]>([]);
-    const [loadingOfficial, setLoadingOfficial] = useState(false);
-    const [officialError, setOfficialError] = useState<string | null>(null);
-
-    const officialRecordById = useMemo(() => new Map(plugins.filter((item) => item.official).map((item) => [item.id, item])), [plugins]);
-    const localPlugins = useMemo(() => plugins.filter((item) => item.local), [plugins]);
-    const thirdPartyPlugins = useMemo(() => plugins.filter((item) => !item.local && !item.official), [plugins]);
-
-    const loadOfficial = useCallback(async () => {
-        setLoadingOfficial(true);
-        setOfficialError(null);
-        try {
-            setOfficial(await fetchOfficialPlugins());
-        } catch (error) {
-            setOfficialError(error instanceof Error ? error.message : String(error));
-        } finally {
-            setLoadingOfficial(false);
-        }
-    }, []);
-
-    // Fetch the official registry when opening the panel, but only if it has not been loaded yet.
-    useEffect(() => {
-        if (open && official.length === 0 && !loadingOfficial && !officialError) void loadOfficial();
-    }, [open, official.length, loadingOfficial, officialError, loadOfficial]);
-
-    const handleInstallUrl = async () => {
-        const target = url.trim();
-        if (!target) return;
-        setInstalling(true);
-        try {
-            const plugin = await installPluginFromUrl(target);
-            message.success(t("canvas.plugins.installedPlugin", { name: plugin.name }));
-            setUrl("");
-        } catch (error) {
-            message.error(t("canvas.plugins.installFailed", { error: error instanceof Error ? error.message : String(error) }));
-        } finally {
-            setInstalling(false);
-        }
-    };
-
-    const officialExpectation = (entry: OfficialPluginEntry) => ({
-        id: entry.id,
-        version: entry.version,
-        sha256: entry.sha256,
-        size: entry.size,
-        minAppVersion: entry.minAppVersion,
-    });
-
-    const handleInstallOfficial = async (entry: OfficialPluginEntry) => {
-        setBusyId(entry.id);
-        try {
-            const plugin = await installPluginFromUrl(entry.url, { official: true, bustCache: true, expected: officialExpectation(entry) });
-            message.success(t("canvas.plugins.installed", { name: plugin.name }));
-        } catch (error) {
-            message.error(t("canvas.plugins.installFailed", { error: error instanceof Error ? error.message : String(error) }));
-        } finally {
-            setBusyId(null);
-        }
-    };
-
-    const runOnPlugin = async (record: InstalledPlugin, action: () => Promise<void>, successText: string) => {
-        setBusyId(record.id);
-        try {
-            await action();
-            message.success(successText);
-        } catch (error) {
-            message.error(`${error instanceof Error ? error.message : String(error)}`);
-        } finally {
-            setBusyId(null);
-        }
-    };
+    const catalog = usePluginCatalog({ active: open });
+    const { url, setUrl, installing, busyId, official, loadingOfficial, officialError, loadOfficial, officialRecordById, localPlugins, thirdPartyPlugins, installFromUrl, installOfficial, togglePlugin, updateInstalled, uninstall } = catalog;
 
     // Installed plugin actions: enable toggle plus update/uninstall for non-local plugins.
     // Highlight the update action when a newer remote version is available.
     const installedControls = (record: InstalledPlugin, upgradable = false, officialEntry?: OfficialPluginEntry) => (
         <>
-            <Switch size="small" checked={record.enabled} loading={busyId === record.id} onChange={(checked) => runOnPlugin(record, () => setPluginEnabled(record, checked), t(checked ? "canvas.plugins.enabled" : "canvas.plugins.disabled"))} />
+            <Switch size="small" checked={record.enabled} loading={busyId === record.id} onChange={(checked) => togglePlugin(record, checked)} />
             {!record.local && (
                 <>
                     <Button
@@ -103,9 +28,9 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
                         icon={<RefreshCw className="size-4" />}
                         loading={busyId === record.id}
                         title={t(upgradable ? "canvas.plugins.upgradeAvailable" : "canvas.plugins.updateFromSource")}
-                        onClick={() => runOnPlugin(record, async () => void (await updatePlugin(record, officialEntry ? officialExpectation(officialEntry) : undefined)), t("canvas.plugins.updated"))}
+                        onClick={() => updateInstalled(record, officialEntry)}
                     />
-                    <Popconfirm title={t("canvas.plugins.uninstallTitle")} okText={t("canvas.plugins.uninstall")} cancelText={t("canvas.editors.cancel")} onConfirm={() => uninstallPlugin(record.id)}>
+                    <Popconfirm title={t("canvas.plugins.uninstallTitle")} okText={t("canvas.plugins.uninstall")} cancelText={t("canvas.editors.cancel")} onConfirm={() => uninstall(record)}>
                         <Button type="text" size="small" danger icon={<Trash2 className="size-4" />} title={t("canvas.plugins.uninstall")} />
                     </Popconfirm>
                 </>
@@ -178,7 +103,7 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
                     {official.map((entry) => {
                         const record = officialRecordById.get(entry.id);
                         // Show the update dot and highlight the action when the remote version is newer.
-                        const upgradable = Boolean(record && hasUpgrade(record.version, entry.version));
+                        const upgradable = isPluginUpgradable(record, entry);
                         const icon = entry.icon || <Puzzle className="size-4" />;
                         return row(
                             entry.id,
@@ -190,7 +115,7 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
                             record ? (
                                 installedControls(record, upgradable, entry)
                             ) : (
-                                <Button type="primary" size="small" icon={<Download className="size-4" />} loading={busyId === entry.id} onClick={() => handleInstallOfficial(entry)}>
+                                <Button type="primary" size="small" icon={<Download className="size-4" />} loading={busyId === entry.id} onClick={() => installOfficial(entry)}>
                                     {t("canvas.plugins.install")}
                                 </Button>
                             ),
@@ -201,17 +126,23 @@ export function CanvasPluginManagerModal({ open, onClose }: { open: boolean; onC
         </div>
     );
 
-    const localTab = <div className="thin-scrollbar max-h-[52vh] space-y-2 overflow-auto">{localPlugins.map((record) => row(record.id, <Puzzle className="size-4" />, record.name, record.version, record.description || record.url, installedControls(record)))}</div>;
+    const localTab = (
+        <div className="thin-scrollbar max-h-[52vh] space-y-2 overflow-auto">{localPlugins.map((record) => row(record.id, <Puzzle className="size-4" />, record.name, record.version, record.description || record.url, installedControls(record)))}</div>
+    );
 
     const thirdPartyTab = (
         <div className="space-y-3">
             <div className="flex gap-2">
-                <Input placeholder={t("canvas.plugins.urlPlaceholder")} value={url} onChange={(event) => setUrl(event.target.value)} onPressEnter={handleInstallUrl} allowClear />
-                <Button type="primary" loading={installing} onClick={handleInstallUrl} icon={<Puzzle className="size-4" />}>
+                <Input placeholder={t("canvas.plugins.urlPlaceholder")} value={url} onChange={(event) => setUrl(event.target.value)} onPressEnter={installFromUrl} allowClear />
+                <Button type="primary" loading={installing} onClick={installFromUrl} icon={<Puzzle className="size-4" />}>
                     {t("canvas.plugins.install")}
                 </Button>
             </div>
-            <div className="thin-scrollbar max-h-[42vh] space-y-2 overflow-auto">{thirdPartyPlugins.length === 0 ? emptyHint(t("canvas.plugins.noThirdParty")) : thirdPartyPlugins.map((record) => row(record.id, <Puzzle className="size-4" />, record.name, record.version, record.description || record.url, installedControls(record)))}</div>
+            <div className="thin-scrollbar max-h-[42vh] space-y-2 overflow-auto">
+                {thirdPartyPlugins.length === 0
+                    ? emptyHint(t("canvas.plugins.noThirdParty"))
+                    : thirdPartyPlugins.map((record) => row(record.id, <Puzzle className="size-4" />, record.name, record.version, record.description || record.url, installedControls(record)))}
+            </div>
         </div>
     );
 

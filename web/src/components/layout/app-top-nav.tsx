@@ -1,12 +1,13 @@
-import { Bot, Menu } from "lucide-react";
-import { Button, Tooltip } from "antd";
-import { Link, useLocation } from "react-router-dom";
+import { Bot, ChevronDown, Menu, Puzzle, Sparkles, SquareDashed } from "lucide-react";
+import { Button, Dropdown, Tooltip } from "antd";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { isNavigationToolEnabled, navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
 import { AppConfigModal } from "@/components/layout/app-config-modal";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
+import { CanvasPluginManagerModal } from "@/components/canvas/canvas-plugin-manager-modal";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useAgentStore } from "@/stores/use-agent-store";
@@ -14,7 +15,10 @@ import { useAgentStore } from "@/stores/use-agent-store";
 export function AppTopNav() {
     const { t } = useTranslation();
     const { pathname } = useLocation();
+    const navigate = useNavigate();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
+    const [createMenuOpen, setCreateMenuOpen] = useState(false);
     const autoConnectRef = useRef(false);
     const agentToken = useAgentStore((state) => state.token);
     const agentEnabled = useAgentStore((state) => state.enabled);
@@ -25,6 +29,18 @@ export function AppTopNav() {
     const hideHeader = /^\/canvas\/[^/]+/.test(pathname);
     const slug = pathname.split("/").filter(Boolean)[0];
     const activeToolSlug = navigationTools.some((tool) => tool.slug === slug) ? (slug as NavigationToolSlug) : undefined;
+    const generalTools = navigationTools.filter((tool) => isNavigationToolEnabled(tool) && tool.slug !== "canvas");
+    const createActive = slug === "canvas" || panelOpen;
+    const createItems = [
+        { key: "canvas", icon: <SquareDashed className="size-4" />, label: t("navigation.canvas") },
+        { key: "agent", icon: <Bot className="size-4" />, label: t("topNav.creativeAgent") },
+    ];
+
+    const handleCreateMenuClick = ({ key }: { key: string }) => {
+        setCreateMenuOpen(false);
+        if (key === "canvas") navigate("/canvas");
+        if (key === "agent") togglePanel();
+    };
 
     useEffect(() => {
         if (autoConnectRef.current || agentEnabled || agentConnected || !agentToken.trim()) return;
@@ -62,7 +78,33 @@ export function AppTopNav() {
                             </button>
 
                             <nav className="hide-scrollbar hidden h-16 min-w-0 items-center gap-1 overflow-x-auto md:flex">
-                                {navigationTools.filter(isNavigationToolEnabled).map((tool) => {
+                                <Dropdown open={createMenuOpen} onOpenChange={setCreateMenuOpen} menu={{ items: createItems, onClick: handleCreateMenuClick }} trigger={["click"]}>
+                                    <button
+                                        type="button"
+                                        className={cn(
+                                            "relative flex h-16 shrink-0 items-center gap-2 px-3 text-[13px] leading-5 transition after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:transition-colors",
+                                            createActive
+                                                ? "font-semibold text-stone-950 after:bg-stone-950 dark:text-stone-100 dark:after:bg-stone-100"
+                                                : "font-medium text-stone-500 after:bg-transparent hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100",
+                                        )}
+                                    >
+                                        <Sparkles className={cn("size-4 transition-colors", createActive ? "opacity-100" : "opacity-70")} />
+                                        <span className="truncate">{t("topNav.createGroup")}</span>
+                                        <ChevronDown className="size-3 opacity-45" />
+                                    </button>
+                                </Dropdown>
+                                <button
+                                    type="button"
+                                    className="relative flex h-16 shrink-0 items-center gap-2 px-3 text-[13px] font-medium leading-5 text-stone-500 transition after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-transparent after:transition-colors hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100"
+                                    onClick={() => {
+                                        setCreateMenuOpen(false);
+                                        setPluginManagerOpen(true);
+                                    }}
+                                >
+                                    <Puzzle className="size-4 opacity-70" />
+                                    <span className="truncate">{t("topNav.plugins")}</span>
+                                </button>
+                                {generalTools.map((tool) => {
                                     const Icon = tool.icon;
                                     const active = tool.slug === activeToolSlug;
                                     return (
@@ -105,7 +147,20 @@ export function AppTopNav() {
                 </header>
             ) : null}
 
-            <MobileNavDrawer open={mobileNavOpen} activeToolSlug={activeToolSlug} onClose={() => setMobileNavOpen(false)} />
+            <MobileNavDrawer
+                open={mobileNavOpen}
+                activeToolSlug={activeToolSlug}
+                onClose={() => setMobileNavOpen(false)}
+                onOpenAgent={() => {
+                    setMobileNavOpen(false);
+                    togglePanel();
+                }}
+                onOpenPlugins={() => {
+                    setMobileNavOpen(false);
+                    setPluginManagerOpen(true);
+                }}
+            />
+            <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} />
             <AppConfigModal />
         </>
     );

@@ -72,6 +72,10 @@ export async function interruptCodexTurn(endpoint: string, token: string, thread
     await fetchAgentJson(endpoint, token, "/agent/codex/interrupt", jsonPost({ threadId }));
 }
 
+export async function interruptClaudeTurn(endpoint: string, token: string, clientId: string, runId: string) {
+    await fetchAgentJson(endpoint, token, "/agent/claude/interrupt", jsonPost({ clientId, runId }));
+}
+
 export async function acknowledgeCodexHistory(endpoint: string, token: string, threadId: string, turnIds: string[]) {
     await fetchAgentJson(endpoint, token, "/agent/codex/history/ack", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId, turnIds }) });
 }

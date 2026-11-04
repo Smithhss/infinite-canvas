@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心和 `agentSkillHub` Agent/Skills 资源页已合并到 `dev`；`canvasFloatingChrome` 画布浮动控制带已实现，正在等待人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带和 `agentPanelChrome` Agent 工作台已合并到 `dev`。`agentProviderSwitch` 已接入 Claude Agent SDK 侧边栏入口，尚未合并。所有实验能力仍默认关闭，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 
@@ -338,6 +338,38 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 - 图片附件、画布引用和 Skill token 在空态重构后保持原位置和发送顺序。
 - 390px 下不覆盖画布核心控件，输入区不被软键盘遮挡。
 
+### P2-C：Claude Agent SDK 侧边栏入口
+
+状态：已实现，开关 `agentProviderSwitch` 默认关闭，等待人工验收。
+
+目标：
+
+- 复用 Canvas Agent 已提供的 `/agent/claude/turn` 和 `/agent/claude/interrupt`，在现有侧栏内切换 Codex / Claude，不复制第二套对话 UI。
+- 只开放 Claude 真实支持的能力，不把 Codex 的模型、权限、历史、Skill 和图片附件能力伪装成 Claude 能力。
+
+本轮实现：
+
+1. 输入框工具栏增加 Agent 类型菜单；切换前若有任务运行则拒绝并提示先完成或停止。
+2. Claude 模式隐藏 Codex 模型、思考强度、权限、历史、Skill 和图片上传入口，仅保留文本输入、画布工具确认、日志和停止。
+3. 从 Codex 切到 Claude 时移除图片附件和图片引用，保留文本画布引用；发送前再次校验，避免绕过 UI 提交不支持的内容。
+4. 连接设置页在 Claude 模式显示 Claude Agent SDK 说明，使用本机 Claude Code 登录态，不再展示 Codex 插件安装步骤。
+5. Claude 事件复用现有 `thread.started`、`turn.started`、`item.*`、`usage.updated`、`turn.completed` 渲染；按 `runId` 适配会话线程，助手消息标题显示 Claude，终态清理运行状态。
+6. 顶部连接文案改为中性的「Agent 已连接」，因为同一 Canvas Agent 可承载两种本地 Agent。
+
+不在本轮范围：
+
+- 真实工具队列。当前仍是单槽 `pendingTool`，同时到达的第二个工具会被拒绝；需要 Agent 协议升级后才能提供真实队列。
+- Claude 模型列表、权限模式、历史会话、Skill 选择和图片附件；这些需要 `/agent/claude` 对应契约，继续留在后续任务。
+- Claude 登录态预检。侧栏不伪造已登录状态，首次发送时由 Canvas Agent 返回真实错误。
+
+验收：
+
+- 开关关闭时，即使浏览器保存过 Claude，也必须完整保持 Codex 侧栏、四页签和原控件。
+- 开关打开后可切换 Codex / Claude；Claude 模式只显示 Chat 和 Logs，模型、权限、历史、Skill、上传控件全部消失。
+- Claude 用户消息、流式助手消息、Usage、工具确认、批准/拒绝、停止和终态都能正确归属到当前 `threadId` / `turnId`。
+- 未连接时 Claude 设置页只提供真实连接动作，不展示 Codex 插件安装步骤。
+- 1440px、390px、中英文和浅深色无横向溢出。
+
 ### P3：需要服务端或产品契约的能力
 
 以下能力只保留信息和入口设计，不进入近期前端实现：
@@ -364,6 +396,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 | `director3d`    | 关闭 | 3D 导演台入口和资源   | 保持现有行为       |
 | `canvasFloatingChrome` | 关闭 | 画布浮动顶栏、dock 和空态快捷入口 | 恢复原顶栏与横向工具条 |
 | `agentPanelChrome` | 关闭 | Agent 工作台空态、场景预设和运行状态条 | 恢复原 Agent 空态与布局 |
+| `agentProviderSwitch` | 关闭 | 侧栏 Codex / Claude 切换和 Claude 专用设置页 | 固定使用 Codex 侧栏与能力 |
 
 实施约束：
 
@@ -407,6 +440,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 | 4    | P1-C Agent / Skills 首页   | 是         | 现有 Skill store；分类需 Agent 元数据 |
 | 5    | P2-A 画布浮动控制带和 dock | 是         | P1-A 视觉基线                         |
 | 6    | P2-B Agent 空态与运行状态  | 是         | P1-C 和 Agent 现有状态                |
+| 7    | P2-C Claude SDK 侧栏入口   | 是         | Claude 后端接口和现有事件渲染         |
 | 7    | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
 
 先做 P1-A 的原因：

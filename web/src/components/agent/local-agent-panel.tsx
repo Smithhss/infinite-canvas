@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
+import { agentProviderCapabilities, type AgentProvider } from "@/lib/agent/agent-provider";
 import { rememberAgentPluginDetected, resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
 import { readAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -24,7 +25,7 @@ import { useAgentStore, type AgentAttachment, type AgentBootstrapStatus, type Ag
 import { type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import { isSiteTool, runSiteTool } from "@/lib/agent/agent-site-tools";
 import { didAgentWorkspaceChange } from "@/lib/agent/agent-skill-catalog";
-import { acknowledgeCodexHistory, activateAgentClient, AgentApiError, discoverAgentConfig, fetchAgentJson, interruptCodexTurn, postCodexApproval, postState, postToolResult } from "@/services/api/canvas-agent";
+import { acknowledgeCodexHistory, activateAgentClient, AgentApiError, discoverAgentConfig, fetchAgentJson, interruptClaudeTurn, interruptCodexTurn, postCodexApproval, postState, postToolResult } from "@/services/api/canvas-agent";
 import { AgentChatTimeline, AgentTaskProgress, AgentUsageBar } from "./agent-chat";
 import { AgentChatComposer } from "./agent-chat-composer";
 import { AgentConnectView } from "./agent-connect-view";
@@ -86,6 +87,7 @@ type AgentThreadsResponse = { ok?: boolean; workspace?: AgentWorkspace; conversa
 type AgentThreadResponse = { ok?: boolean; workspace?: AgentWorkspace; conversation?: AgentConversationState; thread?: AgentThreadSummary; messages?: AgentChatItem[]; settledTurnIds?: string[]; historyReady?: boolean };
 type AgentWorkspaceResponse = { ok?: boolean; workspace?: AgentWorkspace; conversation?: AgentConversationState };
 type AgentTurnResponse = { ok?: boolean; threadId?: string };
+type AgentClaudeTurnResponse = { ok?: boolean; transport?: string; runId?: string; sessionId?: string; error?: string };
 type AgentModelsResponse = { ok?: boolean; data?: AgentModel[] };
 type AgentCodexState = { busy?: boolean; threadId?: string; turnId?: string };
 type AgentHelloEvent = { ok?: boolean; protocolVersion?: number; clientId?: string; workspace?: { activeThreadId?: string }; conversation?: AgentConversationState; codex?: AgentCodexState; pendingApprovals?: AgentPendingApproval[] };
@@ -131,6 +133,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const agentPanelChromeEnabled = isFeatureEnabled("agentPanelChrome");
+    const agentProviderSwitchEnabled = isFeatureEnabled("agentProviderSwitch");
     const { message, modal } = App.useApp();
     const { hash } = useLocation();
     const [searchParams] = useSearchParams();
@@ -139,7 +142,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     // canvasContext is intentionally excluded because project updates it every frame during dragging and resizing.
     // The panel uses it only for ref synchronization and debounced postState calls, never during rendering.
     // Subscribing here would rerender the panel every frame and amplify the #185 crash, so it is observed imperatively below.
-    const { width, url, token, connected, enabled, pluginDetected, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, models, model, reasoningEffort, activity, conversation, connectError, pendingTool, pendingApprovals } = useAgentStore(
+    const { width, url, token, connected, enabled, pluginDetected, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, models, model, reasoningEffort, agentProvider, activity, conversation, connectError, pendingTool, pendingApprovals } = useAgentStore(
         useShallow((state) => ({
             width: state.width,
             url: state.url,
@@ -163,6 +166,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             models: state.models,
             model: state.model,
             reasoningEffort: state.reasoningEffort,
+            agentProvider: state.agentProvider,
             activity: state.activity,
             conversation: state.conversation,
             connectError: state.connectError,
@@ -170,6 +174,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             pendingApprovals: state.pendingApprovals,
         })),
     );
+    const effectiveAgentProvider: AgentProvider = agentProviderSwitchEnabled ? agentProvider : "codex";
+    const providerCapabilities = agentProviderCapabilities(effectiveAgentProvider);
     const setAgentState = useAgentStore((state) => state.setAgentState);
     const conversationReady = conversation.status === "ready" || conversation.status === "warning";
     const conversationBusy = conversation.status === "preparing" || conversation.status === "running";
@@ -184,6 +190,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const canvasContextRef = useRef<AgentCanvasContext | null>(useAgentStore.getState().canvasContext);
     const confirmToolsRef = useRef(confirmTools);
     const pendingToolRef = useRef<AgentPendingToolCall | null>(null);
+    const claudeRunIdRef = useRef("");
     const autoConnectRef = useRef(false);
     const connectedRef = useRef(false);
     const errorLoggedRef = useRef(false);
@@ -345,6 +352,9 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     useEffect(() => {
         pendingToolRef.current = pendingTool;
     }, [pendingTool]);
+    useEffect(() => {
+        if (effectiveAgentProvider === "claude" && (activeTab === "history" || activeTab === "skills")) setAgentState({ activeTab: "chat" });
+    }, [activeTab, effectiveAgentProvider, setAgentState]);
     useEffect(() => () => attachmentUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
     useEffect(() => {
@@ -470,6 +480,13 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         source.addEventListener("agent_event", (event) => {
             const data = parseEventData<AgentEventPayload>(event);
             if (data) enqueueEvent(() => {
+                if (data.agent === "claude" && !isCurrentThreadEvent(data)) {
+                    const scope = eventScope(data);
+                    const current = useAgentStore.getState();
+                    const owned = !current.activeThreadId || scope.threadId === current.activeThreadId || (current.activeTurnId && scope.turnId === current.activeTurnId);
+                    if (!scope.threadId || !owned) return;
+                    setAgentState({ activeThreadId: scope.threadId, activeTurnId: scope.turnId || current.activeTurnId });
+                }
                 if (!isCurrentThreadEvent(data)) return;
                 const shouldProcess = registerLiveAgentTurn(data, authoritativeHistoryTurnsRef.current, liveTurnKeysRef.current);
                 if (data.type !== "usage.updated" && !shouldProcess) return;
@@ -651,6 +668,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         const selectedSkill = skillState.selectedSkill;
         const selectedSkillRevision = skillState.selectionRevision;
         const currentState = useAgentStore.getState();
+        const claudeMode = effectiveAgentProvider === "claude";
         const canvasNodeIds = new Set(currentState.canvasContext?.snapshot.nodes.map((node) => node.id) || []);
         const canvasReferences = currentState.canvasReferences.filter((item) => canvasNodeIds.has(item.nodeId));
         if (canvasReferences.length !== currentState.canvasReferences.length) {
@@ -658,7 +676,16 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             message.warning(rt(canvasReferences.length ? "someCanvasReferencesMissing" : "canvasReferencesMissing"));
         }
         const requestPrompt = promptWithCanvasReferences(promptWithAttachments(text, files), canvasReferences);
-        if (!currentState.connected || !requestPrompt || currentState.sending || currentState.waiting || currentState.loadingThreads || !["ready", "warning"].includes(currentState.conversation.status)) return;
+        const conversationAllowed = claudeMode || ["ready", "warning"].includes(currentState.conversation.status);
+        if (!currentState.connected || !requestPrompt || currentState.sending || currentState.waiting || currentState.loadingThreads || !conversationAllowed) return;
+        if (claudeMode && files.length) {
+            message.warning(rt("providerClaudeMediaUnsupported"));
+            return;
+        }
+        if (claudeMode && canvasReferences.some((item) => item.kind === "image")) {
+            message.warning(rt("providerClaudeMediaUnsupported"));
+            return;
+        }
         let referenceImages: AgentAttachment[] = [];
         if (canvasReferences.some((item) => item.kind === "image")) {
             setAgentState({ sending: true, activity: rt("readingCanvasImages") });
@@ -704,26 +731,50 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             const modelName = models.find((item) => item.model === model)?.displayName || model || rt("defaultModel");
             const effortName = reasoningEffort ? i18n.t(`agent.composer.effort.${reasoningEffort}`) : rt("defaultEffort");
             addEventLog(rt("sendTask"), `${modelName} · ${effortName}${selectedSkill ? ` · Skill ${selectedSkill.name}` : ""}${files.length ? ` · ${rt("attachmentCount", { count: files.length })}` : ""}${canvasReferences.length ? ` · ${rt("canvasReferenceCount", { count: canvasReferences.length })}` : ""} · ${compactText(text) || rt(canvasReferences.length ? "canvasReferencesOnly" : "attachmentsOnly")}`);
-            const accepted = await fetchAgentJson<AgentTurnResponse>(endpoint, token, "/agent/codex/turn", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                    prompt: requestPrompt,
-                    messageText: userText,
-                    messageId,
-                    clientId: clientIdRef.current,
-                    threadId,
-                    conversationId: currentBeforeSend.conversation.conversationId,
-                    expectedRevision: currentBeforeSend.conversation.revision,
-                    permissionMode,
-                    model,
-                    effort: reasoningEffort,
-                    skill: selectedSkill ? { name: selectedSkill.name, path: selectedSkill.path } : undefined,
-                    attachments: requestFiles.map(({ id, name, type, size, width, height, dataUrl }) => ({ id, name, type, size, width, height, dataUrl })),
-                    messageMetadata,
-                }),
-            });
-            threadId = accepted.threadId || threadId;
+            if (claudeMode) {
+                const accepted = await fetchAgentJson<AgentClaudeTurnResponse>(endpoint, token, "/agent/claude/turn", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                        prompt: requestPrompt,
+                        clientId: clientIdRef.current,
+                        threadId: threadId || undefined,
+                        effort: reasoningEffort || undefined,
+                    }),
+                });
+                if (!accepted.runId) throw new Error(rt("startConversationFailed"));
+                claudeRunIdRef.current = accepted.runId;
+                threadId = accepted.sessionId || accepted.runId;
+                setAgentState({
+                    activeThreadId: threadId,
+                    activeTurnId: accepted.runId,
+                    sending: false,
+                    waiting: true,
+                    activity: rt("claudeRunning"),
+                    messages: useAgentStore.getState().messages.map((item) => item.clientMessageId === messageId ? { ...item, threadId } : item),
+                });
+            } else {
+                const accepted = await fetchAgentJson<AgentTurnResponse>(endpoint, token, "/agent/codex/turn", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                        prompt: requestPrompt,
+                        messageText: userText,
+                        messageId,
+                        clientId: clientIdRef.current,
+                        threadId,
+                        conversationId: currentBeforeSend.conversation.conversationId,
+                        expectedRevision: currentBeforeSend.conversation.revision,
+                        permissionMode,
+                        model,
+                        effort: reasoningEffort,
+                        skill: selectedSkill ? { name: selectedSkill.name, path: selectedSkill.path } : undefined,
+                        attachments: requestFiles.map(({ id, name, type, size, width, height, dataUrl }) => ({ id, name, type, size, width, height, dataUrl })),
+                        messageMetadata,
+                    }),
+                });
+                threadId = accepted.threadId || threadId;
+            }
             if (!threadId) throw new Error(rt("startConversationFailed"));
             if (selectedSkill) clearSkillSelection(selectedSkillRevision);
             files.forEach((item) => {
@@ -763,7 +814,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         if (!connected || (!sending && !waiting)) return;
         setAgentState({ activity: rt("stopping") });
         try {
-            await interruptCodexTurn(endpoint, token, useAgentStore.getState().activeThreadId || undefined);
+            if (effectiveAgentProvider === "claude") await interruptClaudeTurn(endpoint, token, clientIdRef.current, claudeRunIdRef.current);
+            else await interruptCodexTurn(endpoint, token, useAgentStore.getState().activeThreadId || undefined);
             addEventLog(rt("stopTask"), rt("taskStopped"));
         } catch (error) {
             setAgentState({ activity: rt("stopFailed") });
@@ -921,6 +973,35 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             cancelText: t("common.cancel"),
             onOk: apply,
         });
+    };
+
+    const changeAgentProvider = (nextProvider: AgentProvider) => {
+        const current = useAgentStore.getState();
+        if (nextProvider === current.agentProvider) return;
+        if (current.sending || current.waiting) {
+            message.warning(rt("providerSwitchBusy"));
+            return;
+        }
+        const nextCapabilities = agentProviderCapabilities(nextProvider);
+        const droppedAttachments = nextCapabilities.attachments ? [] : current.attachments;
+        const imageReferences = nextCapabilities.imageReferences ? [] : current.canvasReferences.filter((item) => item.kind === "image");
+        droppedAttachments.forEach((item) => {
+            URL.revokeObjectURL(item.url);
+            attachmentUrlsRef.current.delete(item.url);
+        });
+        localStorage.setItem("canvas-agent-provider", nextProvider);
+        claudeRunIdRef.current = "";
+        setAgentState({
+            agentProvider: nextProvider,
+            attachments: droppedAttachments.length ? [] : current.attachments,
+            canvasReferences: imageReferences.length ? current.canvasReferences.filter((item) => item.kind !== "image") : current.canvasReferences,
+            activeTab: nextCapabilities.history || nextCapabilities.skills || !["history", "skills"].includes(current.activeTab) ? current.activeTab : "chat",
+            ...(nextProvider === "claude" ? { model: "", reasoningEffort: "", tokenUsage: null } : {}),
+        });
+        if (nextProvider === "claude") {
+            addEventLog(rt("providerClaudeSelected"), rt("providerClaudeHint"));
+            if (droppedAttachments.length || imageReferences.length) message.info(rt("providerClaudeMediaDropped"));
+        }
     };
 
     const toggleAgentConnection = async ({ silent = false, reconnect = false }: { silent?: boolean; reconnect?: boolean } = {}) => {
@@ -1257,7 +1338,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             return;
         }
         if (event.type === "item.completed" && event.item?.type === "agent_message" && event.item.id) {
-            const scoped = scopeEventChatItem(event, { id: event.item.id, role: "assistant", title: "Codex", text: stringText(event.item.text) }, event.item.id);
+            const scoped = scopeEventChatItem(event, { id: event.item.id, role: "assistant", title: event.agent === "claude" ? "Claude" : "Codex", text: stringText(event.item.text) }, event.item.id);
             const currentMessages = useAgentStore.getState().messages;
             const index = currentMessages.findIndex((message) => message.id === scoped.id);
             if (index >= 0) {
@@ -1316,6 +1397,14 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 activeTurnId: current.activeTurnId === scope.turnId ? "" : current.activeTurnId,
                 messages: current.messages.map((message) => message.threadId === scope.threadId && message.turnId === scope.turnId && message.streamId ? { ...message, streamId: undefined } : message),
             });
+            if (event.agent === "claude") {
+                claudeRunIdRef.current = "";
+                setAgentState({
+                    sending: false,
+                    waiting: false,
+                    activity: event.status === "failed" ? rt("processingFailed") : event.status === "interrupted" ? rt("taskStopped") : rt("completed"),
+                });
+            }
             if (event.status === "failed") showAgentError(event.error?.message, event, !event.replayed);
         }
         const item = formatAgentEvent(event);
@@ -1374,8 +1463,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 }
                 items={[
                     { value: "chat", label: t("agent.panel.chat"), icon: <MessageSquare className="size-3.5" /> },
-                    { value: "history", label: t("agent.panel.history"), icon: <History className="size-3.5" />, count: threads.length },
-                    { value: "skills", label: t("agent.panel.skills"), icon: <Sparkles className="size-3.5" />, count: skillCount },
+                    ...(providerCapabilities.history ? [{ value: "history" as const, label: t("agent.panel.history"), icon: <History className="size-3.5" />, count: threads.length }] : []),
+                    ...(providerCapabilities.skills ? [{ value: "skills" as const, label: t("agent.panel.skills"), icon: <Sparkles className="size-3.5" />, count: skillCount }] : []),
                     { value: "log", label: t("agent.panel.logs"), icon: <Terminal className="size-3.5" />, count: eventLogs.length },
                 ]}
                 onChange={(activeTab) => {
@@ -1384,11 +1473,13 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 }}
                 right={
                     <>
-                        <Tooltip title={t("agent.history.newThread")} placement="bottom">
-                            <Button size="small" type="text" className="!h-8 !w-8 !min-w-8 !px-0 @min-[560px]:!w-auto @min-[560px]:!min-w-0 @min-[560px]:!px-[7px]" aria-label={t("agent.history.newThread")} disabled={!connected || loadingThreads || sending || waiting || conversationBusy} icon={<Plus className="size-3.5" />} onClick={startNewThread}>
-                                <span className="hidden @min-[560px]:inline">{t("agent.history.newThread")}</span>
-                            </Button>
-                        </Tooltip>
+                        {providerCapabilities.history ? (
+                            <Tooltip title={t("agent.history.newThread")} placement="bottom">
+                                <Button size="small" type="text" className="!h-8 !w-8 !min-w-8 !px-0 @min-[560px]:!w-auto @min-[560px]:!min-w-0 @min-[560px]:!px-[7px]" aria-label={t("agent.history.newThread")} disabled={!connected || loadingThreads || sending || waiting || conversationBusy} icon={<Plus className="size-3.5" />} onClick={startNewThread}>
+                                    <span className="hidden @min-[560px]:inline">{t("agent.history.newThread")}</span>
+                                </Button>
+                            </Tooltip>
+                        ) : null}
                         <Tooltip title={t("agent.panel.collapse")}>
                             <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8" aria-label={t("agent.panel.collapseLabel")} style={{ color: theme.node.muted }} icon={<PanelRightClose className="size-4" />} onClick={closePanel} />
                         </Tooltip>
@@ -1397,7 +1488,21 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             />
 
             {activeTab === "setup" ? (
-                <AgentConnectView
+                effectiveAgentProvider === "claude" ? (
+                    <div className="thin-scrollbar flex-1 overflow-y-auto px-4 py-6">
+                        <div className="mx-auto max-w-sm">
+                            <div className="text-lg font-semibold leading-7">{t("agent.provider.claudeSetupTitle")}</div>
+                            <p className="mt-2 text-xs leading-5" style={{ color: theme.node.muted }}>{t("agent.provider.claudeSetupDescription")}</p>
+                            <div className="mt-4 rounded-xl border px-3.5 py-3 text-xs leading-5" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
+                                {connected ? t("agent.provider.claudeConnected") : enabled ? activity : t("agent.provider.claudeDisconnected")}
+                            </div>
+                            <Button className="mt-4" type="primary" onClick={() => connected ? setAgentState({ activeTab: "chat" }) : void toggleAgentConnection()}>
+                                {connected ? t("agent.connect.startChat") : t("agent.connect.connect")}
+                            </Button>
+                            <p className="mt-3 text-[11px] leading-5" style={{ color: theme.node.muted }}>{t("agent.provider.claudeSetupHint")}</p>
+                        </div>
+                    </div>
+                ) : <AgentConnectView
                     theme={theme}
                     url={url}
                     token={token}
@@ -1456,39 +1561,43 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                     {tokenUsage ? <AgentUsageBar usage={tokenUsage} theme={theme} /> : null}
                     <AgentChatComposer
                         prompt={prompt}
-                        attachments={attachments.map((attachment) => agentAttachmentToChatAttachment(attachment, endpoint, token))}
-                        disabled={!connected || !conversationReady || loadingThreads}
+                        attachments={providerCapabilities.attachments ? attachments.map((attachment) => agentAttachmentToChatAttachment(attachment, endpoint, token)) : []}
+                        disabled={!connected || (effectiveAgentProvider === "codex" && !conversationReady) || loadingThreads}
                         sending={sending || waiting}
-                        placeholder={conversation.status === "idle" || conversation.status === "preparing"
-                            ? t("agent.panel.mcpInitializing")
-                            : conversation.status === "failed"
-                                ? t("agent.panel.initFailed")
-                                : t("agent.panel.placeholder")}
+                        placeholder={effectiveAgentProvider === "claude"
+                            ? t("agent.provider.placeholder")
+                            : conversation.status === "idle" || conversation.status === "preparing"
+                                ? t("agent.panel.mcpInitializing")
+                                : conversation.status === "failed"
+                                    ? t("agent.panel.initFailed")
+                                    : t("agent.panel.placeholder")}
                         theme={theme}
                         onPromptChange={(prompt) => setAgentState({ prompt })}
                         onSubmit={sendPrompt}
                         onStop={stopTurn}
-                        onAddFiles={addAttachments}
-                        onRemoveAttachment={removeAttachment}
+                        onAddFiles={providerCapabilities.attachments ? addAttachments : undefined}
+                        onRemoveAttachment={providerCapabilities.attachments ? removeAttachment : undefined}
                         confirmTools={confirmTools}
                         onConfirmToolsChange={(confirmTools) => setAgentState({ confirmTools })}
-                        permissionMode={permissionMode}
-                        onPermissionModeChange={changePermissionMode}
-                        models={models}
-                        model={model}
-                        reasoningEffort={reasoningEffort}
-                        onModelChange={(model) => {
+                        permissionMode={providerCapabilities.permission ? permissionMode : undefined}
+                        onPermissionModeChange={providerCapabilities.permission ? changePermissionMode : undefined}
+                        models={providerCapabilities.model ? models : []}
+                        model={providerCapabilities.model ? model : ""}
+                        reasoningEffort={providerCapabilities.reasoning ? reasoningEffort : ""}
+                        onModelChange={providerCapabilities.model ? (model) => {
                             const selected = models.find((item) => item.model === model);
                             if (!selected) return;
                             const effort = selected.defaultReasoningEffort || selected.supportedReasoningEfforts[0]?.reasoningEffort;
                             localStorage.setItem("canvas-agent-model", model);
                             if (effort) localStorage.setItem("canvas-agent-reasoning-effort", effort);
                             setAgentState({ model, ...(effort ? { reasoningEffort: effort } : {}) });
-                        }}
-                        onReasoningEffortChange={(reasoningEffort) => {
+                        } : undefined}
+                        onReasoningEffortChange={providerCapabilities.reasoning ? (reasoningEffort) => {
                             localStorage.setItem("canvas-agent-reasoning-effort", reasoningEffort);
                             setAgentState({ reasoningEffort });
-                        }}
+                        } : undefined}
+                        agentProvider={agentProviderSwitchEnabled ? agentProvider : undefined}
+                        onAgentProviderChange={agentProviderSwitchEnabled ? changeAgentProvider : undefined}
                         left={
                             attachments.length ? (
                                 <span className="hidden text-[11px] @min-[660px]:inline" style={{ color: theme.node.muted }}>

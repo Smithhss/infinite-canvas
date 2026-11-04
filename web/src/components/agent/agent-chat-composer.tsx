@@ -1,9 +1,10 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Button, Dropdown, Tooltip } from "antd";
-import { ArrowUp, Check, ChevronUp, Cpu, Gauge, Hand, ImagePlus, LoaderCircle, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff, Square, X } from "lucide-react";
+import { ArrowUp, Bot, BrainCircuit, Check, ChevronUp, Cpu, Gauge, Hand, ImagePlus, LoaderCircle, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff, Square, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { AGENT_PROVIDERS, type AgentProvider } from "@/lib/agent/agent-provider";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useAgentStore, type AgentModel, type AgentPermissionMode, type AgentReasoningEffort } from "@/stores/use-agent-store";
 import type { AgentChatAttachment } from "./agent-chat-message";
@@ -30,6 +31,8 @@ export function AgentChatComposer({
     reasoningEffort,
     onModelChange,
     onReasoningEffortChange,
+    agentProvider,
+    onAgentProviderChange,
     left,
 }: {
     prompt: string;
@@ -52,6 +55,8 @@ export function AgentChatComposer({
     reasoningEffort?: AgentReasoningEffort | "";
     onModelChange?: (model: string) => void;
     onReasoningEffortChange?: (effort: AgentReasoningEffort) => void;
+    agentProvider?: AgentProvider;
+    onAgentProviderChange?: (provider: AgentProvider) => void;
     left?: ReactNode;
 }) {
     const { t } = useTranslation();
@@ -78,6 +83,7 @@ export function AgentChatComposer({
                 <AgentChatPromptInput value={prompt} disabled={disabled || sending} placeholder={placeholder} theme={theme} onChange={onPromptChange} onSubmit={() => { if (canSubmit) void onSubmit(); }} onAddFiles={onAddFiles} />
                 <div className="@container mt-2 flex items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-1">
+                        {agentProvider && onAgentProviderChange ? <AgentProviderMenu provider={agentProvider} theme={theme} onChange={onAgentProviderChange} /> : null}
                         {onAddFiles ? (
                             <>
                                 <input ref={fileInputRef} hidden type="file" accept="image/*" multiple onChange={(event) => {
@@ -104,6 +110,37 @@ export function AgentChatComposer({
                 </div>
             </div>
         </div>
+    );
+}
+
+function AgentProviderMenu({ provider, theme, onChange }: { provider: AgentProvider; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onChange: (provider: AgentProvider) => void }) {
+    const { t } = useTranslation();
+    const [open, setOpen] = useState(false);
+    const label = t(`agent.provider.${provider}`);
+    return (
+        <Tooltip title={t("agent.provider.select", { name: label })} placement="top" open={open ? false : undefined}>
+            <span className="inline-flex shrink-0">
+                <Dropdown
+                    trigger={["click"]}
+                    placement="topLeft"
+                    open={open}
+                    onOpenChange={setOpen}
+                    menu={{
+                        items: AGENT_PROVIDERS.map((value) => ({
+                            key: value,
+                            icon: value === "claude" ? <BrainCircuit className="size-4" /> : <Bot className="size-4" />,
+                            label: <span className="flex min-w-32 flex-col"><span className="text-sm">{t(`agent.provider.${value}`)}</span><span className="text-[11px] opacity-60">{t(`agent.provider.${value}Description`)}</span></span>,
+                            onClick: () => onChange(value),
+                        })),
+                    }}
+                >
+                    <button type="button" className="flex h-9 w-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-0 text-xs font-medium transition hover:bg-black/5 @min-[660px]:w-auto @min-[660px]:min-w-0 @min-[660px]:justify-start @min-[660px]:px-2.5 dark:hover:bg-white/10" style={{ color: theme.node.text }} aria-label={t("agent.provider.select", { name: label })}>
+                        {provider === "claude" ? <BrainCircuit className="size-3.5" /> : <Bot className="size-3.5" />}
+                        <span className="hidden @min-[660px]:inline">{label}</span>
+                    </button>
+                </Dropdown>
+            </span>
+        </Tooltip>
     );
 }
 

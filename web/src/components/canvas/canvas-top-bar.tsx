@@ -127,7 +127,7 @@ export function CanvasTopBar({
     const nextLocale = locale === "zh-CN" ? "en-US" : "zh-CN";
     const languageLabel = t("topNav.switchLanguage", { language: t(nextLocale === "zh-CN" ? "locale.zhCN" : "locale.enUS") });
     const floating = variant === "floating";
-    const compactActions = floating ? agentOpen || topBarWidth < 1200 : topBarWidth < 760;
+    const compactActions = floating ? agentOpen || topBarWidth < 1280 : topBarWidth < 768;
     const minimalActions = topBarWidth > 0 && topBarWidth < (floating ? 760 : 640);
     const ultraCompactActions = topBarWidth > 0 && topBarWidth < 420;
     const singleClusterActions = floating && topBarWidth > 0 && topBarWidth < 260;

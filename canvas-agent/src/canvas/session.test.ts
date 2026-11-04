@@ -92,6 +92,23 @@ test("当前 turn 的图片附件可在发起标签页画布创建图片节点",
     assert.throws(() => session.getTurnAttachment("first", "attachment-1"), /找不到/);
 });
 
+test("画布附件工具会去重重复 ID 并拒绝超量参数", async (t) => {
+    const session = new CanvasSession();
+    const first = connect(session, "first");
+    t.after(() => first.close());
+    session.setTurnAttachments("first", [{ id: "attachment-1", name: "商品.png", type: "image/png", width: 1200, height: 600, dataUrl: "data:image/png;base64,aW1hZ2U=" }]);
+    session.bindClient("first");
+
+    const result = session.callTool("canvas_create_attachment_nodes", { attachmentIds: ["attachment-1", "attachment-1"] });
+    const call = first.event("tool_call");
+    const nodes = field(field(call, "input"), "nodes") as Array<Record<string, unknown>>;
+    assert.equal(nodes.length, 1);
+    session.resolveResult("first", { requestId: String(field(call, "requestId")), result: { ok: true } });
+    assert.equal(((await result) as { nodes: unknown[] }).nodes.length, 1);
+
+    await assert.rejects(session.callTool("canvas_create_attachment_nodes", { attachmentIds: Array.from({ length: 7 }, (_, index) => `attachment-${index}`) }), /Too big|最多|less than or equal/i);
+});
+
 test("图片附件只允许发起 turn 的标签页读取和落入画布", async (t) => {
     const session = new CanvasSession();
     const first = connect(session, "first");
@@ -152,6 +169,17 @@ test("网页断开后清理该网页的本轮附件", (t) => {
     client.close();
 
     assert.throws(() => session.getTurnAttachment("first", "attachment-1"), /找不到/);
+});
+
+test("网页断开后通知 Agent 中止归属于该网页的运行", (t) => {
+    const session = new CanvasSession();
+    const disconnected: string[] = [];
+    const client = connect(session, "first", "", (clientId) => disconnected.push(clientId));
+    t.after(() => client.close());
+
+    client.close();
+
+    assert.deepEqual(disconnected, ["first"]);
 });
 
 test("tool result is accepted only from the request client", async (t) => {
@@ -580,9 +608,9 @@ test("切换活动线程会清除上一线程的实时快照", (t) => {
 });
 
 /** 创建用于测试的画布 SSE 连接。 */
-function connect(session: CanvasSession, clientId: string, activeThreadId = "") {
+function connect(session: CanvasSession, clientId: string, activeThreadId = "", onDisconnect?: (clientId: string) => void) {
     const response = new FakeSseResponse();
-    session.openEvents(new URL(`http://127.0.0.1/events?clientId=${clientId}`), response as unknown as ServerResponse, activeThreadId);
+    session.openEvents(new URL(`http://127.0.0.1/events?clientId=${clientId}`), response as unknown as ServerResponse, activeThreadId, onDisconnect);
     return response;
 }
 

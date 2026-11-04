@@ -132,7 +132,9 @@ export function startHttpServer() {
         res.status(401).json({ ok: false, error: "invalid token" });
     });
     app.get("/events", (req, res) => {
-        session.openEvents(requestUrl(req, config), res, ensureSiteWorkspace(config).activeThreadId || "");
+        session.openEvents(requestUrl(req, config), res, ensureSiteWorkspace(config).activeThreadId || "", (clientId) => {
+            void claudeAdapter.interrupt(clientId).catch((error) => logger.warn("Failed to interrupt Claude after SSE disconnect", { clientId, error }));
+        });
     });
     app.post("/canvas/state", (req, res) => {
         session.updateState(req.body, String(req.query.clientId || "") || undefined);

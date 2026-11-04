@@ -29,6 +29,10 @@ test("Claude 图片附件只保留受支持字段并按文件签名确定类型"
 test("Claude 图片附件拒绝错误结构、超量、非法类型和超限载荷", () => {
     assert.throws(() => normalizeClaudeImageAttachments({}), ClaudeAttachmentError);
     assert.throws(() => normalizeClaudeImageAttachments(Array.from({ length: 7 }, () => ({ dataUrl: "data:image/png;base64,YQ==" }))), /最多 6 张/);
+    assert.throws(() => normalizeClaudeImageAttachments([
+        { id: "same", dataUrl: PNG_DATA_URL },
+        { id: "same", dataUrl: PNG_DATA_URL },
+    ]), /ID 重复/);
     assert.throws(() => normalizeClaudeImageAttachments([{ dataUrl: "data:image/svg+xml;base64,YQ==" }]), /不是受支持/);
     assert.throws(() => normalizeClaudeImageAttachments([{ dataUrl: "data:image/png;base64,aW1hZ2U=" }]), /文件内容与声明/);
     assert.throws(() => normalizeClaudeImageAttachments([{ dataUrl: `data:image/png;base64,${"a".repeat(28 * 1024 * 1024)}` }]), /超过 28MB/);
@@ -57,8 +61,19 @@ test("Claude 图片输入保留文本顺序并使用原生 base64 图片块", as
     }]);
 });
 
-test("没有图片时 Claude 仍使用普通文本 prompt", () => {
-    assert.equal(claudePromptWithImages("只处理文本", [], "8ebaf34b-7110-4bd7-a194-3888f03f7bf0"), "只处理文本");
+test("没有图片时 Claude 仍使用稳定 UUID 绑定文本消息", async () => {
+    const prompt = claudePromptWithImages("只处理文本", [], "8ebaf34b-7110-4bd7-a194-3888f03f7bf0");
+    const messages = [];
+    for await (const message of prompt) messages.push(message);
+    assert.deepEqual(messages, [{
+        type: "user",
+        uuid: "8ebaf34b-7110-4bd7-a194-3888f03f7bf0",
+        parent_tool_use_id: null,
+        message: {
+            role: "user",
+            content: [{ type: "text", text: "只处理文本" }],
+        },
+    }]);
 });
 
 test("Claude 历史隐藏仅供模型执行的附件上下文", () => {

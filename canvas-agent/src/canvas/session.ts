@@ -271,7 +271,7 @@ export class CanvasSession {
     }
 
     /** 建立网页与 Canvas Agent 之间的 SSE 连接。 */
-    openEvents(url: URL, res: ServerResponse, activeThreadId = "") {
+    openEvents(url: URL, res: ServerResponse, activeThreadId = "", onDisconnect?: (clientId: string) => void) {
         const clientId = url.searchParams.get("clientId") || crypto.randomUUID();
         const statusOnly = url.searchParams.get("role") === "status";
         logger.info("SSE client connected", { clientId, statusOnly });
@@ -301,6 +301,7 @@ export class CanvasSession {
                 item.reject(new Error("请求页面已断开"));
             });
             if (this.activeClientId === clientId) this.activeClientId = [...this.clients.keys()].sort((a, b) => (this.clientFocusOrder.get(b) || 0) - (this.clientFocusOrder.get(a) || 0))[0] || "";
+            onDisconnect?.(clientId);
         });
     }
 
@@ -353,9 +354,12 @@ export class CanvasSession {
     /** 保存当前 turn 可用的图片附件并返回安全引用。 */
     setTurnAttachments(clientId: string, attachments: AgentAttachment[]) {
         this.clearTurnAttachments(clientId);
+        const seen = new Set<string>();
         return attachments.flatMap((item, index) => {
             if (!item.dataUrl?.startsWith("data:image/")) return [];
             const id = item.id?.trim() || `attachment-${crypto.randomUUID()}`;
+            if (seen.has(id)) return [];
+            seen.add(id);
             const attachment: TurnAttachment = {
                 clientId,
                 id,
@@ -480,7 +484,7 @@ export class CanvasSession {
     private async createAttachmentNodes(input: { attachmentIds: string[]; x?: number; y?: number; gap?: number; direction?: "row" | "column" }) {
         const clientId = this.targetClientId;
         if (!this.clients.has(clientId)) throw new Error("当前没有已连接画布");
-        const attachments = input.attachmentIds.map((id) => this.getTurnAttachment(clientId, id));
+        const attachments = [...new Set(input.attachmentIds)].map((id) => this.getTurnAttachment(clientId, id));
         const x = Number(input.x ?? nextCanvasX(this.canvasState));
         const y = Number(input.y ?? 0);
         const gap = Number(input.gap ?? 40);

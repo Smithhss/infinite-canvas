@@ -1732,7 +1732,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         left={
                             attachments.length ? (
                                 <span className="hidden text-[11px] @min-[660px]:inline" style={{ color: theme.node.muted }}>
-                                    {formatBytes(attachmentPayloadBytes(attachments))} / 30MB
+                                    {formatBytes(attachmentPayloadBytes(attachments))} / {MAX_ATTACHMENT_PAYLOAD_BYTES / (1024 * 1024)}MB
                                 </span>
                             ) : null
                         }

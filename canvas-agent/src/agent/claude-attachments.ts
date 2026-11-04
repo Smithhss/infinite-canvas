@@ -20,6 +20,7 @@ export function normalizeClaudeImageAttachments(value: unknown): AgentAttachment
     if (value.length > MAX_IMAGES) throw new ClaudeAttachmentError(`Claude 图片附件最多 ${MAX_IMAGES} 张`);
 
     let payloadLength = 0;
+    const seenIds = new Set<string>();
     return value.map((item, index) => {
         if (!item || typeof item !== "object" || Array.isArray(item)) throw new ClaudeAttachmentError("Claude 图片附件格式无效");
         const source = item as Record<string, unknown>;
@@ -31,6 +32,8 @@ export function normalizeClaudeImageAttachments(value: unknown): AgentAttachment
 
         const type = validateImagePayload(match[1], match[2], index);
         const id = text(source.id, 200) || crypto.randomUUID();
+        if (seenIds.has(id)) throw new ClaudeAttachmentError(`Claude 图片附件 ID 重复：${id}`);
+        seenIds.add(id);
         const name = text(source.name, 500) || `图片 ${index + 1}`;
         return {
             id,
@@ -44,9 +47,8 @@ export function normalizeClaudeImageAttachments(value: unknown): AgentAttachment
     });
 }
 
-/** 将图片转换为 Claude SDK 原生图文消息；没有图片时仍使用普通字符串 prompt。 */
-export function claudePromptWithImages(prompt: string, attachments: AgentAttachment[], messageId: string): string | AsyncIterable<SDKUserMessage> {
-    if (!attachments.length) return prompt;
+/** 将输入转换为带稳定 UUID 的 Claude SDK 原生消息，供历史元数据绑定。 */
+export function claudePromptWithImages(prompt: string, attachments: AgentAttachment[], messageId: string): AsyncIterable<SDKUserMessage> {
     const message: SDKUserMessage = {
         type: "user",
         uuid: messageId as SDKUserMessage["uuid"],

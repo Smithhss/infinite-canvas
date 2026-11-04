@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
     ArrowLeft,
     BookOpen,
@@ -15,6 +15,7 @@ import {
     LayoutGrid,
     LoaderCircle,
     Menu,
+    Moon,
     Orbit,
     PanelLeftClose,
     PanelLeftOpen,
@@ -23,6 +24,7 @@ import {
     Redo2,
     Settings2,
     Sparkles,
+    Sun,
     Trash2,
     Undo2,
     Upload,
@@ -114,15 +116,22 @@ export function CanvasTopBar({
     const { t, i18n } = useTranslation();
     const theme = canvasThemes[colorTheme];
     const titleRef = useRef<HTMLDivElement>(null);
+    const topBarRef = useRef<HTMLDivElement>(null);
+    const [topBarWidth, setTopBarWidth] = useState(0);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const sidePanelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
     const toggleSidePanel = useCanvasSidePanelStore((state) => state.togglePanel);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const setColorTheme = useThemeStore((state) => state.setTheme);
     const locale = i18n.resolvedLanguage as AppLocale;
     const nextLocale = locale === "zh-CN" ? "en-US" : "zh-CN";
     const languageLabel = t("topNav.switchLanguage", { language: t(nextLocale === "zh-CN" ? "locale.zhCN" : "locale.enUS") });
     const floating = variant === "floating";
-    const secondaryMenuItemClass = floating ? "xl:hidden" : "md:hidden";
+    const compactActions = floating ? agentOpen || topBarWidth < 1200 : topBarWidth < 760;
+    const minimalActions = topBarWidth > 0 && topBarWidth < (floating ? 760 : 640);
+    const ultraCompactActions = topBarWidth > 0 && topBarWidth < 420;
+    const singleClusterActions = floating && topBarWidth > 0 && topBarWidth < 260;
+    const secondaryMenuItemClass = compactActions ? undefined : floating ? "xl:hidden" : "md:hidden";
     const floatingClusterStyle = floating ? { background: theme.toolbar.floating, borderColor: theme.toolbar.border, boxShadow: colorTheme === "dark" ? "0 8px 24px rgba(0,0,0,.18)" : "0 8px 24px rgba(28,25,23,.08)" } : undefined;
 
     useEffect(() => {
@@ -134,15 +143,26 @@ export function CanvasTopBar({
         return () => document.removeEventListener("pointerdown", close, true);
     }, [isTitleEditing, onFinishTitleEditing]);
 
+    useLayoutEffect(() => {
+        const element = topBarRef.current;
+        if (!element) return;
+        const updateWidth = () => setTopBarWidth(element.clientWidth);
+        updateWidth();
+        const observer = new ResizeObserver(updateWidth);
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, []);
+
     return (
         <>
             <div
+                ref={topBarRef}
                 data-canvas-top-bar
                 className={cn("pointer-events-none absolute left-0 right-0 top-0 z-50 grid h-12 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1", floating ? "px-2" : "border-b pl-1 pr-2 sm:pr-4")}
                 style={{ background: floating ? "transparent" : theme.toolbar.floating, borderColor: theme.toolbar.border }}
             >
                 <div className={cn("pointer-events-auto flex min-w-0 items-center gap-1.5 justify-self-start", floating && "h-9 rounded-xl border px-1 backdrop-blur-md")} style={floatingClusterStyle}>
-                    {workspaceView === "workflow" ? (
+                    {workspaceView === "workflow" && !ultraCompactActions ? (
                         <Tooltip title={sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel")}>
                             <button
                                 type="button"
@@ -155,7 +175,7 @@ export function CanvasTopBar({
                             </button>
                         </Tooltip>
                     ) : null}
-                    {floating ? (
+                    {floating && !singleClusterActions ? (
                         <Tooltip title={t("canvas.backToProjects")}>
                             <button type="button" onClick={onProjects} aria-label={t("canvas.backToProjects")} className="grid size-7 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }}>
                                 <ArrowLeft className="size-4" />
@@ -166,16 +186,32 @@ export function CanvasTopBar({
                         trigger={["click"]}
                         menu={{
                             items: [
+                                ...(ultraCompactActions
+                                    ? [
+                                          { key: "workflow", icon: <GitBranch className="size-4" />, label: t("canvas.workspace.workflow"), onClick: () => onWorkspaceViewChange("workflow") },
+                                          { key: "storyboard", icon: <LayoutGrid className="size-4" />, label: t("canvas.workspace.storyboard"), onClick: () => onWorkspaceViewChange("storyboard") },
+                                          { type: "divider" as const },
+                                      ]
+                                    : []),
+                                ...(singleClusterActions
+                                    ? [
+                                          { key: "back", icon: <ArrowLeft className="size-4" />, label: t("canvas.backToProjects"), onClick: onProjects },
+                                          ...(saveStatus === "idle" ? [] : [{ key: "save-status", disabled: true, icon: saveStatus === "saving" ? <LoaderCircle className="size-4 animate-spin" /> : saveStatus === "error" ? <CloudOff className="size-4" /> : <CloudCheck className="size-4" />, label: t(`canvas.saveStatus.${saveStatus}`) }]),
+                                          { type: "divider" as const },
+                                      ]
+                                    : []),
                                 { key: "home", icon: <Home className="size-4" />, label: t("canvas.home"), onClick: onHome },
-                                ...(floating && workspaceView === "workflow"
-                                    ? [{ key: "side-panel", className: "sm:hidden", icon: sidePanelOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />, label: sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel"), onClick: toggleSidePanel }]
+                                ...(workspaceView === "workflow" && (floating || ultraCompactActions)
+                                    ? [{ key: "side-panel", className: ultraCompactActions ? undefined : "sm:hidden", icon: sidePanelOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />, label: sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel"), onClick: toggleSidePanel }]
                                     : []),
                                 { key: "docs", icon: <BookOpen className="size-4" />, label: t("canvas.docs"), onClick: () => window.open(DOCS_URL, "_blank", "noopener,noreferrer") },
                                 { key: "plugins", className: secondaryMenuItemClass, icon: <Puzzle className="size-4" />, label: t("topNav.plugins"), onClick: onOpenPlugins },
                                 { key: "config", className: secondaryMenuItemClass, icon: <Settings2 className="size-4" />, label: t("navigation.config"), onClick: () => openConfigDialog(false) },
+                                { key: "theme", icon: colorTheme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />, label: t(colorTheme === "dark" ? "topNav.lightTheme" : "topNav.darkTheme"), onClick: () => setColorTheme(colorTheme === "dark" ? "light" : "dark") },
                                 { key: "language", className: secondaryMenuItemClass, icon: <Languages className="size-4" />, label: languageLabel, onClick: () => void changeAppLocale(nextLocale) },
                                 { key: "shortcuts", className: secondaryMenuItemClass, icon: <Keyboard className="size-4" />, label: t("canvas.shortcuts"), onClick: () => setShortcutsOpen(true) },
                                 ...(directorEnabled ? [{ key: "director", icon: <Clapperboard className="size-4" />, label: t("canvas.director.open"), onClick: onOpenDirector }] : []),
+                                ...(builtinAgentEnabled ? [{ key: "builtin-agent", icon: <Sparkles className="size-4" />, label: t("canvas.builtinAgent.openButton"), onClick: onToggleBuiltinAgent }] : []),
                                 ...(panoramaAvailable ? [{ key: "panorama", icon: <Orbit className="size-4" />, label: t("canvas.panorama.openTitle"), onClick: onViewPanorama }] : []),
                                 { key: "projects", icon: <Images className="size-4" />, label: t("canvas.projects"), onClick: onProjects },
                                 { type: "divider" },
@@ -195,50 +231,58 @@ export function CanvasTopBar({
                         </button>
                     </Dropdown>
 
-                    <div ref={titleRef} className="flex min-w-0 items-center gap-2">
-                        {floating ? (
-                            <span className="hidden shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-[0.12em] sm:flex" style={{ color: theme.node.muted }}>
-                                {t("canvas.workspaceLabel")}
-                                <span aria-hidden="true">/</span>
-                            </span>
-                        ) : null}
-                        {isTitleEditing ? (
-                            <input
-                                autoFocus
-                                value={titleDraft}
-                                onChange={(event) => onTitleDraftChange(event.target.value)}
-                                onBlur={onFinishTitleEditing}
-                                onKeyDown={(event) => {
-                                    if (event.key === "Enter") onFinishTitleEditing();
-                                    if (event.key === "Escape") onCancelTitleEditing();
-                                }}
-                                className={cn("min-w-0 bg-transparent p-0 text-left text-sm font-medium tracking-normal outline-none", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
-                                style={{ color: theme.node.text }}
-                            />
-                        ) : (
-                            <button
-                                type="button"
-                                className={cn("min-w-0 truncate border-b border-dashed border-transparent text-left text-sm font-medium tracking-normal transition hover:border-current", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
-                                onDoubleClick={onStartTitleEditing}
-                                title={t("canvas.renameHint")}
-                            >
-                                {title}
-                            </button>
-                        )}
-                    </div>
-                    <CompactAgentStatus status={compactAgentStatus} compact={floating} onClick={onToggleAgent} />
+                    {singleClusterActions ? null : (
+                        <div ref={titleRef} className="flex min-w-0 items-center gap-2">
+                            {floating ? (
+                                <span className="hidden shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-[0.12em] sm:flex" style={{ color: theme.node.muted }}>
+                                    {t("canvas.workspaceLabel")}
+                                    <span aria-hidden="true">/</span>
+                                </span>
+                            ) : null}
+                            {isTitleEditing ? (
+                                <input
+                                    autoFocus
+                                    value={titleDraft}
+                                    onChange={(event) => onTitleDraftChange(event.target.value)}
+                                    onBlur={onFinishTitleEditing}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") onFinishTitleEditing();
+                                        if (event.key === "Escape") onCancelTitleEditing();
+                                    }}
+                                    className={cn("min-w-0 bg-transparent p-0 text-left text-sm font-medium tracking-normal outline-none", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
+                                    style={{ color: theme.node.text }}
+                                />
+                            ) : (
+                                <button
+                                    type="button"
+                                    className={cn("min-w-0 truncate border-b border-dashed border-transparent text-left text-sm font-medium tracking-normal transition hover:border-current", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
+                                    onDoubleClick={onStartTitleEditing}
+                                    title={t("canvas.renameHint")}
+                                >
+                                    {title}
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    {minimalActions ? null : <CompactAgentStatus status={compactAgentStatus} compact={floating} onClick={onToggleAgent} />}
                 </div>
 
-                <div className={cn("pointer-events-auto flex h-8 justify-self-center rounded-md border p-0", floating && "h-9 rounded-xl backdrop-blur-md")} style={floating ? floatingClusterStyle : { background: "transparent", borderColor: theme.toolbar.border }}>
-                    <WorkspaceViewButton active={workspaceView === "workflow"} icon={<GitBranch className="size-4" />} label={t("canvas.workspace.workflow")} theme={theme} onClick={() => onWorkspaceViewChange("workflow")} />
-                    <WorkspaceViewButton active={workspaceView === "storyboard"} icon={<LayoutGrid className="size-4" />} label={t("canvas.workspace.storyboard")} theme={theme} onClick={() => onWorkspaceViewChange("storyboard")} />
-                </div>
+                {ultraCompactActions ? (
+                    <div aria-hidden="true" />
+                ) : (
+                    <div className={cn("pointer-events-auto flex h-8 justify-self-center rounded-md border p-0", floating && "h-9 rounded-xl backdrop-blur-md")} style={floating ? floatingClusterStyle : { background: "transparent", borderColor: theme.toolbar.border }}>
+                        <WorkspaceViewButton active={workspaceView === "workflow"} icon={<GitBranch className="size-4" />} label={t("canvas.workspace.workflow")} theme={theme} onClick={() => onWorkspaceViewChange("workflow")} />
+                        <WorkspaceViewButton active={workspaceView === "storyboard"} icon={<LayoutGrid className="size-4" />} label={t("canvas.workspace.storyboard")} theme={theme} onClick={() => onWorkspaceViewChange("storyboard")} />
+                    </div>
+                )}
 
                 <div className={cn("pointer-events-auto flex shrink-0 items-center gap-1 justify-self-end", floating && "h-9 rounded-xl border px-1 backdrop-blur-md")} style={floatingClusterStyle}>
-                    <SaveStatusIndicator status={saveStatus} theme={theme} />
-                    <UserStatusActions variant="canvas" className={floating ? "hidden xl:inline-flex" : "hidden md:inline-flex"} onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
-                    <span className={floating ? "hidden h-6 w-px xl:block" : "hidden h-6 w-px md:block"} style={{ background: theme.toolbar.border }} />
-                    {directorEnabled ? (
+                    {singleClusterActions ? null : <SaveStatusIndicator status={saveStatus} theme={theme} />}
+                    {minimalActions ? null : (
+                        <UserStatusActions variant="canvas" compact={compactActions} className={compactActions ? "inline-flex" : floating ? "hidden xl:inline-flex" : "hidden md:inline-flex"} onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
+                    )}
+                    {compactActions ? null : <span className={floating ? "hidden h-6 w-px xl:block" : "hidden h-6 w-px md:block"} style={{ background: theme.toolbar.border }} />}
+                    {directorEnabled && !ultraCompactActions ? (
                         <Tooltip title={t("canvas.director.title")}>
                             <Button
                                 type="text"
@@ -246,12 +290,13 @@ export function CanvasTopBar({
                                 style={{ background: directorOpen ? theme.toolbar.activeBg : "transparent", color: theme.node.text }}
                                 icon={<Clapperboard className="size-4" />}
                                 onClick={onOpenDirector}
+                                aria-label={t("canvas.director.open")}
                             >
-                                <span className={floating ? "hidden xl:inline" : undefined}>{t("canvas.director.open")}</span>
+                                <span className={compactActions ? "hidden" : floating ? "hidden xl:inline" : undefined}>{t("canvas.director.open")}</span>
                             </Button>
                         </Tooltip>
                     ) : null}
-                    {builtinAgentEnabled ? (
+                    {builtinAgentEnabled && !ultraCompactActions ? (
                         <Tooltip title={t("canvas.builtinAgent.title")}>
                             <Button
                                 type="text"
@@ -259,8 +304,9 @@ export function CanvasTopBar({
                                 style={{ background: builtinAgentOpen ? theme.toolbar.activeBg : "transparent", color: theme.node.text }}
                                 icon={<Sparkles className="size-4" />}
                                 onClick={onToggleBuiltinAgent}
+                                aria-label={t("canvas.builtinAgent.openButton")}
                             >
-                                <span className={floating ? "hidden xl:inline" : undefined}>{t("canvas.builtinAgent.openButton")}</span>
+                                <span className={compactActions ? "hidden" : floating ? "hidden xl:inline" : undefined}>{t("canvas.builtinAgent.openButton")}</span>
                             </Button>
                         </Tooltip>
                     ) : null}
@@ -270,8 +316,9 @@ export function CanvasTopBar({
                         style={{ background: agentOpen ? theme.toolbar.activeBg : "transparent", color: theme.node.text }}
                         icon={<Bot className="size-4" />}
                         onClick={onToggleAgent}
+                        aria-label="Agent"
                     >
-                        <span className={floating ? "hidden xl:inline" : undefined}>Agent</span>
+                        <span className={compactActions ? "hidden" : floating ? "hidden xl:inline" : undefined}>Agent</span>
                     </Button>
                 </div>
             </div>

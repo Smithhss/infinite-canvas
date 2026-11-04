@@ -13,13 +13,14 @@ import { useThemeStore } from "@/stores/use-theme-store";
 
 type UserStatusActionsProps = {
     showConfig?: boolean;
+    showVersion?: boolean;
     variant?: "default" | "canvas";
     className?: string;
     onOpenShortcuts?: () => void;
     onOpenPlugins?: () => void;
 };
 
-export function UserStatusActions({ showConfig = true, variant = "default", className = "", onOpenShortcuts, onOpenPlugins }: UserStatusActionsProps) {
+export function UserStatusActions({ showConfig = true, showVersion = true, variant = "default", className = "", onOpenShortcuts, onOpenPlugins }: UserStatusActionsProps) {
     const { i18n, t } = useTranslation();
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
@@ -61,7 +62,7 @@ export function UserStatusActions({ showConfig = true, variant = "default", clas
                 aria-label={t(theme === "dark" ? "topNav.lightTheme" : "topNav.darkTheme")}
                 title={t(theme === "dark" ? "topNav.lightTheme" : "topNav.darkTheme")}
             />
-            <VersionReleaseModal className="hidden shrink-0 cursor-pointer text-xs font-medium text-stone-500 transition hover:text-stone-950 sm:inline-flex dark:text-stone-400 dark:hover:text-white" style={versionStyle} />
+            {showVersion ? <VersionReleaseModal className="hidden shrink-0 cursor-pointer text-xs font-medium text-stone-500 transition hover:text-stone-950 sm:inline-flex dark:text-stone-400 dark:hover:text-white" style={versionStyle} /> : null}
             {onOpenShortcuts ? (
                 <button type="button" className={naturalIconClass} style={iconStyle} onClick={onOpenShortcuts} aria-label={t("topNav.shortcuts")} title={t("topNav.shortcuts")}>
                     <Keyboard className="size-4" />

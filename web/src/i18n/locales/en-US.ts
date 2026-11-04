@@ -597,6 +597,8 @@ export default {
         createGroup: "Create",
         creativeAgent: "Creative Agent",
         tools: "Tools",
+        expandSidebar: "Expand sidebar",
+        collapseSidebar: "Collapse sidebar",
         openAgent: "Open Agent",
         closeAgent: "Close Agent",
         plugins: "Plugins",

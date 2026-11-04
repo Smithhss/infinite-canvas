@@ -597,6 +597,8 @@ export default {
         createGroup: "创作",
         creativeAgent: "创作 Agent",
         tools: "工具",
+        expandSidebar: "展开侧栏",
+        collapseSidebar: "收起侧栏",
         openAgent: "打开 Agent",
         closeAgent: "收起 Agent",
         plugins: "插件",

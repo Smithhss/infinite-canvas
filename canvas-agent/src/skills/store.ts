@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { TextDecoder } from "node:util";
 
 import matter from "gray-matter";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
@@ -9,6 +10,7 @@ const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const MAX_INSTRUCTIONS_BYTES = 256 * 1024;
+const MAX_RESOURCE_BYTES = MAX_INSTRUCTIONS_BYTES;
 const MAX_DISPLAY_NAME_LENGTH = 64;
 const MIN_SHORT_DESCRIPTION_LENGTH = 25;
 const MAX_SHORT_DESCRIPTION_LENGTH = 64;
@@ -42,6 +44,16 @@ export type UpdateManagedSkillInput = {
     instructions: string;
     interface?: ManagedSkillInterface | null;
     expectedRevision: string;
+};
+
+export type ManagedSkillResourceSummary = {
+    path: string;
+    size: number;
+    revision: string;
+};
+
+export type ManagedSkillResourceDetail = ManagedSkillResourceSummary & {
+    content: string;
 };
 
 type SkillDocument = {
@@ -164,6 +176,69 @@ export class SkillStore {
         });
     }
 
+    /** 列出 Skill 目录中的纯文本资源，不包含 SKILL.md 和 agents 元数据。 */
+    async listResources(nameValue: string): Promise<ManagedSkillResourceSummary[]> {
+        try {
+            await this.writeQueue.catch(() => undefined);
+            const paths = await this.safeExistingPaths(nameValue);
+            const resources: ManagedSkillResourceSummary[] = [];
+            await this.collectResources(paths.skillDir, "", resources);
+            return resources.sort((left, right) => left.path.localeCompare(right.path));
+        } catch (error) {
+            throw storeError(error, "读取 Skill 资源失败");
+        }
+    }
+
+    /** 读取 Skill 目录中的一个纯文本资源。 */
+    async getResource(nameValue: string, resourcePathValue: string): Promise<ManagedSkillResourceDetail> {
+        try {
+            await this.writeQueue.catch(() => undefined);
+            const target = await this.safeResourceTarget(nameValue, resourcePathValue);
+            return await this.readResource(target.resourceFile, target.relativePath);
+        } catch (error) {
+            throw storeError(error, "读取 Skill 资源失败");
+        }
+    }
+
+    /** 创建 Skill 目录中的纯文本资源，已存在时不会覆盖。 */
+    createResource(nameValue: string, resourcePathValue: string, contentValue: string) {
+        return this.mutate(async () => {
+            const content = resourceContent(contentValue);
+            const target = await this.safeResourceTarget(nameValue, resourcePathValue, true);
+            const existing = await lstatOptional(target.resourceFile);
+            if (existing) {
+                if (existing.isSymbolicLink() || !existing.isFile()) throw new SkillStoreError("资源文件路径不安全", 400);
+                throw new SkillStoreError("同名资源文件已存在", 409);
+            }
+            await writeFileAtomic(target.resourceFile, content);
+            return await this.readResource(target.resourceFile, target.relativePath);
+        });
+    }
+
+    /** 更新 Skill 目录中的纯文本资源，使用文件 revision 防止覆盖外部修改。 */
+    updateResource(nameValue: string, resourcePathValue: string, contentValue: string, expectedRevisionValueInput: string) {
+        return this.mutate(async () => {
+            const content = resourceContent(contentValue);
+            const expectedRevision = expectedRevisionValue(expectedRevisionValueInput);
+            const target = await this.safeResourceTarget(nameValue, resourcePathValue);
+            const current = await this.readResource(target.resourceFile, target.relativePath);
+            assertRevision(expectedRevision, current.revision);
+            await writeFileAtomic(target.resourceFile, content);
+            return await this.readResource(target.resourceFile, target.relativePath);
+        });
+    }
+
+    /** 删除 revision 仍匹配的 Skill 资源文件。 */
+    deleteResource(nameValue: string, resourcePathValue: string, expectedRevisionValueInput: string) {
+        return this.mutate(async () => {
+            const expectedRevision = expectedRevisionValue(expectedRevisionValueInput);
+            const target = await this.safeResourceTarget(nameValue, resourcePathValue);
+            const current = await this.readResource(target.resourceFile, target.relativePath);
+            assertRevision(expectedRevision, current.revision);
+            await fs.unlink(target.resourceFile);
+        });
+    }
+
     private mutate<T>(operation: () => Promise<T>): Promise<T> {
         const result = this.writeQueue.catch(() => undefined).then(operation).catch((error) => { throw storeError(error, "修改 Skill 失败"); });
         this.writeQueue = result.catch(() => undefined);
@@ -235,6 +310,66 @@ export class SkillStore {
         };
     }
 
+    private async collectResources(directory: string, prefix: string, resources: ManagedSkillResourceSummary[]) {
+        const entries = await fs.readdir(directory, { withFileTypes: true });
+        for (const entry of entries) {
+            const entryPath = path.join(directory, entry.name);
+            const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+            const metadata = await fs.lstat(entryPath);
+            if (metadata.isSymbolicLink()) throw new SkillStoreError("Skill 资源路径中存在符号链接或目录联接", 400);
+            if (metadata.isDirectory()) {
+                if (!prefix && entry.name === "agents") continue;
+                await this.collectResources(entryPath, relativePath, resources);
+                continue;
+            }
+            if (!metadata.isFile()) throw new SkillStoreError("Skill 资源路径不是普通文件", 400);
+            if (relativePath === "SKILL.md") continue;
+            const safeRelativePath = tryResourcePath(relativePath);
+            if (!safeRelativePath || metadata.size > MAX_RESOURCE_BYTES) continue;
+            const content = await readTextResource(entryPath);
+            if (content === undefined) continue;
+            resources.push({ path: safeRelativePath, size: metadata.size, revision: resourceRevision(content) });
+        }
+    }
+
+    private async readResource(filePath: string, relativePath: string): Promise<ManagedSkillResourceDetail> {
+        const entry = await lstatOptional(filePath);
+        if (!entry) throw new SkillStoreError("找不到指定资源文件", 404);
+        if (entry.isSymbolicLink() || !entry.isFile()) throw new SkillStoreError("资源文件路径不安全", 400);
+        if (entry.size > MAX_RESOURCE_BYTES) throw new SkillStoreError("资源文件不能超过 256KiB", 400);
+        const content = await readTextResource(filePath);
+        if (content === undefined) throw new SkillStoreError("只支持读取 UTF-8 文本资源", 400);
+        return { path: relativePath, size: entry.size, revision: resourceRevision(content), content };
+    }
+
+    private async safeResourceTarget(nameValue: string, resourcePathValue: string, createParents = false) {
+        const paths = await this.safeExistingPaths(nameValue);
+        const relativePath = resourcePath(resourcePathValue);
+        const segments = relativePath.split("/");
+        const fileName = segments.pop();
+        if (!fileName) throw new SkillStoreError("资源文件路径无效", 400);
+        let directory = paths.skillDir;
+        const realRoot = await fs.realpath(paths.skillDir);
+        for (const segment of segments) {
+            const next = path.join(directory, segment);
+            let entry = await lstatOptional(next);
+            if (!entry) {
+                if (!createParents) throw new SkillStoreError("找不到资源文件目录", 404);
+                await fs.mkdir(next);
+                entry = await fs.lstat(next);
+            }
+            if (entry.isSymbolicLink() || !entry.isDirectory()) throw new SkillStoreError("资源文件目录不安全", 400);
+            const realDirectory = await fs.realpath(next);
+            if (!inside(realRoot, realDirectory)) throw new SkillStoreError("资源文件路径不安全", 400);
+            directory = next;
+        }
+        return {
+            ...paths,
+            relativePath,
+            resourceFile: path.join(directory, fileName),
+        };
+    }
+
     private async writeOpenAi(filePath: string, current: Record<string, unknown>, skillInterface?: ManagedSkillInterface) {
         const agentsDir = path.dirname(filePath);
         const existing = recordValue(current.interface);
@@ -284,6 +419,28 @@ function skillInstructions(value: unknown) {
     if (!instructions) throw new SkillStoreError("请输入 Skill 正文", 400);
     if (Buffer.byteLength(instructions, "utf8") > MAX_INSTRUCTIONS_BYTES) throw new SkillStoreError("Skill 正文不能超过 256KiB", 400);
     return instructions;
+}
+
+function resourceContent(value: unknown) {
+    if (typeof value !== "string" || value.includes("\0")) throw new SkillStoreError("资源文件内容无效", 400);
+    if (Buffer.byteLength(value, "utf8") > MAX_RESOURCE_BYTES) throw new SkillStoreError("资源文件不能超过 256KiB", 400);
+    return value;
+}
+
+function resourcePath(value: unknown) {
+    const text = typeof value === "string" ? value : "";
+    const safePath = tryResourcePath(text);
+    if (!safePath) throw new SkillStoreError("资源文件路径无效", 400);
+    return safePath;
+}
+
+function tryResourcePath(value: string) {
+    if (!value || value.startsWith("/") || value.includes("\\") || value.includes("\0")) return null;
+    const segments = value.split("/");
+    if (segments.some((segment) => !segment || segment === "." || segment === ".." || segment.startsWith(".") || Buffer.byteLength(segment, "utf8") > 255)) return null;
+    if (segments[0].toLowerCase() === "agents") return null;
+    if (segments.length === 1 && segments[0].toLowerCase() === "skill.md") return null;
+    return segments.join("/");
 }
 
 function skillInterfaceValue(value: unknown, name: string): ManagedSkillInterface | undefined {
@@ -389,6 +546,20 @@ async function writeFileAtomic(filePath: string, content: string) {
 
 function revision(skillRaw: string, openAiRaw: string) {
     return crypto.createHash("sha256").update(skillRaw).update("\0").update(openAiRaw).digest("hex");
+}
+
+function resourceRevision(content: string) {
+    return crypto.createHash("sha256").update(content).digest("hex");
+}
+
+async function readTextResource(filePath: string) {
+    const buffer = await fs.readFile(filePath);
+    if (buffer.includes(0)) return undefined;
+    try {
+        return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    } catch {
+        return undefined;
+    }
 }
 
 async function ensurePlainDirectory(directory: string) {

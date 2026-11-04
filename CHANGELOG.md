@@ -2,6 +2,7 @@
 
 ## Unreleased
 
++ [新增] Agent Skill 编辑新增 UTF-8 文本资源文件列表、创建、编辑和删除，使用 revision 防止并发覆盖，并拒绝路径穿越、符号链接、非文本内容和超过 256KiB 的文件。
 + [新增] 新增默认关闭的 `agentProviderSwitch`：Agent 侧栏可在 Codex 与 Claude Agent SDK 间切换，Claude 复用流式事件、Usage 和中断，并可读取原生模型、本机会话历史、恢复或删除当前工作空间会话。
 + [新增] Claude 模式新增 SDK 原生模型列表与模型切换，模型选择按 Agent 类型分别保存并在 `/agent/claude/turn` 中透传；思考强度仍只由 Codex 提供。
 + [新增] Claude 模式新增 SDK 原生权限模式：逐次批准、自动审查和完全访问分别映射到 `default`、`auto` 和 `bypassPermissions`，画布写入可批准、本会话允许或拒绝，并在刷新或续聊后正确恢复审批与同一 SDK 会话授权。

@@ -25,16 +25,185 @@ test("SDK Adapter 使用隔离配置并只允许画布 MCP", async () => {
     });
     assert.equal(run.runId, "turn-1");
     assert.deepEqual(received?.tools, []);
-    assert.deepEqual(received?.allowedTools, ["mcp__infinite-canvas__*"]);
     assert.deepEqual(received?.settingSources, []);
     assert.equal(received?.strictMcpConfig, true);
-    assert.equal(received?.permissionMode, "dontAsk");
+    assert.equal(received?.permissionMode, "default");
+    assert.deepEqual(received?.allowedTools, []);
+    assert.equal(typeof received?.canUseTool, "function");
     assert.equal(received?.includePartialMessages, true);
     assert.equal(received?.resume, "session-resume");
     assert.equal(received?.model, "claude-sonnet-4-5");
     assert.equal(received?.effort, "high");
     await waitFor(() => !adapter.busy);
     assert.equal(events.filter((item) => item.type === "agent_done").length, 1);
+});
+
+test("请求模式把 Claude 写工具转入网页审批，并支持本会话批准", async () => {
+    let canUseTool: any;
+    let release = () => undefined;
+    const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const adapter = new ClaudeSdkAdapter(
+        ({ options }) => {
+            canUseTool = options.canUseTool;
+            return Object.assign((async function* () {
+                yield { type: "system", subtype: "init", session_id: "session-1" };
+                await waiting;
+                yield { type: "result", session_id: "session-1", subtype: "success", is_error: false, result: "完成", usage: {}, modelUsage: {} };
+            })(), { close: () => release() });
+        },
+        () => ({ type: "sdk", name: "infinite-canvas", instance: {} } as never),
+        () => "turn-1",
+    );
+    const events: Array<{ type: string; payload: unknown }> = [];
+    await adapter.run("写入画布", (type, payload) => events.push({ type, payload }), { clientId: "client-1", cwd: "/tmp/canvas", permissionMode: "request" });
+    assert.equal(typeof canUseTool, "function");
+    const signal = new AbortController().signal;
+    const result = canUseTool("mcp__infinite-canvas__canvas_apply_ops", { ops: [] }, {
+        signal,
+        requestId: "permission-1",
+        toolUseID: "tool-1",
+        title: "Claude 想修改画布",
+    });
+    await waitFor(() => events.some((item) => item.type === "claude_approval"));
+    assert.equal(adapter.resolvePermission("client-2", "permission-1", "accept"), false);
+    assert.equal(adapter.resolvePermission("client-1", "permission-1", "acceptForSession"), true);
+    assert.deepEqual(await result, { behavior: "allow", decisionClassification: "user_permanent" });
+    assert.ok(events.some((item) => item.type === "claude_approval_resolved" && (item.payload as Record<string, unknown>).decision === "acceptForSession"));
+    const next = await canUseTool("mcp__infinite-canvas__canvas_apply_ops", { ops: [] }, {
+        signal,
+        requestId: "permission-2",
+        toolUseID: "tool-2",
+    });
+    assert.deepEqual(next, { behavior: "allow", decisionClassification: "user_permanent" });
+    assert.equal(events.filter((item) => item.type === "claude_approval").length, 1);
+    release();
+    await waitFor(() => !adapter.busy);
+});
+
+test("本会话批准在同一 Claude SDK 会话的后续 turn 继续生效", async () => {
+    let canUseTool: any;
+    let turn = 0;
+    let finishFirst = () => undefined;
+    let finishSecond = () => undefined;
+    const firstWaiting = new Promise<void>((resolve) => {
+        finishFirst = resolve;
+    });
+    const secondWaiting = new Promise<void>((resolve) => {
+        finishSecond = resolve;
+    });
+    const adapter = new ClaudeSdkAdapter(
+        ({ options }) => {
+            canUseTool = options.canUseTool;
+            turn += 1;
+            const waiting = turn === 1 ? firstWaiting : secondWaiting;
+            const finish = turn === 1 ? finishFirst : finishSecond;
+            return Object.assign((async function* () {
+                yield { type: "system", subtype: "init", session_id: "session-1" };
+                await waiting;
+                yield { type: "result", session_id: "session-1", subtype: "success", is_error: false, result: "完成", usage: {}, modelUsage: {} };
+            })(), { close: finish });
+        },
+        () => ({ type: "sdk", name: "infinite-canvas", instance: {} } as never),
+    );
+    const events: Array<{ type: string; payload: unknown }> = [];
+    await adapter.run("第一次写入", (type, payload) => events.push({ type, payload }), { clientId: "client-1", cwd: "/tmp/canvas", permissionMode: "request" });
+    const first = canUseTool("mcp__infinite-canvas__canvas_apply_ops", { ops: [] }, { signal: new AbortController().signal, requestId: "permission-1" });
+    await waitFor(() => events.some((item) => item.type === "claude_approval"));
+    assert.equal(adapter.resolvePermission("client-1", "permission-1", "acceptForSession"), true);
+    assert.equal((await first).behavior, "allow");
+    finishFirst();
+    await waitFor(() => !adapter.busy);
+
+    await adapter.run("第二次写入", (type, payload) => events.push({ type, payload }), { clientId: "client-1", cwd: "/tmp/canvas", sessionId: "session-1", permissionMode: "request" });
+    assert.deepEqual(await canUseTool("mcp__infinite-canvas__canvas_apply_ops", { ops: [] }, { signal: new AbortController().signal, requestId: "permission-2" }), {
+        behavior: "allow",
+        decisionClassification: "user_permanent",
+    });
+    assert.equal(events.filter((item) => item.type === "claude_approval").length, 1);
+    finishSecond();
+    await waitFor(() => !adapter.busy);
+});
+
+test("拒绝 Claude 审批会把原生权限结果返回给 SDK", async () => {
+    let canUseTool: any;
+    let finish = () => undefined;
+    const adapter = new ClaudeSdkAdapter(
+        ({ options }) => {
+            canUseTool = options.canUseTool;
+            const waiting = new Promise<void>((resolve) => {
+                finish = resolve;
+            });
+            return Object.assign((async function* () {
+                yield { type: "system", subtype: "init", session_id: "session-1" };
+                await waiting;
+                yield { type: "result", session_id: "session-1", subtype: "success", is_error: false, result: "完成", usage: {}, modelUsage: {} };
+            })(), { close: () => finish() });
+        },
+        () => ({ type: "sdk", name: "infinite-canvas", instance: {} } as never),
+    );
+    const events: Array<{ type: string; payload: unknown }> = [];
+    await adapter.run("删除画布", (type, payload) => events.push({ type, payload }), { clientId: "client-1", cwd: "/tmp/canvas", permissionMode: "request" });
+    const pending = canUseTool("mcp__infinite-canvas__canvas_delete_nodes", { nodeIds: ["node-1"] }, { signal: new AbortController().signal, requestId: "permission-1" });
+    await waitFor(() => events.some((item) => item.type === "claude_approval"));
+    assert.equal(adapter.resolvePermission("client-1", "permission-1", "decline"), true);
+    assert.deepEqual(await pending, { behavior: "deny", message: "用户拒绝了这次 Claude 画布工具调用", decisionClassification: "user_reject" });
+    assert.ok(events.some((item) => item.type === "claude_approval_resolved" && (item.payload as Record<string, unknown>).decision === "decline"));
+    finish();
+    await waitFor(() => !adapter.busy);
+});
+
+test("停止 Claude turn 会拒绝未决审批并通知网页", async () => {
+    let canUseTool: any;
+    let finish = () => undefined;
+    const adapter = new ClaudeSdkAdapter(
+        ({ options }) => {
+            canUseTool = options.canUseTool;
+            const waiting = new Promise<void>((resolve) => {
+                finish = resolve;
+            });
+            return Object.assign((async function* () {
+                yield { type: "system", subtype: "init", session_id: "session-1" };
+                await waiting;
+            })(), {
+                interrupt: async () => undefined,
+                close: () => finish(),
+            });
+        },
+        () => ({ type: "sdk", name: "infinite-canvas", instance: {} } as never),
+        () => "turn-1",
+    );
+    const events: Array<{ type: string; payload: unknown }> = [];
+    await adapter.run("等待审批", (type, payload) => events.push({ type, payload }), { clientId: "client-1", cwd: "/tmp/canvas", permissionMode: "request" });
+    const pending = canUseTool("mcp__infinite-canvas__canvas_apply_ops", { ops: [] }, { signal: new AbortController().signal, requestId: "permission-1" });
+    await waitFor(() => events.some((item) => item.type === "claude_approval"));
+    assert.equal(await adapter.interrupt("client-1", "turn-1"), true);
+    assert.deepEqual(await pending, { behavior: "deny", message: "Claude 任务已停止", decisionClassification: "user_reject" });
+    assert.ok(events.some((item) => item.type === "claude_approval_resolved" && (item.payload as Record<string, unknown>).decision === "decline"));
+    await waitFor(() => !adapter.busy);
+});
+
+test("Claude 权限模式映射到 SDK 原生模式", async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const adapter = new ClaudeSdkAdapter(
+        ({ options }) => {
+            received.push(options as unknown as Record<string, unknown>);
+            return Object.assign((async function* () {
+                yield { type: "result", session_id: "session-1", subtype: "success", is_error: false, result: "完成", usage: {}, modelUsage: {} };
+            })(), { close: () => undefined });
+        },
+        () => ({ type: "sdk", name: "infinite-canvas", instance: {} } as never),
+    );
+    await adapter.run("自动审批", () => undefined, { clientId: "client-1", cwd: "/tmp/canvas", permissionMode: "automatic" });
+    await waitFor(() => !adapter.busy);
+    await adapter.run("完全访问", () => undefined, { clientId: "client-1", cwd: "/tmp/canvas", permissionMode: "full" });
+    await waitFor(() => !adapter.busy);
+    assert.equal(received[0]?.permissionMode, "auto");
+    assert.equal(typeof received[0]?.canUseTool, "function");
+    assert.equal(received[1]?.permissionMode, "bypassPermissions");
+    assert.equal(received[1]?.allowDangerouslySkipPermissions, true);
+    assert.deepEqual(received[1]?.allowedTools, ["mcp__infinite-canvas__*"]);
 });
 
 test("画布 MCP Server 能按 Zod 4 Schema 注册", () => {

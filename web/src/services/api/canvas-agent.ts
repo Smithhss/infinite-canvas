@@ -68,6 +68,10 @@ export async function postCodexApproval(endpoint: string, token: string, request
     await fetchAgentJson(endpoint, token, "/agent/codex/approval", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId, decision }) });
 }
 
+export async function postClaudeApproval(endpoint: string, token: string, clientId: string, requestId: string, decision: "accept" | "acceptForSession" | "decline") {
+    await fetchAgentJson(endpoint, token, "/agent/claude/approval", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientId, requestId, decision }) });
+}
+
 export async function interruptCodexTurn(endpoint: string, token: string, threadId?: string) {
     await fetchAgentJson(endpoint, token, "/agent/codex/interrupt", jsonPost({ threadId }));
 }

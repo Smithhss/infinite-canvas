@@ -221,7 +221,7 @@ test("new clients receive the current Codex state and later updates", (t) => {
     t.after(() => client.close());
 
     const hello = client.event("hello");
-    assert.equal(field(hello, "protocolVersion"), 6);
+    assert.equal(field(hello, "protocolVersion"), 7);
     assert.deepEqual(field(hello, "workspace"), { activeThreadId: "thread-2" });
     assert.deepEqual(field(hello, "conversation"), { revision: 1, conversationId: "thread-2", threadId: "thread-2", status: "ready", mcpStatuses: {} });
     assert.deepEqual(field(hello, "codex"), { busy: true, threadId: "thread-2", turnId: "turn-1" });
@@ -233,6 +233,10 @@ test("new clients receive the current Codex state and later updates", (t) => {
     session.setCodexState({ busy: false });
     assert.deepEqual(session.codexPendingApprovals, [{ requestId: "approval-2", threadId: "thread-2" }]);
     session.trackCodexEvent("agent_error", { message: "app-server exited" });
+    assert.deepEqual(session.codexPendingApprovals, []);
+    session.trackCodexEvent("claude_approval", { requestId: "claude-approval-1", threadId: "thread-2" });
+    assert.deepEqual(session.codexPendingApprovals, [{ requestId: "claude-approval-1", threadId: "thread-2" }]);
+    session.trackCodexEvent("claude_approval_resolved", { requestId: "claude-approval-1" });
     assert.deepEqual(session.codexPendingApprovals, []);
     assert.deepEqual(client.event("codex_state"), { busy: false, threadId: "thread-2", turnId: "turn-1" });
 });

@@ -460,6 +460,7 @@ export function startHttpServer() {
                 threadId: String(req.body?.threadId || "") || undefined,
                 sessionId: String(req.body?.sessionId || req.body?.threadId || "") || undefined,
                 model: String(req.body?.model || "") || undefined,
+                permissionMode: permissionMode(req.body?.permissionMode),
                 effort: claudeEffort(req.body?.effort),
                 onFinish: () => session.releaseClient(clientId),
             });
@@ -468,6 +469,14 @@ export function startHttpServer() {
             session.releaseClient(clientId);
             throw error;
         }
+    }));
+    app.post("/agent/claude/approval", route(async (req, res) => {
+        const decision = String(req.body?.decision || "");
+        if (!["accept", "acceptForSession", "decline"].includes(decision)) return res.status(400).json({ ok: false, error: "无效的 Claude 权限决定" });
+        const clientId = String(req.body?.clientId || "");
+        if (!clientId || !session.hasClient(clientId)) return res.status(409).json({ ok: false, error: "发起 Claude 任务的网页已断开，请重新连接后再试" });
+        const ok = claudeAdapter.resolvePermission(clientId, String(req.body?.requestId || ""), decision as "accept" | "acceptForSession" | "decline");
+        res.status(ok ? 200 : 409).json({ ok, ...(ok ? {} : { error: "Claude 权限请求已失效" }) });
     }));
     app.post("/agent/claude/interrupt", route(async (req, res) => {
         const clientId = String(req.body?.clientId || "");

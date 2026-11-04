@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口和 P2-D 本机会话历史与续聊已合并到 `dev`。P2-E Claude 原生模型列表已实现，等待人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口、P2-D 本机会话历史与续聊和 P2-E Claude 原生模型列表已合并到 `dev`。P2-F Claude SDK 原生权限模式已实现，等待 PR 合并和人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 
@@ -347,10 +347,10 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 - 复用 Canvas Agent 已提供的 `/agent/claude/turn` 和 `/agent/claude/interrupt`，在现有侧栏内切换 Codex / Claude，不复制第二套对话 UI。
 - 只开放 Claude 真实支持的能力，不把 Codex 的模型、权限、历史、Skill 和图片附件能力伪装成 Claude 能力。
 
-本轮实现：
+P2-C 初始实现：
 
 1. 输入框工具栏增加 Agent 类型菜单；切换前若有任务运行则拒绝并提示先完成或停止。
-2. Claude 模式隐藏 Codex 模型、思考强度、权限、Skill 和图片上传入口，仅保留文本输入、历史、画布工具确认、日志和停止。
+2. Claude 模式最初隐藏 Codex 模型、思考强度、权限、Skill 和图片上传入口，仅保留文本输入、历史、画布工具确认、日志和停止；后续 P2-E、P2-F 已分别补齐原生模型与权限。
 3. 从 Codex 切到 Claude 时移除图片附件和图片引用，保留文本画布引用；发送前再次校验，避免绕过 UI 提交不支持的内容。
 4. 连接设置页在 Claude 模式显示 Claude Agent SDK 说明，使用本机 Claude Code 登录态，不再展示 Codex 插件安装步骤。
 5. Claude 事件复用现有 `thread.started`、`turn.started`、`item.*`、`usage.updated`、`turn.completed` 渲染；按 `runId` 适配会话线程，助手消息标题显示 Claude，终态清理运行状态。
@@ -359,13 +359,13 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 不在本轮范围：
 
 - 真实工具队列。当前仍是单槽 `pendingTool`，同时到达的第二个工具会被拒绝；需要 Agent 协议升级后才能提供真实队列。
-- Claude 模型列表、权限模式、Skill 选择和图片附件；这些需要 `/agent/claude` 对应契约，继续留在后续任务。
+- P2-C 时尚未覆盖 Claude 模型列表、权限模式、Skill 选择和图片附件；模型与权限已分别由 P2-E、P2-F 补齐，Skill 和图片附件继续留在后续任务。
 - Claude 登录态预检。侧栏不伪造已登录状态，首次发送时由 Canvas Agent 返回真实错误。
 
 验收：
 
 - 开关关闭时，即使浏览器保存过 Claude，也必须完整保持 Codex 侧栏、四页签和原控件。
-- 开关打开后可切换 Codex / Claude；Claude 模式显示 Chat、History 和 Logs，模型、权限、Skill、上传控件全部消失。
+- 开关打开后可切换 Codex / Claude；P2-C 基线显示 Chat、History 和 Logs，并隐藏 Skill、上传和当时尚未接入的 Codex 控件；模型和权限入口由后续 P2-E、P2-F 补齐。
 - Claude 用户消息、流式助手消息、Usage、工具确认、批准/拒绝、停止和终态都能正确归属到当前 `threadId` / `turnId`。
 - 未连接时 Claude 设置页只提供真实连接动作，不展示 Codex 插件安装步骤。
 - 1440px、390px、中英文和浅深色无横向溢出。
@@ -390,7 +390,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 不在本轮范围：
 
-- Claude 权限模式、Skill 选择和图片附件。
+- P2-D 时尚未覆盖 Claude 权限模式；已由 P2-F 补齐。Skill 选择和图片附件仍待后续。
 - 跨工作空间或跨项目读取 Claude 会话。
 - 多个工具同时等待确认的真实队列；当前仍保持单槽 `pendingTool`。
 
@@ -406,26 +406,26 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P2-E：Claude 原生模型列表
 
-状态：已实现，沿用 `agentProviderSwitch`，等待人工验收。
+状态：已合并 `dev`（PR #30），沿用 `agentProviderSwitch`，等待人工验收。
 
 目标：
 
 - 从 Claude Agent SDK 原生初始化响应读取当前本机账号可用模型，不在前端硬编码模型名。
 - 让 Claude 与 Codex 分别保存模型选择，并把所选模型透传到 Claude turn。
-- 不把 Claude 未开放的思考强度、权限、Skill 或图片附件伪装成可用能力。
+- P2-E 只开放模型，不把当时尚未接入的思考强度、权限、Skill 或图片附件伪装成可用能力。
 
 已实现：
 
 1. Canvas Agent 新增 `GET /agent/claude/models`，通过 `Query.supportedModels()` 读取 SDK 模型列表；查询创建后立即关闭，不提交用户 prompt。
 2. 模型列表只返回 `id`、模型值、显示名、说明和空推理强度列表；SDK 或初始化失败时原样返回错误，不伪造模型。
-3. Claude capability 开放 `model`，继续关闭 `reasoning`、`permission`、`skills`、`attachments` 和 `imageReferences`。
+3. Claude capability 在 P2-E 开放 `model`，继续关闭 `reasoning`、`permission`、`skills`、`attachments` 和 `imageReferences`；其中 `permission` 已由 P2-F 后续开放。
 4. 前端模型选择按 Agent 类型使用独立浏览器存储；Claude 只显示模型选择，不显示思考强度，Codex 原有模型与强度行为保持不变。
 5. `/agent/claude/turn` 携带所选 `model`，不再发送 Claude 未开放的 `effort`。
 6. 模型列表读取失败只记录诊断日志并清空当前选择，不阻断后续文本对话。
 
 不在本轮范围：
 
-- Claude 思考强度、权限模式、Skill 选择和图片附件。
+- P2-E 时尚未覆盖 Claude 思考强度、权限模式、Skill 选择和图片附件；权限模式已由 P2-F 补齐，其余继续留在后续任务。
 - 模型别名与实际计费能力的二次校验；当前只信任 SDK 返回的可用模型。
 - 多工具并发确认队列。
 
@@ -436,6 +436,41 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 - Claude 请求体包含所选 `model`，不包含 `effort`；Codex 请求仍携带模型与思考强度。
 - 模型列表读取失败时 Claude 文本对话仍可尝试发送，并由真实 Agent 返回后续错误。
 - `ff_agentProviderSwitch=0` 时忽略浏览器保存的 Claude 选择，恢复 Codex 四页签、Codex 模型和推理强度。
+- 1440px、390px、中英文和浅深色无横向溢出。
+
+### P2-F：Claude SDK 原生权限模式
+
+状态：已实现，沿用 `agentProviderSwitch`，等待 PR 合并和人工验收。
+
+目标：
+
+- 复用 Claude Agent SDK 原生权限模式，不为 Claude 再套一层 Codex 式画布工具确认。
+- 让画布写入在请求模式下得到真实审批，并让“本会话允许”在同一个 SDK 会话的后续 turn 继续生效。
+- 刷新页面后按 Claude 自己的 `threadId` / `turnId` 恢复未决审批，不能先被 Codex 工作空间线程过滤。
+
+已实现：
+
+1. `/agent/claude/turn` 接收 `permissionMode`：`request` 映射到 `default`，`automatic` 映射到 `auto`，`full` 映射到 `bypassPermissions`。
+2. 请求模式为所有画布写入工具声明 `always_ask`，通过 SDK `canUseTool` 发出 `claude_approval`，不再使用 Codex 的画布工具二次确认 UI。
+3. 新增 `POST /agent/claude/approval`，把 `accept`、`acceptForSession`、`decline` 返回给等待中的 SDK 工具调用；拒绝、中断和 turn 结束都会清理未决审批。
+4. “本会话允许”按真实 Claude SDK `sessionId` 保存，后续 resume 同一会话时继续放行同一工具；普通允许只作用于当前调用。
+5. 前端为 Claude 使用独立的权限模式存储和专用文案；审批卡支持 Claude 原生错误、标题、工具名和完全访问警告。
+6. `hello` 重连优先识别 Claude 未决审批并使用其 `threadId` / `turnId`，避免 Claude 审批被 Codex 工作空间线程过滤。
+7. Agent 通信协议版本从 6 升至 7，Codex 原有权限与审批行为保持不变。
+
+不在本轮范围：
+
+- Claude Skill 选择和图片附件。
+- 多工具并发确认队列；当前仍按 Agent 单槽运行，一次只处理一个 turn。
+- 真实 Claude 云端账号的收费验收。
+
+验收：
+
+- Claude 请求模式写画布时出现原生审批卡，拒绝、允许一次和本会话允许都返回正确 SDK 结果。
+- 本会话允许在同一个 SDK 会话的下一 turn 继续生效；换会话后重新审批。
+- 自动审查和完全访问分别使用 SDK `auto`、`bypassPermissions`，完全访问前显示 Claude 专用警告。
+- 停止或 turn 结束会拒绝未决审批；刷新后审批卡恢复且仍绑定 Claude `threadId` / `turnId`。
+- Codex 的模型、权限、工具确认、审批与刷新恢复行为不变。
 - 1440px、390px、中英文和浅深色无横向溢出。
 
 ### P3：需要服务端或产品契约的能力
@@ -511,7 +546,8 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 | 7    | P2-C Claude SDK 侧栏入口   | 是         | Claude 后端接口和现有事件渲染         |
 | 8    | P2-D Claude 历史与续聊     | 是         | SDK 会话 API 和现有 History 视图      |
 | 9    | P2-E Claude 原生模型列表   | 是         | SDK 模型接口和现有模型选择器          |
-| 10   | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
+| 10   | P2-F Claude SDK 原生权限   | 是         | SDK 权限接口、现有审批 UI             |
+| 11   | P3 云端、分享、市场与计费  | 否         | 服务端契约                            |
 
 先做 P1-A 的原因：
 

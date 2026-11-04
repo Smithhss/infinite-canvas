@@ -4,20 +4,18 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { isNavigationToolEnabled, navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
-import { AppConfigModal } from "@/components/layout/app-config-modal";
+import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
-import { CanvasPluginManagerModal } from "@/components/canvas/canvas-plugin-manager-modal";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useAgentStore } from "@/stores/use-agent-store";
 
-export function AppTopNav() {
+export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolean; onOpenPlugins: () => void }) {
     const { t } = useTranslation();
-    const { pathname } = useLocation();
+    const { pathname, search } = useLocation();
     const navigate = useNavigate();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
-    const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
     const [createMenuOpen, setCreateMenuOpen] = useState(false);
     const autoConnectRef = useRef(false);
     const agentToken = useAgentStore((state) => state.token);
@@ -38,7 +36,7 @@ export function AppTopNav() {
 
     const handleCreateMenuClick = ({ key }: { key: string }) => {
         setCreateMenuOpen(false);
-        if (key === "canvas") navigate("/canvas");
+        if (key === "canvas") navigate(withShellFeatureFlags("/canvas", search));
         if (key === "agent") togglePanel();
     };
 
@@ -51,7 +49,7 @@ export function AppTopNav() {
     return (
         <>
             {!hideHeader ? (
-                <header className="sticky top-0 z-20 h-16 shrink-0 border-b border-stone-200/80 bg-background/85 backdrop-blur-xl dark:border-stone-800/80">
+                <header className={cn("sticky top-0 z-20 h-16 shrink-0 border-b border-stone-200/80 bg-background/85 backdrop-blur-xl dark:border-stone-800/80", compact && "lg:hidden")}>
                     <div className="mx-auto flex h-full max-w-[1480px] items-stretch justify-between gap-5 px-5 lg:px-7">
                         <div className="flex min-w-0 items-center">
                             <Link to="/" className="flex h-full shrink-0 items-center gap-2.5 text-sm font-semibold leading-none tracking-tight text-stone-950 transition hover:opacity-65 dark:text-stone-100">
@@ -69,7 +67,10 @@ export function AppTopNav() {
 
                             <button
                                 type="button"
-                                className="-ml-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-stone-600 transition hover:bg-black/5 hover:text-stone-950 md:hidden dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white"
+                                className={cn(
+                                    "-ml-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-stone-600 transition hover:bg-black/5 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white",
+                                    compact ? "lg:hidden" : "md:hidden",
+                                )}
                                 onClick={() => setMobileNavOpen(true)}
                                 aria-label={t("topNav.openMenu")}
                                 title={t("topNav.menu")}
@@ -77,7 +78,7 @@ export function AppTopNav() {
                                 <Menu className="size-5" />
                             </button>
 
-                            <nav className="hide-scrollbar hidden h-16 min-w-0 items-center gap-1 overflow-x-auto md:flex">
+                            <nav className={cn("hide-scrollbar h-16 min-w-0 items-center gap-1 overflow-x-auto", compact ? "hidden" : "hidden md:flex")}>
                                 <Dropdown open={createMenuOpen} onOpenChange={setCreateMenuOpen} menu={{ items: createItems, onClick: handleCreateMenuClick }} trigger={["click"]}>
                                     <button
                                         type="button"
@@ -98,7 +99,7 @@ export function AppTopNav() {
                                     className="relative flex h-16 shrink-0 items-center gap-2 px-3 text-[13px] font-medium leading-5 text-stone-500 transition after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:rounded-full after:bg-transparent after:transition-colors hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100"
                                     onClick={() => {
                                         setCreateMenuOpen(false);
-                                        setPluginManagerOpen(true);
+                                        onOpenPlugins();
                                     }}
                                 >
                                     <Puzzle className="size-4 opacity-70" />
@@ -149,7 +150,7 @@ export function AppTopNav() {
 
             <MobileNavDrawer
                 open={mobileNavOpen}
-                activeToolSlug={activeToolSlug}
+                compact={compact}
                 onClose={() => setMobileNavOpen(false)}
                 onOpenAgent={() => {
                     setMobileNavOpen(false);
@@ -157,11 +158,9 @@ export function AppTopNav() {
                 }}
                 onOpenPlugins={() => {
                     setMobileNavOpen(false);
-                    setPluginManagerOpen(true);
+                    onOpenPlugins();
                 }}
             />
-            <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} />
-            <AppConfigModal />
         </>
     );
 }

@@ -5,6 +5,7 @@ export const FEATURE_FLAG_DEFAULTS = {
     panorama: false,
     quickCreate: false,
     fytBackend: false,
+    libtvShell: false,
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAG_DEFAULTS;

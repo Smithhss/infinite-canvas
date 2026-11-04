@@ -16,6 +16,7 @@ test("new capabilities are disabled by default", () => {
     expect(FEATURE_FLAG_DEFAULTS.panorama).toBe(false);
     expect(FEATURE_FLAG_DEFAULTS.quickCreate).toBe(false);
     expect(FEATURE_FLAG_DEFAULTS.fytBackend).toBe(false);
+    expect(FEATURE_FLAG_DEFAULTS.libtvShell).toBe(false);
 });
 
 test("feature flag values accept explicit true and false forms", () => {

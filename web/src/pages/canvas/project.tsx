@@ -45,6 +45,8 @@ import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/a
 import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasStoryboard } from "@/components/canvas/canvas-storyboard";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
+import { CanvasCommandDock } from "@/components/canvas/canvas-command-dock";
+import { CanvasEmptyQuickActions } from "@/components/canvas/canvas-empty-quick-actions";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasSaveStatusStore } from "@/stores/canvas/canvas-save-status-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
@@ -961,6 +963,7 @@ function InfiniteCanvasPage() {
     const builtinAgentEnabled = isFeatureEnabled("builtinCanvasAgent");
     const directorEnabled = isFeatureEnabled("director3d");
     const panoramaEnabled = isFeatureEnabled("panorama");
+    const canvasFloatingChromeEnabled = isFeatureEnabled("canvasFloatingChrome");
     const builtinAgent = useBuiltinCanvasAgent({ snapshot: agentSnapshot, applyAgentOps, applyAgentSnapshot });
 
     const { pluginHost, renderPluginPanel, buildNodeToolbarItems } = usePluginHost({
@@ -1003,8 +1006,17 @@ function InfiniteCanvasPage() {
                     ? true
                     : isBuiltinType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
             if (wantsPanel) setDialogNodeId(newNode.id);
+            return newNode;
         },
         [effectiveConfig.canvasImageCount, effectiveConfig.count, effectiveConfig.imageModel, effectiveConfig.model, effectiveConfig.size, getCanvasCenter],
+    );
+
+    const createNodeFromEmptyAction = useCallback(
+        (type: CanvasNodeType.Image | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Text) => {
+            const node = createNode(type);
+            if (type === CanvasNodeType.Text || type === CanvasNodeType.Audio) setDialogNodeId(node.id);
+        },
+        [createNode],
     );
 
     const deleteNodes = useCallback(
@@ -3587,6 +3599,7 @@ function InfiniteCanvasPage() {
                     saveStatus={saveStatus}
                     workspaceView={workspaceView}
                     onWorkspaceViewChange={setWorkspaceView}
+                    variant={canvasFloatingChromeEnabled ? "floating" : "classic"}
                 />
 
                 {workspaceView === "storyboard" ? (
@@ -3712,6 +3725,8 @@ function InfiniteCanvasPage() {
                             ) : null}
                         </InfiniteCanvas>
 
+                        <CanvasEmptyQuickActions enabled={canvasFloatingChromeEnabled} projectLoaded={projectLoaded} workspaceView={workspaceView} nodeCount={nodes.length} onCreate={createNodeFromEmptyAction} />
+
                         {referencePickerNodeId ? (
                             <button
                                 type="button"
@@ -3790,30 +3805,58 @@ function InfiniteCanvasPage() {
                             />
                         ) : null}
 
-                        <CanvasToolbar
-                            selectedCount={selectedNodeIds.size}
-                            canvasTool={canvasTool}
-                            onFocusSelected={focusSelectedNode}
-                            canUndo={historyState.canUndo}
-                            canRedo={historyState.canRedo}
-                            backgroundMode={backgroundMode}
-                            showImageInfo={showImageInfo}
-                            onAddImage={() => createNode(CanvasNodeType.Image)}
-                            onAddVideo={() => createNode(CanvasNodeType.Video)}
-                            onAddAudio={() => createNode(CanvasNodeType.Audio)}
-                            onAddText={() => createNode(CanvasNodeType.Text)}
-                            onAddConfig={() => createNode(CanvasNodeType.Config)}
-                            onAddGroup={() => createNode(CanvasNodeType.Group)}
-                            onAddExtensionNode={(type) => createNode(type)}
-                            onUndo={undoCanvas}
-                            onRedo={redoCanvas}
-                            onUpload={() => handleUploadRequest()}
-                            onDelete={() => deleteNodes(new Set(selectedNodeIds))}
-                            onClear={() => setClearConfirmOpen(true)}
-                            onCanvasToolChange={setCanvasTool}
-                            onBackgroundModeChange={setBackgroundMode}
-                            onShowImageInfoChange={setShowImageInfo}
-                        />
+                        {canvasFloatingChromeEnabled ? (
+                            <CanvasCommandDock
+                                selectedCount={selectedNodeIds.size}
+                                canvasTool={canvasTool}
+                                onFocusSelected={focusSelectedNode}
+                                canUndo={historyState.canUndo}
+                                canRedo={historyState.canRedo}
+                                backgroundMode={backgroundMode}
+                                showImageInfo={showImageInfo}
+                                onAddImage={() => createNode(CanvasNodeType.Image)}
+                                onAddVideo={() => createNode(CanvasNodeType.Video)}
+                                onAddAudio={() => createNode(CanvasNodeType.Audio)}
+                                onAddText={() => createNode(CanvasNodeType.Text)}
+                                onAddConfig={() => createNode(CanvasNodeType.Config)}
+                                onAddGroup={() => createNode(CanvasNodeType.Group)}
+                                onAddExtensionNode={(type) => createNode(type)}
+                                onUndo={undoCanvas}
+                                onRedo={redoCanvas}
+                                onUpload={() => handleUploadRequest()}
+                                onOpenAssets={() => setAssetPickerOpen(true)}
+                                onDelete={() => deleteNodes(new Set(selectedNodeIds))}
+                                onClear={() => setClearConfirmOpen(true)}
+                                onCanvasToolChange={setCanvasTool}
+                                onBackgroundModeChange={setBackgroundMode}
+                                onShowImageInfoChange={setShowImageInfo}
+                            />
+                        ) : (
+                            <CanvasToolbar
+                                selectedCount={selectedNodeIds.size}
+                                canvasTool={canvasTool}
+                                onFocusSelected={focusSelectedNode}
+                                canUndo={historyState.canUndo}
+                                canRedo={historyState.canRedo}
+                                backgroundMode={backgroundMode}
+                                showImageInfo={showImageInfo}
+                                onAddImage={() => createNode(CanvasNodeType.Image)}
+                                onAddVideo={() => createNode(CanvasNodeType.Video)}
+                                onAddAudio={() => createNode(CanvasNodeType.Audio)}
+                                onAddText={() => createNode(CanvasNodeType.Text)}
+                                onAddConfig={() => createNode(CanvasNodeType.Config)}
+                                onAddGroup={() => createNode(CanvasNodeType.Group)}
+                                onAddExtensionNode={(type) => createNode(type)}
+                                onUndo={undoCanvas}
+                                onRedo={redoCanvas}
+                                onUpload={() => handleUploadRequest()}
+                                onDelete={() => deleteNodes(new Set(selectedNodeIds))}
+                                onClear={() => setClearConfirmOpen(true)}
+                                onCanvasToolChange={setCanvasTool}
+                                onBackgroundModeChange={setBackgroundMode}
+                                onShowImageInfoChange={setShowImageInfo}
+                            />
+                        )}
 
                         {isMiniMapOpen ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
 
@@ -3865,11 +3908,6 @@ function InfiniteCanvasPage() {
                         <input ref={imageInputRef} type="file" multiple accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
 
                         <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
-                        <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} />
-                        {directorEnabled ? (
-                            <CanvasDirectorShell open={directorOpen} initialProject={currentProject?.director} onClose={() => setDirectorOpen(false)} onSave={(director) => updateProject(projectId, { director })} onCapture={captureDirectorToCanvas} />
-                        ) : null}
-                        {panoramaEnabled ? <CanvasPanoramaViewer open={Boolean(panoramaNode?.metadata?.content)} source={panoramaNode?.metadata?.content} title={panoramaNode?.title} onClose={() => setPanoramaNodeId(null)} /> : null}
 
                         {cropNode?.metadata?.content ? <CanvasNodeCropDialog dataUrl={cropNode.metadata.content} open={Boolean(cropNode)} onClose={() => setCropNodeId(null)} onConfirm={(crop) => void cropImageNode(cropNode!, crop)} /> : null}
 
@@ -3923,6 +3961,11 @@ function InfiniteCanvasPage() {
                         <AssetPickerModal open={assetPickerOpen} onInsert={handleAssetInsert} onClose={() => setAssetPickerOpen(false)} />
                     </>
                 )}
+                <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} />
+                {directorEnabled ? (
+                    <CanvasDirectorShell open={directorOpen} initialProject={currentProject?.director} onClose={() => setDirectorOpen(false)} onSave={(director) => updateProject(projectId, { director })} onCapture={captureDirectorToCanvas} />
+                ) : null}
+                {panoramaEnabled ? <CanvasPanoramaViewer open={Boolean(panoramaNode?.metadata?.content)} source={panoramaNode?.metadata?.content} title={panoramaNode?.title} onClose={() => setPanoramaNodeId(null)} /> : null}
             </section>
         </main>
     );

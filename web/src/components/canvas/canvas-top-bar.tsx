@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+    ArrowLeft,
     BookOpen,
     Bot,
     Clapperboard,
@@ -36,6 +37,7 @@ import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { DOCS_URL } from "@/constant/env";
 import { changeAppLocale, type AppLocale } from "@/i18n";
+import { cn } from "@/lib/utils";
 import type { CanvasSaveStatus } from "@/stores/canvas/canvas-save-status-store";
 import type { CanvasWorkspaceView } from "@/types/canvas";
 
@@ -72,6 +74,7 @@ export function CanvasTopBar({
     saveStatus,
     workspaceView,
     onWorkspaceViewChange,
+    variant = "classic",
 }: {
     title: string;
     titleDraft: string;
@@ -105,6 +108,7 @@ export function CanvasTopBar({
     saveStatus: CanvasSaveStatus;
     workspaceView: CanvasWorkspaceView;
     onWorkspaceViewChange: (view: CanvasWorkspaceView) => void;
+    variant?: "classic" | "floating";
 }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const { t, i18n } = useTranslation();
@@ -117,6 +121,9 @@ export function CanvasTopBar({
     const locale = i18n.resolvedLanguage as AppLocale;
     const nextLocale = locale === "zh-CN" ? "en-US" : "zh-CN";
     const languageLabel = t("topNav.switchLanguage", { language: t(nextLocale === "zh-CN" ? "locale.zhCN" : "locale.enUS") });
+    const floating = variant === "floating";
+    const secondaryMenuItemClass = floating ? "xl:hidden" : "md:hidden";
+    const floatingClusterStyle = floating ? { background: theme.toolbar.floating, borderColor: theme.toolbar.border, boxShadow: colorTheme === "dark" ? "0 8px 24px rgba(0,0,0,.18)" : "0 8px 24px rgba(28,25,23,.08)" } : undefined;
 
     useEffect(() => {
         if (!isTitleEditing) return;
@@ -131,20 +138,27 @@ export function CanvasTopBar({
         <>
             <div
                 data-canvas-top-bar
-                className="pointer-events-none absolute left-0 right-0 top-0 z-50 grid h-12 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 border-b pl-1 pr-2 sm:pr-4"
-                style={{ background: theme.toolbar.floating, borderColor: theme.toolbar.border }}
+                className={cn("pointer-events-none absolute left-0 right-0 top-0 z-50 grid h-12 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1", floating ? "px-2" : "border-b pl-1 pr-2 sm:pr-4")}
+                style={{ background: floating ? "transparent" : theme.toolbar.floating, borderColor: theme.toolbar.border }}
             >
-                <div className="pointer-events-auto flex min-w-0 items-center gap-1.5 justify-self-start">
+                <div className={cn("pointer-events-auto flex min-w-0 items-center gap-1.5 justify-self-start", floating && "h-9 rounded-xl border px-1 backdrop-blur-md")} style={floatingClusterStyle}>
                     {workspaceView === "workflow" ? (
                         <Tooltip title={sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel")}>
                             <button
                                 type="button"
                                 onClick={toggleSidePanel}
                                 aria-label={sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel")}
-                                className="grid size-7 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10"
+                                className={floating ? "hidden size-7 place-items-center rounded-full transition hover:bg-black/5 sm:grid dark:hover:bg-white/10" : "grid size-7 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10"}
                                 style={{ color: theme.node.text }}
                             >
                                 {sidePanelOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+                            </button>
+                        </Tooltip>
+                    ) : null}
+                    {floating ? (
+                        <Tooltip title={t("canvas.backToProjects")}>
+                            <button type="button" onClick={onProjects} aria-label={t("canvas.backToProjects")} className="grid size-7 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }}>
+                                <ArrowLeft className="size-4" />
                             </button>
                         </Tooltip>
                     ) : null}
@@ -153,11 +167,14 @@ export function CanvasTopBar({
                         menu={{
                             items: [
                                 { key: "home", icon: <Home className="size-4" />, label: t("canvas.home"), onClick: onHome },
+                                ...(floating && workspaceView === "workflow"
+                                    ? [{ key: "side-panel", className: "sm:hidden", icon: sidePanelOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />, label: sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel"), onClick: toggleSidePanel }]
+                                    : []),
                                 { key: "docs", icon: <BookOpen className="size-4" />, label: t("canvas.docs"), onClick: () => window.open(DOCS_URL, "_blank", "noopener,noreferrer") },
-                                { key: "plugins", className: "md:hidden", icon: <Puzzle className="size-4" />, label: t("topNav.plugins"), onClick: onOpenPlugins },
-                                { key: "config", className: "md:hidden", icon: <Settings2 className="size-4" />, label: t("navigation.config"), onClick: () => openConfigDialog(false) },
-                                { key: "language", className: "md:hidden", icon: <Languages className="size-4" />, label: languageLabel, onClick: () => void changeAppLocale(nextLocale) },
-                                { key: "shortcuts", className: "md:hidden", icon: <Keyboard className="size-4" />, label: t("canvas.shortcuts"), onClick: () => setShortcutsOpen(true) },
+                                { key: "plugins", className: secondaryMenuItemClass, icon: <Puzzle className="size-4" />, label: t("topNav.plugins"), onClick: onOpenPlugins },
+                                { key: "config", className: secondaryMenuItemClass, icon: <Settings2 className="size-4" />, label: t("navigation.config"), onClick: () => openConfigDialog(false) },
+                                { key: "language", className: secondaryMenuItemClass, icon: <Languages className="size-4" />, label: languageLabel, onClick: () => void changeAppLocale(nextLocale) },
+                                { key: "shortcuts", className: secondaryMenuItemClass, icon: <Keyboard className="size-4" />, label: t("canvas.shortcuts"), onClick: () => setShortcutsOpen(true) },
                                 ...(directorEnabled ? [{ key: "director", icon: <Clapperboard className="size-4" />, label: t("canvas.director.open"), onClick: onOpenDirector }] : []),
                                 ...(panoramaAvailable ? [{ key: "panorama", icon: <Orbit className="size-4" />, label: t("canvas.panorama.openTitle"), onClick: onViewPanorama }] : []),
                                 { key: "projects", icon: <Images className="size-4" />, label: t("canvas.projects"), onClick: onProjects },
@@ -179,6 +196,12 @@ export function CanvasTopBar({
                     </Dropdown>
 
                     <div ref={titleRef} className="flex min-w-0 items-center gap-2">
+                        {floating ? (
+                            <span className="hidden shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-[0.12em] sm:flex" style={{ color: theme.node.muted }}>
+                                {t("canvas.workspaceLabel")}
+                                <span aria-hidden="true">/</span>
+                            </span>
+                        ) : null}
                         {isTitleEditing ? (
                             <input
                                 autoFocus
@@ -189,13 +212,13 @@ export function CanvasTopBar({
                                     if (event.key === "Enter") onFinishTitleEditing();
                                     if (event.key === "Escape") onCancelTitleEditing();
                                 }}
-                                className="min-w-0 max-w-[180px] bg-transparent p-0 text-left text-sm font-medium tracking-normal outline-none"
+                                className={cn("min-w-0 bg-transparent p-0 text-left text-sm font-medium tracking-normal outline-none", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
                                 style={{ color: theme.node.text }}
                             />
                         ) : (
                             <button
                                 type="button"
-                                className="min-w-0 max-w-[180px] truncate border-b border-dashed border-transparent text-left text-sm font-medium tracking-normal transition hover:border-current"
+                                className={cn("min-w-0 truncate border-b border-dashed border-transparent text-left text-sm font-medium tracking-normal transition hover:border-current", floating ? "max-w-[64px] sm:max-w-[180px]" : "max-w-[180px]")}
                                 onDoubleClick={onStartTitleEditing}
                                 title={t("canvas.renameHint")}
                             >
@@ -203,18 +226,18 @@ export function CanvasTopBar({
                             </button>
                         )}
                     </div>
-                    <CompactAgentStatus status={compactAgentStatus} onClick={onToggleAgent} />
+                    <CompactAgentStatus status={compactAgentStatus} compact={floating} onClick={onToggleAgent} />
                 </div>
 
-                <div className="pointer-events-auto flex h-8 justify-self-center rounded-md border p-0" style={{ background: "transparent", borderColor: theme.toolbar.border }}>
+                <div className={cn("pointer-events-auto flex h-8 justify-self-center rounded-md border p-0", floating && "h-9 rounded-xl backdrop-blur-md")} style={floating ? floatingClusterStyle : { background: "transparent", borderColor: theme.toolbar.border }}>
                     <WorkspaceViewButton active={workspaceView === "workflow"} icon={<GitBranch className="size-4" />} label={t("canvas.workspace.workflow")} theme={theme} onClick={() => onWorkspaceViewChange("workflow")} />
                     <WorkspaceViewButton active={workspaceView === "storyboard"} icon={<LayoutGrid className="size-4" />} label={t("canvas.workspace.storyboard")} theme={theme} onClick={() => onWorkspaceViewChange("storyboard")} />
                 </div>
 
-                <div className="pointer-events-auto flex shrink-0 items-center gap-1 justify-self-end">
+                <div className={cn("pointer-events-auto flex shrink-0 items-center gap-1 justify-self-end", floating && "h-9 rounded-xl border px-1 backdrop-blur-md")} style={floatingClusterStyle}>
                     <SaveStatusIndicator status={saveStatus} theme={theme} />
-                    <UserStatusActions variant="canvas" className="hidden md:inline-flex" onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
-                    <span className="hidden h-6 w-px md:block" style={{ background: theme.toolbar.border }} />
+                    <UserStatusActions variant="canvas" className={floating ? "hidden xl:inline-flex" : "hidden md:inline-flex"} onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
+                    <span className={floating ? "hidden h-6 w-px xl:block" : "hidden h-6 w-px md:block"} style={{ background: theme.toolbar.border }} />
                     {directorEnabled ? (
                         <Tooltip title={t("canvas.director.title")}>
                             <Button
@@ -224,7 +247,7 @@ export function CanvasTopBar({
                                 icon={<Clapperboard className="size-4" />}
                                 onClick={onOpenDirector}
                             >
-                                {t("canvas.director.open")}
+                                <span className={floating ? "hidden xl:inline" : undefined}>{t("canvas.director.open")}</span>
                             </Button>
                         </Tooltip>
                     ) : null}
@@ -237,7 +260,7 @@ export function CanvasTopBar({
                                 icon={<Sparkles className="size-4" />}
                                 onClick={onToggleBuiltinAgent}
                             >
-                                {t("canvas.builtinAgent.openButton")}
+                                <span className={floating ? "hidden xl:inline" : undefined}>{t("canvas.builtinAgent.openButton")}</span>
                             </Button>
                         </Tooltip>
                     ) : null}
@@ -248,7 +271,7 @@ export function CanvasTopBar({
                         icon={<Bot className="size-4" />}
                         onClick={onToggleAgent}
                     >
-                        Agent
+                        <span className={floating ? "hidden xl:inline" : undefined}>Agent</span>
                     </Button>
                 </div>
             </div>
@@ -316,7 +339,7 @@ function MenuLabel({ text, shortcut }: { text: string; shortcut: string }) {
     );
 }
 
-function CompactAgentStatus({ status, onClick }: { status: { connected: boolean; enabled: boolean; activity: string }; onClick: () => void }) {
+function CompactAgentStatus({ status, compact = false, onClick }: { status: { connected: boolean; enabled: boolean; activity: string }; compact?: boolean; onClick: () => void }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
     const { t } = useTranslation();
@@ -325,7 +348,7 @@ function CompactAgentStatus({ status, onClick }: { status: { connected: boolean;
     return (
         <button
             type="button"
-            className="hidden h-8 items-center gap-1.5 text-xs transition hover:opacity-75 md:flex"
+            className={compact ? "hidden h-8 items-center gap-1.5 text-xs transition hover:opacity-75 xl:flex" : "hidden h-8 items-center gap-1.5 text-xs transition hover:opacity-75 md:flex"}
             style={{ color: status.connected ? "#16a34a" : status.enabled ? "#d97706" : theme.node.muted }}
             onClick={onClick}
             title={t("canvas.openAgent")}

@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式已实现并合并到 `dev`；`pluginHub` 插件中心已实现并通过本地桌面、移动端、开关回退、官方目录和安装启停卸载验收；`agentSkillHub` Agent/Skills 资源页已实现并等待人工验收；画布浮动控制带尚处于计划阶段，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心和 `agentSkillHub` Agent/Skills 资源页已合并到 `dev`；`canvasFloatingChrome` 画布浮动控制带已实现，正在等待人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 
@@ -110,7 +110,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P1-A：全站窄侧栏与创作分组
 
-状态：已实现，等待人工验收。
+状态：已合并 `dev`，等待人工验收。
 
 目标：
 
@@ -149,7 +149,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P1-B：独立插件 Hub
 
-状态：已实现，等待人工验收。
+状态：已合并 `dev`，等待人工验收。
 
 目标：
 
@@ -198,7 +198,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P1-C：Agent / Skills 资源首页
 
-状态：已实现，等待人工验收。
+状态：已合并 `dev`，等待人工验收。
 
 目标：
 
@@ -245,7 +245,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P2-A：画布浮动控制带与工具分组
 
-状态：未开始。
+状态：已实现，等待人工验收。
 
 目标：
 
@@ -263,20 +263,21 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 建议文件：
 
 - 修改 `web/src/pages/canvas/project.tsx`
-- 新增 `web/src/components/canvas/canvas-project-chrome.tsx`
+- 修改 `web/src/components/canvas/canvas-top-bar.tsx`
 - 新增 `web/src/components/canvas/canvas-command-dock.tsx`
 - 新增 `web/src/components/canvas/canvas-empty-quick-actions.tsx`
-- 修改 `web/src/lib/canvas-theme.ts`
+- 新增 `web/src/lib/canvas/canvas-chrome.ts`
+- 修改 `web/src/constant/feature-flags.ts`
 - 修改中英文 locale
 
 实施步骤：
 
-1. 先抽取纯展示组件，不改变 `CanvasProject` 业务状态和节点操作。
-2. 顶部控制带只重排现有动作，保持保存状态、双击标题重命名和跨标签冲突提示。
-3. 底部 dock 按“创建 / 导航 / 资源 / 历史 / 帮助”分组，保留现有快捷键和 aria label。
-4. 空态快捷节点只在项目无业务节点时出现；点击只创建一个节点或打开已有选择器，不自动请求模型。
-5. “智能剪辑”没有成熟本地能力前只保留为待实现占位，不能展示可点击但无效果的入口。
-6. 现有故事板切换、小地图、缩放、连线显隐和锁定状态全部回归。
+1. 保持 48px 顶栏和现有工具条测量锚点，通过 `canvasFloatingChrome` 独立切换，关闭时完整保留原行为。
+2. 顶部按画布信息、工作流/故事板、保存/Agent/系统操作三组重排，并保持双击标题重命名和跨标签冲突提示。
+3. 底部 dock 按“添加、选择/定位、素材、历史、外观、更多”分组，复用现有素材选择器、撤销/重做和快捷键。
+4. 空态快捷节点只在已加载、无节点的 workflow 视图出现；点击只创建一个节点或打开已有生成器面板，不自动请求模型。
+5. “智能剪辑”没有成熟本地能力前保持不可点击的占位状态。
+6. 故事板、小地图、缩放、连线显隐和锁定状态全部回归，工作流 dock 与空态入口不得出现在故事板。
 
 验收：
 
@@ -354,6 +355,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 | `pluginHub`     | 关闭 | `/plugins` 独立页面   | 回到现有插件 Modal |
 | `agentSkillHub` | 关闭 | `/agent` Skill 资源页 | 回到侧栏技能页签   |
 | `director3d`    | 关闭 | 3D 导演台入口和资源   | 保持现有行为       |
+| `canvasFloatingChrome` | 关闭 | 画布浮动顶栏、dock 和空态快捷入口 | 恢复原顶栏与横向工具条 |
 
 实施约束：
 
@@ -371,6 +373,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 - `web:bun run build`
 - `git diff --check`
 - 为 `libtvShell`、`pluginHub`、`agentSkillHub` 补最小导航与开关回归测试
+- 为 `canvasFloatingChrome` 补空态显示条件和快捷节点映射回归测试
 
 浏览器：
 

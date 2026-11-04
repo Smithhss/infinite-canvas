@@ -216,6 +216,26 @@ export function startHttpServer() {
             session.setCodexState(previousCodexState, { preserveReplay: true });
         }
     }));
+    app.get("/agent/codex/skills/:name/resources", route(async (req, res) => {
+        const resourcePath = String(req.query.path || "");
+        if (resourcePath) return void res.json({ ok: true, data: await skillStore.getResource(routeParam(req.params.name), resourcePath) });
+        res.json({ ok: true, data: await skillStore.listResources(routeParam(req.params.name)) });
+    }));
+    app.post("/agent/codex/skills/:name/resources", codexMutation(async (req, res) => {
+        const data = await skillStore.createResource(routeParam(req.params.name), String(req.body?.path || ""), req.body?.content);
+        session.emitAll("skills_changed", { forceReload: true });
+        res.status(201).json({ ok: true, data });
+    }));
+    app.put("/agent/codex/skills/:name/resources", codexMutation(async (req, res) => {
+        const data = await skillStore.updateResource(routeParam(req.params.name), String(req.body?.path || ""), req.body?.content, String(req.body?.expectedRevision || ""));
+        session.emitAll("skills_changed", { forceReload: true });
+        res.json({ ok: true, data });
+    }));
+    app.delete("/agent/codex/skills/:name/resources", codexMutation(async (req, res) => {
+        await skillStore.deleteResource(routeParam(req.params.name), String(req.body?.path || ""), String(req.body?.expectedRevision || ""));
+        session.emitAll("skills_changed", { forceReload: true });
+        res.json({ ok: true });
+    }));
     app.get("/agent/codex/skills/:name", route(async (req, res) => {
         res.json({ ok: true, data: await skillStore.get(routeParam(req.params.name)) });
     }));
@@ -613,7 +633,7 @@ function setCors(req: Request, res: Response, url: URL, config: CanvasAgentConfi
     const origin = req.headers.origin;
     res.setHeader("Access-Control-Allow-Origin", origin || "*");
     res.setHeader("Access-Control-Allow-Headers", "content-type,x-canvas-agent-token");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Private-Network", "true");
     if (!origin || req.method === "OPTIONS" || url.pathname === "/health" || url.pathname === "/config") return true;
     config.origins ||= [];

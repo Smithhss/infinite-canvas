@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
-import { activeAgentProvider, agentProviderCapabilities, type AgentProvider } from "@/lib/agent/agent-provider";
+import { activeAgentProvider, agentProviderCapabilities, agentProviderSupportsImageType, type AgentProvider } from "@/lib/agent/agent-provider";
 import { recoverPendingApprovals } from "@/lib/agent/agent-pending-approvals";
 import { rememberAgentPluginDetected, resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
 import { readAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
@@ -75,6 +75,7 @@ import { AgentSkillsView } from "./agent-skills-view";
 
 const MAX_ATTACHMENTS = 6;
 const MAX_ATTACHMENT_PAYLOAD_BYTES = 28 * 1024 * 1024;
+const CLAUDE_IMAGE_ACCEPT = "image/png,image/jpeg,image/jpg,image/gif,image/webp";
 const MESSAGE_PREVIEW_LONG_EDGE = 192;
 const MESSAGE_PREVIEW_MAX_LENGTH = 500_000;
 const DEFAULT_AGENT_URL = "http://127.0.0.1:17371";
@@ -742,14 +743,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         const requestPrompt = promptWithCanvasReferences(promptWithAttachments(text, files), canvasReferences);
         const conversationAllowed = claudeMode || ["ready", "warning"].includes(currentState.conversation.status);
         if (!currentState.connected || !requestPrompt || currentState.sending || currentState.waiting || currentState.loadingThreads || !conversationAllowed) return;
-        if (claudeMode && files.length) {
-            message.warning(rt("providerClaudeMediaUnsupported"));
-            return;
-        }
-        if (claudeMode && canvasReferences.some((item) => item.kind === "image")) {
-            message.warning(rt("providerClaudeMediaUnsupported"));
-            return;
-        }
         let referenceImages: AgentAttachment[] = [];
         if (canvasReferences.some((item) => item.kind === "image")) {
             setAgentState({ sending: true, activity: rt("readingCanvasImages") });
@@ -762,6 +755,11 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             }
         }
         const requestFiles = [...files, ...referenceImages.filter((reference) => !files.some((file) => file.dataUrl === reference.dataUrl))];
+        if (claudeMode && requestFiles.some((file) => !agentProviderSupportsImageType("claude", file.type))) {
+            setAgentState({ sending: false, activity: rt("unsupportedImageFormat") });
+            addMessage({ role: "error", title: rt("unsupportedImageFormat"), text: rt("claudeImageTypeLimit") });
+            return;
+        }
         if (requestFiles.length > MAX_ATTACHMENTS) {
             setAgentState({ sending: false, activity: rt("tooManyImages") });
             addMessage({ role: "error", title: rt("tooManyImages"), text: rt("imageCountLimit", { count: MAX_ATTACHMENTS }) });
@@ -804,9 +802,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         clientId: clientIdRef.current,
                         threadId: threadId || undefined,
                         sessionId: threadId || undefined,
+                        messageId,
                         permissionMode: effectivePermissionMode,
                         model: model || undefined,
                         skill: selectedSkill ? { name: selectedSkill.name, path: selectedSkill.path } : undefined,
+                        attachments: requestFiles.map(({ id, name, type, size, width, height, dataUrl }) => ({ id, name, type, size, width, height, dataUrl })),
+                        messageMetadata,
                     }),
                 });
                 if (!accepted.runId) throw new Error(rt("startConversationFailed"));
@@ -893,10 +894,14 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const addAttachments = async (files: FileList | File[] | null) => {
         if (!files) return;
         const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
+        const supported = images.filter((file) => agentProviderSupportsImageType(effectiveAgentProvider, file.type));
+        if (supported.length !== images.length) {
+            addMessage({ role: "error", title: rt("unsupportedImageFormat"), text: rt("claudeImageTypeLimit") });
+        }
         const prev = useAgentStore.getState().attachments;
         try {
             const next = await Promise.all(
-                images.slice(0, Math.max(0, MAX_ATTACHMENTS - prev.length)).map(async (file) => {
+                supported.slice(0, Math.max(0, MAX_ATTACHMENTS - prev.length)).map(async (file) => {
                     const dataUrl = await readDataUrl(file);
                     const meta = await readImageMeta(dataUrl);
                     const url = URL.createObjectURL(file);
@@ -1056,7 +1061,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             return;
         }
         const nextCapabilities = agentProviderCapabilities(nextProvider);
-        const droppedAttachments = nextCapabilities.attachments ? [] : current.attachments;
+        const droppedAttachments = nextCapabilities.attachments ? current.attachments.filter((item) => !agentProviderSupportsImageType(nextProvider, item.type)) : current.attachments;
         const imageReferences = nextCapabilities.imageReferences ? [] : current.canvasReferences.filter((item) => item.kind === "image");
         droppedAttachments.forEach((item) => {
             URL.revokeObjectURL(item.url);
@@ -1069,7 +1074,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         pendingToolRef.current = null;
         setAgentState({
             agentProvider: nextProvider,
-            attachments: droppedAttachments.length ? [] : current.attachments,
+            attachments: nextCapabilities.attachments ? current.attachments.filter((item) => agentProviderSupportsImageType(nextProvider, item.type)) : [],
             canvasReferences: imageReferences.length ? current.canvasReferences.filter((item) => item.kind !== "image") : current.canvasReferences,
             activeTab: nextCapabilities.history || nextCapabilities.skills || !["history", "skills"].includes(current.activeTab) ? current.activeTab : "chat",
             activeThreadId: "",
@@ -1086,7 +1091,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         });
         if (nextProvider === "claude") {
             addEventLog(rt("providerClaudeSelected"), rt("providerClaudeHint"));
-            if (droppedAttachments.length || imageReferences.length) message.info(rt("providerClaudeMediaDropped"));
+            if (droppedAttachments.length) message.info(rt("claudeImageTypeLimit"));
+            if (imageReferences.length) message.info(rt("providerClaudeMediaDropped"));
         }
     };
 
@@ -1722,10 +1728,11 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         } : undefined}
                         agentProvider={agentProviderSwitchEnabled ? agentProvider : undefined}
                         onAgentProviderChange={agentProviderSwitchEnabled ? changeAgentProvider : undefined}
+                        acceptedImageTypes={effectiveAgentProvider === "claude" ? CLAUDE_IMAGE_ACCEPT : undefined}
                         left={
                             attachments.length ? (
                                 <span className="hidden text-[11px] @min-[660px]:inline" style={{ color: theme.node.muted }}>
-                                    {formatBytes(attachmentPayloadBytes(attachments))} / 30MB
+                                    {formatBytes(attachmentPayloadBytes(attachments))} / {MAX_ATTACHMENT_PAYLOAD_BYTES / (1024 * 1024)}MB
                                 </span>
                             ) : null
                         }

@@ -25,8 +25,9 @@ export class ClaudeEventState {
     private blocks = new Map<string, BlockState>();
     private indexBlocks = new Map<string, string>();
     private textItems = 0;
+    private notifiedSessionId = "";
 
-    constructor(private context: { clientId: string; threadId: string; turnId: string }) {
+    constructor(private context: { clientId: string; threadId: string; turnId: string; onSessionId?: (sessionId: string) => void }) {
         this.threadId = context.threadId;
     }
 
@@ -40,7 +41,10 @@ export class ClaudeEventState {
         if (this.finished) return;
         const value = record(message);
         const sessionId = text(value.session_id);
-        if (sessionId && sessionId !== this.threadId) this.threadId = sessionId;
+        if (sessionId) {
+            if (sessionId !== this.threadId) this.threadId = sessionId;
+            this.notifySessionId();
+        }
         const type = text(value.type);
         if (type === "system" && text(value.subtype) === "init") {
             this.start(emit);
@@ -92,6 +96,12 @@ export class ClaudeEventState {
         this.started = true;
         this.emit(emit, "thread.started", { thread_id: this.threadId, session_id: this.threadId });
         this.emit(emit, "turn.started", { turn_id: this.context.turnId });
+    }
+
+    private notifySessionId() {
+        if (this.notifiedSessionId === this.threadId) return;
+        this.notifiedSessionId = this.threadId;
+        this.context.onSessionId?.(this.threadId);
     }
 
     private handleStreamEvent(message: RecordValue, emit: AgentEmit) {

@@ -1,9 +1,11 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 
 import { runClaudeTurn } from "../agent/claude.js";
+import { ClaudeAttachmentError, normalizeClaudeImageAttachments, withAttachmentContext } from "../agent/claude-attachments.js";
 import { ClaudeSdkAdapter } from "../agent/claude-sdk.js";
 import { deleteClaudeThread, listClaudeThreads, readClaudeThread } from "../agent/claude-sessions.js";
 import { archiveCodexThread, CodexSkillLookupError, configureCodexSkill, generateCodexSkillDraft, interruptCodexTurn, isRecoverableThreadError, listCodexModels, listCodexSkills, listCodexThreads, readCodexThread, resolveCodexApproval, resolveCodexSkill, resumeCodexThread, runCodexTurn, startCodexThread, summarizeCodexThread } from "../agent/codex.js";
@@ -130,7 +132,9 @@ export function startHttpServer() {
         res.status(401).json({ ok: false, error: "invalid token" });
     });
     app.get("/events", (req, res) => {
-        session.openEvents(requestUrl(req, config), res, ensureSiteWorkspace(config).activeThreadId || "");
+        session.openEvents(requestUrl(req, config), res, ensureSiteWorkspace(config).activeThreadId || "", (clientId) => {
+            void claudeAdapter.interrupt(clientId).catch((error) => logger.warn("Failed to interrupt Claude after SSE disconnect", { clientId, error }));
+        });
     });
     app.post("/canvas/state", (req, res) => {
         session.updateState(req.body, String(req.query.clientId || "") || undefined);
@@ -315,10 +319,16 @@ export function startHttpServer() {
         const skill = req.body?.skill === undefined ? undefined : await resolveCodexSkill(emit, workspace.workspacePath, skillSelector(req.body.skill), true);
         const messageId = String(req.body?.messageId || Date.now());
         const messageText = String(req.body?.messageText || prompt || `发送了 ${attachments.length} 张图片`);
-        const messageMetadata = await messageMetadataStore.recordPending(messageId, req.body?.messageMetadata);
+        if (claudeAdapter.busy || !session.beginAgentTurn(clientId)) return res.status(409).json({ ok: false, code: "AGENT_BUSY", error: "本地 Agent 正在执行其他任务，请稍后重试" });
+        let messageMetadata: Awaited<ReturnType<typeof messageMetadataStore.recordPending>>;
+        try {
+            messageMetadata = await messageMetadataStore.recordPending(messageId, req.body?.messageMetadata);
+        } catch (error) {
+            session.releaseClient(clientId);
+            throw error;
+        }
         let threadId = activeThreadId;
         logger.info("Codex turn accepted", { threadId: req.body?.threadId, model: model || "default", reasoningEffort: effort || "default", promptLength: prompt.length, attachmentCount: attachments.length });
-        session.bindClient(clientId);
         session.markConversationRunning(threadId);
         session.setCodexState({ busy: true, threadId, turnId: "" });
         try {
@@ -405,6 +415,7 @@ export function startHttpServer() {
     /** 将 Codex 写操作串行化，避免多窗口在异步请求期间交叉修改会话。 */
     function codexMutation(handler: (req: Request, res: Response) => unknown | Promise<unknown>) {
         return route(async (req, res) => {
+            if (claudeAdapter.busy) return res.status(409).json({ ok: false, code: "AGENT_BUSY", error: "Claude 正在运行，请先等待完成或停止任务", state: session.conversationStateSnapshot });
             if (!session.beginCodexMutation()) return res.status(409).json({ ok: false, code: "CONVERSATION_BUSY", error: "Codex 正在运行或正在切换会话，请稍后重试", state: session.conversationStateSnapshot });
             try {
                 return await handler(req, res);
@@ -431,7 +442,8 @@ export function startHttpServer() {
         const workspace = ensureSiteWorkspace(config);
         const result = await readClaudeThread(routeParam(req.params.threadId), workspace.workspacePath);
         if (!result) return res.status(404).json({ ok: false, error: "Claude 会话不存在或不属于当前工作空间" });
-        res.json({ ok: true, workspace, ...result });
+        const messages = await messageMetadataStore.mergeThread(result.thread.id, result.messages);
+        res.json({ ok: true, workspace, ...result, messages });
     }));
     app.get("/agent/claude/models", route(async (_req, res) => {
         const workspace = ensureSiteWorkspace(config);
@@ -454,7 +466,9 @@ export function startHttpServer() {
     }));
     app.post("/agent/claude/threads/:threadId/delete", route(async (req, res) => {
         const workspace = ensureSiteWorkspace(config);
-        const deleted = await deleteClaudeThread(routeParam(req.params.threadId), workspace.workspacePath);
+        const threadId = routeParam(req.params.threadId);
+        const deleted = await deleteClaudeThread(threadId, workspace.workspacePath);
+        if (deleted) await messageMetadataStore.removeThread(threadId);
         res.status(deleted ? 200 : 404).json(deleted ? { ok: true, workspace } : { ok: false, error: "Claude 会话不存在或不属于当前工作空间" });
     }));
     app.post("/agent/claude/turn", route(async (req, res) => {
@@ -468,10 +482,32 @@ export function startHttpServer() {
         if (!clientId || !session.hasClient(clientId)) return res.status(409).json({ ok: false, error: "发起 Claude 任务的网页已断开，请重新连接后再试" });
         const skill = claudeSkillName(req.body?.skill);
         if (skill === null) return res.status(400).json({ ok: false, error: "Claude Skill 选择无效" });
+        const attachments = normalizeClaudeImageAttachments(req.body?.attachments);
+        const messageId = String(req.body?.messageId || "");
+        const userMessageId = crypto.randomUUID();
         const workspace = ensureSiteWorkspace(config);
-        session.bindClient(clientId);
+        if (session.codexOperationBusy || claudeAdapter.busy || !session.beginAgentTurn(clientId)) return res.status(409).json({ ok: false, code: "AGENT_BUSY", error: "本地 Agent 正在执行其他任务，请稍后重试" });
         try {
-            const run = await claudeAdapter.run(prompt, emit, {
+            if (messageId) await messageMetadataStore.recordPending(messageId, req.body?.messageMetadata);
+        } catch (error) {
+            session.releaseClient(clientId);
+            throw error;
+        }
+        let metadataBound = false;
+        let metadataBinding: Promise<void> | undefined;
+        const bindMetadata = (sessionId: string) => {
+            if (!messageId || metadataBound) return;
+            metadataBinding = (async () => {
+                await messageMetadataStore.bindThreadAndTurn(messageId, sessionId, userMessageId);
+                metadataBound = true;
+            })().catch(async (error) => {
+                logger.warn("Failed to bind Claude message metadata", { clientMessageId: messageId, sessionId, error });
+                await messageMetadataStore.remove(messageId, sessionId).catch((metadataError) => logger.warn("Failed to remove broken Claude message metadata", { clientMessageId: messageId, error: metadataError }));
+            });
+        };
+        try {
+            const attachmentRefs = session.setTurnAttachments(clientId, attachments);
+            const run = await claudeAdapter.run(withAttachmentContext(prompt, attachmentRefs), emit, {
                 clientId,
                 cwd: workspace.workspacePath,
                 threadId: String(req.body?.threadId || "") || undefined,
@@ -480,11 +516,25 @@ export function startHttpServer() {
                 permissionMode: permissionMode(req.body?.permissionMode),
                 skill: skill || undefined,
                 effort: claudeEffort(req.body?.effort),
-                onFinish: () => session.releaseClient(clientId),
-            });
+                messageId: userMessageId,
+                onSessionId: bindMetadata,
+                onFinish: () => {
+                    session.clearTurnAttachments(clientId);
+                    session.releaseClient(clientId);
+                    if (messageId && !metadataBound) {
+                        const removeUnbound = () => {
+                            if (!metadataBound) return messageMetadataStore.remove(messageId).catch((error) => logger.warn("Failed to remove unbound Claude message metadata", { clientMessageId: messageId, error }));
+                        };
+                        if (metadataBinding) void metadataBinding.finally(removeUnbound);
+                        else void removeUnbound();
+                    }
+                },
+            }, attachments);
             res.json({ ok: true, transport: "sdk", ...run });
         } catch (error) {
+            session.clearTurnAttachments(clientId);
             session.releaseClient(clientId);
+            if (messageId && !metadataBound) await messageMetadataStore.remove(messageId).catch((metadataError) => logger.warn("Failed to remove rejected Claude message metadata", { clientMessageId: messageId, error: metadataError }));
             throw error;
         }
     }));
@@ -506,6 +556,7 @@ export function startHttpServer() {
     app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
         logger.error("HTTP request failed", { method: req.method, path: req.path, error });
         if (error instanceof SkillStoreError || error instanceof CodexSkillLookupError) return void res.status(error.statusCode).json({ ok: false, error: error.message });
+        if (error instanceof ClaudeAttachmentError) return void res.status(400).json({ ok: false, error: error.message });
         res.status(500).json({ ok: false, error: error.message });
     });
 
@@ -629,11 +680,4 @@ function setCors(req: Request, res: Response, url: URL, config: CanvasAgentConfi
 function validToken(req: Request, url: URL, token: string) {
     const header = req.headers["x-canvas-agent-token"];
     return url.searchParams.get("token") === token || header === token || (Array.isArray(header) && header.includes(token));
-}
-
-/** 向 Agent 提示词追加本轮图片附件引用说明。 */
-function withAttachmentContext(prompt: string, attachments: Array<{ id: string; name: string }>) {
-    if (!attachments.length) return prompt;
-    const list = attachments.map((item, index) => `${index + 1}. attachmentId=${item.id}, name=${JSON.stringify(item.name)}`).join("\n");
-    return `${prompt}\n\n本轮可用图片附件（顺序与图片输入一致）：\n${list}\n需要把附件放入画布或作为生成参考图时，先调用 canvas_create_attachment_nodes，再使用返回的画布节点 ID 创建生成流程。`;
 }

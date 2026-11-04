@@ -162,7 +162,9 @@ curl http://127.0.0.1:17371/agent/claude/models \
   -H "x-canvas-agent-token: $TOKEN"
 ```
 
-SDK 使用本机已有的 Claude Code 登录态，不上传登录凭证。网页侧边栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换；Claude 当前开放原生模型、项目 Skill、本机会话历史、文本对话、画布工具和 SDK 原生权限，图片附件仍只属于 Codex。网页选择 Claude 模型后会把它作为 `model` 传给 `/agent/claude/turn`。
+SDK 使用本机已有的 Claude Code 登录态，不上传登录凭证。网页侧边栏已通过默认关闭的 `agentProviderSwitch` 开放 Codex / Claude 切换；Claude 当前开放原生模型、项目 Skill、本机会话历史、图片附件、画布图片引用、文本对话、画布工具和 SDK 原生权限。网页选择 Claude 模型后会把它作为 `model` 传给 `/agent/claude/turn`。
+
+Claude 图片附件会转换为 SDK 原生 text/image content block，不会把 Data URL 拼进文本 prompt。单轮最多 6 张，Claude 请求载荷最多 28MB，只接受 PNG、JPEG、GIF 和 WebP；画布附件工具只能读取发起本轮任务的同一网页附件。用户消息的附件、画布引用和 Skill 元数据会按 `clientMessageId`、`threadId` 和 SDK 消息 UUID 关联，刷新历史后恢复缩略图。
 
 Claude 权限模式通过 `/agent/claude/turn` 的 `permissionMode` 传入：`request` 映射到 SDK `default`，`automatic` 映射到 `auto`，`full` 映射到 `bypassPermissions`。请求模式下的画布写入通过 `POST /agent/claude/approval` 返回 `accept`、`acceptForSession` 或 `decline`；同一 SDK 会话中的“本会话允许”会跨 turn 保留，中断或 turn 结束时会自动拒绝仍未处理的审批。
 

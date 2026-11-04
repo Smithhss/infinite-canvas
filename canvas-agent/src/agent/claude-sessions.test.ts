@@ -30,7 +30,7 @@ test("Claude history keeps text and tool summaries without local-only fields", (
     ]);
 
     assert.deepEqual(history, [
-        { id: "claude-history:user-1:0", itemId: "claude-history:user-1:0", threadId: "session-1", turnId: "", role: "user", text: "画出雨夜街角" },
+        { id: "claude-history:user-1:0", itemId: "claude-history:user-1:0", threadId: "session-1", turnId: "user-1", role: "user", text: "画出雨夜街角" },
         { id: "claude-history:assistant-1:1", itemId: "claude-history:assistant-1:1", threadId: "session-1", turnId: "", role: "assistant", title: "Claude", text: "我先读取画布。" },
         {
             id: "claude-history:assistant-1:2",
@@ -75,4 +75,17 @@ test("Claude history marks failed and unmatched tools without exposing tool payl
 
     assert.deepEqual(history.map(({ detail }) => detail?.status), ["failed", "unknown"]);
     assert.doesNotMatch(JSON.stringify(history), /example\.com|Authorization|token=secret/);
+});
+
+test("Claude user history exposes the original prompt without model-only attachment context", () => {
+    const history = normalizeClaudeHistory("session-4", [{
+        uuid: "user-attachment",
+        type: "user",
+        message: { content: [{
+            type: "text",
+            text: "比较两张图\n\n本轮可用图片附件（顺序与图片输入一致）：\n1. attachmentId=image-1, name=\"first.png\"\n需要把附件放入画布或作为生成参考图时，先调用 canvas_create_attachment_nodes，再使用返回的画布节点 ID 创建生成流程。",
+        }] },
+    }]);
+
+    assert.deepEqual(history.map(({ turnId, text }) => ({ turnId, text })), [{ turnId: "user-attachment", text: "比较两张图" }]);
 });

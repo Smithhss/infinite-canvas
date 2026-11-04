@@ -33,6 +33,7 @@ export function AgentChatComposer({
     onReasoningEffortChange,
     agentProvider,
     onAgentProviderChange,
+    acceptedImageTypes,
     left,
 }: {
     prompt: string;
@@ -57,6 +58,7 @@ export function AgentChatComposer({
     onReasoningEffortChange?: (effort: AgentReasoningEffort) => void;
     agentProvider?: AgentProvider;
     onAgentProviderChange?: (provider: AgentProvider) => void;
+    acceptedImageTypes?: string;
     left?: ReactNode;
 }) {
     const { t } = useTranslation();
@@ -86,7 +88,7 @@ export function AgentChatComposer({
                         {agentProvider && onAgentProviderChange ? <AgentProviderMenu provider={agentProvider} theme={theme} onChange={onAgentProviderChange} /> : null}
                         {onAddFiles ? (
                             <>
-                                <input ref={fileInputRef} hidden type="file" accept="image/*" multiple onChange={(event) => {
+                                <input ref={fileInputRef} hidden type="file" accept={acceptedImageTypes || "image/*"} multiple onChange={(event) => {
                                     void onAddFiles(event.target.files);
                                     event.target.value = "";
                                 }} />

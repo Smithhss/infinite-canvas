@@ -5,17 +5,17 @@ export type AgentRuntimePhase = "idle" | "running" | "tool" | "approval";
 export function summarizeAgentRuntime({
     sending,
     waiting,
-    pendingTool,
+    pendingTools,
     pendingApprovals,
 }: {
     sending: boolean;
     waiting: boolean;
-    pendingTool: AgentPendingToolCall | null;
+    pendingTools: AgentPendingToolCall[];
     pendingApprovals: AgentPendingApproval[];
 }) {
     const pendingApprovalCount = pendingApprovals.length;
-    const pendingToolCount = pendingTool ? 1 : 0;
+    const pendingToolCount = pendingTools.length;
     const queueCount = pendingApprovalCount + pendingToolCount;
-    const phase: AgentRuntimePhase = pendingApprovalCount ? "approval" : pendingTool ? "tool" : sending || waiting ? "running" : "idle";
+    const phase: AgentRuntimePhase = pendingApprovalCount ? "approval" : pendingToolCount ? "tool" : sending || waiting ? "running" : "idle";
     return { phase, pendingApprovalCount, pendingToolCount, queueCount };
 }

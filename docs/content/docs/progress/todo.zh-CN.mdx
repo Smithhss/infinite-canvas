@@ -7,10 +7,10 @@ description: 当前项目后续值得处理的事项
 
 本文档用来记录当前项目后续比较值得处理的事项。
 
-- 按 `docs/superpowers/plans/2026-11-04-libtv-canvas-plugin-agent-ui-plan.md` 继续 LibTV 画布 UI 对齐。`agentPanelChrome` Agent 工作台和 `agentProviderSwitch` Claude Agent SDK 侧栏入口已实现，等待人工验收；Claude 原生模型、权限、项目 Skill、本机会话历史、续聊、图片附件与图片引用已实现，等待人工验收；后续仍有视觉细节收口，以及需要 Agent 协议扩展的真实多槽工具队列。每个阶段使用独立功能开关，并保留现有插件完整性校验与浏览器本地数据边界。
+- 按 `docs/superpowers/plans/2026-11-04-libtv-canvas-plugin-agent-ui-plan.md` 继续 LibTV 画布 UI 对齐。`agentPanelChrome` Agent 工作台和 `agentProviderSwitch` Claude Agent SDK 侧栏入口已实现，等待人工验收；Claude 原生模型、权限、项目 Skill、本机会话历史、续聊、图片附件与图片引用已实现，等待人工验收；协议 8 的多槽工具确认队列已集成到最新预览；后续仍有视觉细节收口。每个阶段使用独立功能开关，并保留现有插件完整性校验与浏览器本地数据边界。
 - 在真实桌面和手机 WebGL 硬件上验收 clean-room 3D 导演台与全景查看器。颜色编辑、模拟触控指针隔离、上下文丢失降级、40 道具压力和重复保存恢复已有浏览器证据；持续 GPU 内存、真实设备压力、长会话渲染和浏览器兼容性仍需验收。参考实现继续禁止直接复用。
 - 验收 Kling、首尾帧、参考视频/音频、多镜头和 Gemini 视频等真实供应商能力。真实付费调用前，用户需明确供应商、渠道、模型、必需能力和费用上限；在此之前只使用 mock、未配置渠道或其他零收费路径。
-- 本地 Agent 接入后续：验收已完成的 Claude Agent SDK 侧栏入口、原生模型、权限、项目 Skill、本机会话历史、图片附件和图片引用，并按[本地 Agent 接入规划](/zh-CN/docs/progress/local-agent-integration-plan)继续完善工具队列体验。
+- 本地 Agent 接入后续：验收已完成的 Claude Agent SDK 侧栏入口、原生模型、权限、项目 Skill、本机会话历史、图片附件、图片引用和多槽工具队列，并按[本地 Agent 接入规划](/zh-CN/docs/progress/local-agent-integration-plan)继续完善体验。
 - Agent Skill 后续：补充网络检索安装、Skill 资源文件管理和可控的本地记忆沉淀。
 - 公开画布只读分享和跨设备复制需要先冻结服务端权限、分享凭证、撤销和访问审计契约，再实施前端入口与分享页。
 - 项目自有化继续按[迁移路线](https://github.com/Smithhss/infinite-canvas/blob/main/docs/superpowers/plans/2026-11-03-project-ownership-migration.md)推进：自有插件 registry 与 `@smithhsiiiii/*` npm 包已发布，下一步处理浏览器存储命名空间迁移与自有文档域名。

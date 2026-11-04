@@ -18,7 +18,7 @@ const historyMessageStyle = { contentVisibility: "auto", containIntrinsicSize: "
 
 export function AgentChatTimeline({
     theme,
-    pendingTool,
+    pendingTools,
     pendingApprovals,
     sending,
     waiting,
@@ -27,12 +27,12 @@ export function AgentChatTimeline({
     onApprovalDecision,
 }: {
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
-    pendingTool: AgentPendingToolCall | null;
+    pendingTools: AgentPendingToolCall[];
     pendingApprovals: AgentPendingApproval[];
     sending: boolean;
     waiting: boolean;
-    onRejectTool: () => void;
-    onApproveTool: () => void;
+    onRejectTool: (requestId: string) => void;
+    onApproveTool: (requestId: string) => void;
     onApprovalDecision: (approval: AgentPendingApproval, decision: "accept" | "acceptForSession" | "decline") => void;
 }) {
     const { t } = useTranslation();
@@ -48,7 +48,7 @@ export function AgentChatTimeline({
     const [showScrollToBottom, setShowScrollToBottom] = useState(false);
     const streaming = messages.some((message) => message.streamId);
     const showBootstrap = Boolean(bootstrapStatus && bootstrapStatus.status !== "ready" && !messages.some((message) => message.role === "user" || message.role === "assistant"));
-    const showEmptyState = connected && !timeline.length && !pendingTool && !pendingApprovals.length && !sending && !waiting && !showBootstrap;
+    const showEmptyState = connected && !timeline.length && !pendingTools.length && !pendingApprovals.length && !sending && !waiting && !showBootstrap;
     const working = showBootstrap ? bootstrapStatus! : workingActivity(messages.at(-1));
     const updateScrollState = useCallback(() => {
         const list = listRef.current;
@@ -67,7 +67,7 @@ export function AgentChatTimeline({
     useEffect(() => {
         const frame = requestAnimationFrame(() => (followMessagesRef.current ? scrollToBottom("auto") : updateScrollState()));
         return () => cancelAnimationFrame(frame);
-    }, [messages, pendingApprovals, pendingTool, scrollToBottom, updateScrollState, waiting]);
+    }, [messages, pendingApprovals, pendingTools, scrollToBottom, updateScrollState, waiting]);
     useEffect(() => {
         const content = contentRef.current;
         if (!content) return;
@@ -92,17 +92,18 @@ export function AgentChatTimeline({
                     {showEmptyState ? (isFeatureEnabled("agentPanelChrome")
                         ? <AgentWorkspaceEmptyState theme={theme} onUsePrompt={(prompt) => setAgentState({ prompt })} onOpenSkills={() => setAgentState({ activeTab: "skills" })} />
                         : <AgentChatEmptyState theme={theme} onUsePrompt={(prompt) => setAgentState({ prompt })} />) : null}
-                    {pendingTool ? (
+                    {pendingTools.map((pendingTool) => (
                         <AgentPendingToolCard
+                            key={pendingTool.requestId}
                             summary={summarizeCanvasAgentOps(pendingTool.input?.ops || []) || toolName(pendingTool.name)}
                             detail={toolCallDetail(pendingTool.name, pendingTool.input, "pending")}
                             theme={theme}
-                            onReject={onRejectTool}
-                            onApprove={onApproveTool}
+                            onReject={() => onRejectTool(pendingTool.requestId)}
+                            onApprove={() => onApproveTool(pendingTool.requestId)}
                         />
-                    ) : null}
+                    ))}
                     {pendingApprovals.map((approval) => <AgentApprovalCard key={approval.requestId} approval={approval} theme={theme} onDecision={(decision) => onApprovalDecision(approval, decision)} />)}
-                    {(sending || waiting || showBootstrap) && !streaming && !pendingTool && !pendingApprovals.length ? <AgentWorkingMessage text={working.text} detail={"detail" in working && typeof working.detail === "string" ? working.detail : undefined} status={showBootstrap ? bootstrapStatus?.status : undefined} mcpStatuses={showBootstrap ? Object.entries(mcpStartupStatuses).map(([name, item]) => ({ name, ...item })) : []} activityKey={working.key} theme={theme} /> : null}
+                    {(sending || waiting || showBootstrap) && !streaming && !pendingTools.length && !pendingApprovals.length ? <AgentWorkingMessage text={working.text} detail={"detail" in working && typeof working.detail === "string" ? working.detail : undefined} status={showBootstrap ? bootstrapStatus?.status : undefined} mcpStatuses={showBootstrap ? Object.entries(mcpStartupStatuses).map(([name, item]) => ({ name, ...item })) : []} activityKey={working.key} theme={theme} /> : null}
                 </div>
             </div>
             {showScrollToBottom ? (

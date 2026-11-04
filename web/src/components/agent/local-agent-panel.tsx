@@ -79,7 +79,7 @@ const CLAUDE_IMAGE_ACCEPT = "image/png,image/jpeg,image/jpg,image/gif,image/webp
 const MESSAGE_PREVIEW_LONG_EDGE = 192;
 const MESSAGE_PREVIEW_MAX_LENGTH = 500_000;
 const DEFAULT_AGENT_URL = "http://127.0.0.1:17371";
-const AGENT_PROTOCOL_VERSION = 7;
+const AGENT_PROTOCOL_VERSION = 8;
 const HISTORY_RETRY_DELAYS_MS = [0, 150, 350, 700, 1200];
 const AGENT_REASONING_EFFORTS = new Set<AgentReasoningEffort>(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 const AGENT_MODEL_STORAGE_KEYS: Record<AgentProvider, string> = { codex: "canvas-agent-model-codex", claude: "canvas-agent-model-claude" };
@@ -146,7 +146,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     // canvasContext is intentionally excluded because project updates it every frame during dragging and resizing.
     // The panel uses it only for ref synchronization and debounced postState calls, never during rendering.
     // Subscribing here would rerender the panel every frame and amplify the #185 crash, so it is observed imperatively below.
-    const { width, url, token, connected, enabled, pluginDetected, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, claudePermissionMode, models, model, reasoningEffort, agentProvider, activity, conversation, connectError, pendingTool, pendingApprovals } = useAgentStore(
+    const { width, url, token, connected, enabled, pluginDetected, prompt, attachments, sending, waiting, tokenUsage, eventLogs, threads, activeThreadId, workspacePath, loadingThreads, activeTab, confirmTools, permissionMode, claudePermissionMode, models, model, reasoningEffort, agentProvider, activity, conversation, connectError, pendingTools, pendingApprovals } = useAgentStore(
         useShallow((state) => ({
             width: state.width,
             url: state.url,
@@ -175,7 +175,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             activity: state.activity,
             conversation: state.conversation,
             connectError: state.connectError,
-            pendingTool: state.pendingTool,
+            pendingTools: state.pendingTools,
             pendingApprovals: state.pendingApprovals,
         })),
     );
@@ -184,6 +184,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const effectivePermissionMode = effectiveAgentProvider === "claude" ? claudePermissionMode : permissionMode;
     const runningActivity = effectiveAgentProvider === "claude" ? rt("claudeRunning") : rt("codexRunning");
     const setAgentState = useAgentStore((state) => state.setAgentState);
+    const enqueuePendingTool = useAgentStore((state) => state.enqueuePendingTool);
+    const removePendingTool = useAgentStore((state) => state.removePendingTool);
     const conversationReady = conversation.status === "ready" || conversation.status === "warning";
     const conversationBusy = conversation.status === "preparing" || conversation.status === "running";
     const closePanel = useAgentStore((state) => state.closePanel);
@@ -196,7 +198,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const messageCount = useAgentStore((state) => state.messages.length);
     const canvasContextRef = useRef<AgentCanvasContext | null>(useAgentStore.getState().canvasContext);
     const confirmToolsRef = useRef(confirmTools);
-    const pendingToolRef = useRef<AgentPendingToolCall | null>(null);
+    const toolExecutionRef = useRef<Promise<void>>(Promise.resolve());
     const claudeRunIdRef = useRef("");
     const autoConnectRef = useRef(false);
     const connectedRef = useRef(false);
@@ -291,13 +293,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             : emptyThread ? []
                 : threadChanged ? threadMessagesRef.current.get(nextThreadId) || []
                     : current.messages;
-        pendingToolRef.current = null;
         setAgentState({
             activeThreadId: nextThreadId,
             activeTurnId: threadChanged || emptyThread ? "" : current.activeTurnId,
             messages,
             tokenUsage: threadChanged || emptyThread ? null : current.tokenUsage,
-            pendingTool: null,
+            pendingTools: [],
             pendingApprovals: threadChanged || emptyThread ? [] : current.pendingApprovals,
         });
         return loadThreadsSequenceRef.current;
@@ -364,9 +365,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     useEffect(() => {
         confirmToolsRef.current = confirmTools;
     }, [confirmTools]);
-    useEffect(() => {
-        pendingToolRef.current = pendingTool;
-    }, [pendingTool]);
     useEffect(() => () => attachmentUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
     useEffect(() => {
@@ -394,7 +392,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 protocolRejected = true;
                 source.close();
                 connectedRef.current = false;
-                setAgentState({ enabled: false, connected: false, waiting: false, sending: false, activity: rt("restartRequired"), connectError: text, silentConnect: false, fragmentBootstrap: false, pendingTool: null, pendingApprovals: [] });
+                setAgentState({ enabled: false, connected: false, waiting: false, sending: false, activity: rt("restartRequired"), connectError: text, silentConnect: false, fragmentBootstrap: false, pendingTools: [], pendingApprovals: [] });
                 useAgentSkillStore.getState().reset();
                 addEventLog(rt("versionMismatch"), text, hello);
                 if (!headless) message.error(text);
@@ -628,7 +626,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             }
             errorLoggedRef.current = true;
             connectedRef.current = false;
-            pendingToolRef.current = null;
             setAgentState({
                 activity: rt(wasConnected ? "connectionLost" : "connectionFailed"),
                 connected: false,
@@ -637,7 +634,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 connectError: silent ? "" : text,
                 silentConnect: false,
                 fragmentBootstrap: false,
-                pendingTool: null,
+                pendingTools: [],
                 pendingApprovals: [],
             });
             useAgentSkillStore.getState().reset();
@@ -935,13 +932,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
 
     const handleToolCall = async (endpoint: string, token: string, payload: AgentPendingToolCall) => {
         if (effectiveAgentProvider === "codex" && confirmToolsRef.current && isCanvasWriteTool(payload.name)) {
-            if (pendingToolRef.current) {
-                await postToolResult(endpoint, token, clientIdRef.current, { requestId: payload.requestId, error: rt("pendingCanvasTool") });
-                return;
+            const alreadyQueued = useAgentStore.getState().pendingTools.some((item) => item.requestId === payload.requestId);
+            enqueuePendingTool(payload);
+            if (!alreadyQueued) {
+                setAgentState({ activity: rt("awaitingConfirmation") });
+                addEventLog(rt("awaitingConfirmation"), payload, payload);
             }
-            pendingToolRef.current = payload;
-            setAgentState({ pendingTool: payload });
-            addEventLog(rt("awaitingConfirmation"), payload, payload);
             return;
         }
         await runToolCall(endpoint, token, payload);
@@ -993,19 +989,24 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         }
     };
 
-    const rejectPendingTool = async () => {
-        if (!pendingTool) return;
-        await postToolResult(endpoint, token, clientIdRef.current, { requestId: pendingTool.requestId, error: rt("canvasToolCanceled") });
-        pendingToolRef.current = null;
-        setAgentState({ pendingTool: null });
+    const rejectPendingTool = async (requestId: string) => {
+        const tool = useAgentStore.getState().pendingTools.find((item) => item.requestId === requestId);
+        if (!tool) return;
+        removePendingTool(requestId);
+        const current = useAgentStore.getState();
+        setAgentState({ activity: current.pendingTools.length ? rt("awaitingConfirmation") : current.waiting ? runningActivity : current.activity });
+        await postToolResult(endpoint, token, clientIdRef.current, { requestId: tool.requestId, error: rt("canvasToolCanceled") });
     };
 
-    const approvePendingTool = async () => {
-        if (!pendingTool) return;
-        const tool = pendingTool;
-        pendingToolRef.current = null;
-        setAgentState({ pendingTool: null });
-        await runToolCall(endpoint, token, tool);
+    const approvePendingTool = (requestId: string) => {
+        const tool = useAgentStore.getState().pendingTools.find((item) => item.requestId === requestId);
+        if (!tool) return;
+        removePendingTool(requestId);
+        const current = useAgentStore.getState();
+        setAgentState({ activity: current.pendingTools.length ? rt("awaitingConfirmation") : runningActivity });
+        toolExecutionRef.current = toolExecutionRef.current
+            .catch(() => undefined)
+            .then(() => runToolCall(endpoint, token, tool));
     };
 
     const decideApproval = async (approval: AgentPendingApproval, decision: "accept" | "acceptForSession" | "decline") => {
@@ -1071,7 +1072,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         loadThreadsSequenceRef.current += 1;
         useAgentSkillStore.getState().reset();
         claudeRunIdRef.current = "";
-        pendingToolRef.current = null;
         setAgentState({
             agentProvider: nextProvider,
             attachments: nextCapabilities.attachments ? current.attachments.filter((item) => agentProviderSupportsImageType(nextProvider, item.type)) : [],
@@ -1086,7 +1086,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             model: "",
             reasoningEffort: "",
             tokenUsage: null,
-            pendingTool: null,
+            pendingTools: [],
             pendingApprovals: [],
         });
         if (nextProvider === "claude") {
@@ -1189,7 +1189,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             waiting: false,
             sending: false,
             fragmentBootstrap: false,
-            pendingTool: null,
+            pendingTools: [],
             pendingApprovals: [],
             conversation: { revision: 0, conversationId: "", threadId: "", status: "idle", mcpStatuses: {} },
             bootstrapStatus: null,
@@ -1197,7 +1197,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             ...patch,
         });
         useAgentSkillStore.getState().reset();
-        pendingToolRef.current = null;
     }
 
     const beginThreadOperation = () => {
@@ -1220,7 +1219,6 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             loadThreadsSequenceRef.current += 1;
             threadMessagesRef.current.clear();
             clearSkillSelection();
-            pendingToolRef.current = null;
             claudeRunIdRef.current = "";
             setAgentState({
                 activeTab: "chat",
@@ -1228,7 +1226,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 activeTurnId: "",
                 messages: [],
                 tokenUsage: null,
-                pendingTool: null,
+                pendingTools: [],
                 pendingApprovals: [],
                 activity: rt("newConversation"),
             });
@@ -1669,24 +1667,24 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 <AgentLogView
                     logs={eventLogs}
                     theme={theme}
-                    context={{ endpoint, connected, enabled, activity, waiting, sending, messages: messageCount, pendingTool: pendingTool?.name }}
+                    context={{ endpoint, connected, enabled, activity, waiting, sending, messages: messageCount, pendingTool: pendingTools.map((tool) => toolName(tool.name)).join(", ") }}
                     onClear={clearEventLogs}
                     onCopied={(text) => message.success(text)}
                     onCopyBlocked={(text) => message.warning(text)}
                 />
             ) : (
                 <>
-                    {agentPanelChromeEnabled && (sending || waiting || pendingTool || pendingApprovals.length) ? (
+                    {agentPanelChromeEnabled && (sending || waiting || pendingTools.length || pendingApprovals.length) ? (
                         <AgentRuntimeStatus
                             activity={activity || t("agent.message.running")}
                             sending={sending}
                             waiting={waiting}
-                            pendingTool={pendingTool}
+                            pendingTools={pendingTools}
                             pendingApprovals={pendingApprovals}
                             theme={theme}
                         />
                     ) : null}
-                    <AgentChatTimeline theme={theme} pendingTool={pendingTool} pendingApprovals={pendingApprovals} sending={sending} waiting={waiting} onRejectTool={rejectPendingTool} onApproveTool={approvePendingTool} onApprovalDecision={decideApproval} />
+                    <AgentChatTimeline theme={theme} pendingTools={pendingTools} pendingApprovals={pendingApprovals} sending={sending} waiting={waiting} onRejectTool={rejectPendingTool} onApproveTool={approvePendingTool} onApprovalDecision={decideApproval} />
                     <AgentTaskProgress theme={theme} busy={sending || waiting} />
                     {tokenUsage ? <AgentUsageBar usage={tokenUsage} theme={theme} /> : null}
                     <AgentChatComposer

@@ -9,6 +9,7 @@ export const FEATURE_FLAG_DEFAULTS = {
     pluginHub: false,
     agentSkillHub: false,
     canvasFloatingChrome: false,
+    agentPanelChrome: false,
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAG_DEFAULTS;

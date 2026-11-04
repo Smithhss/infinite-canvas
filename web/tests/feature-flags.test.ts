@@ -20,6 +20,7 @@ test("new capabilities are disabled by default", () => {
     expect(FEATURE_FLAG_DEFAULTS.pluginHub).toBe(false);
     expect(FEATURE_FLAG_DEFAULTS.agentSkillHub).toBe(false);
     expect(FEATURE_FLAG_DEFAULTS.canvasFloatingChrome).toBe(false);
+    expect(FEATURE_FLAG_DEFAULTS.agentPanelChrome).toBe(false);
 });
 
 test("feature flag values accept explicit true and false forms", () => {

@@ -4,7 +4,7 @@
 
 **边界:** 只复现设计原则，不复制 LibTV 的源码、文案、图标、图片、字体、插画、动画或品牌资产；不把当前节点模型迁移到另一套白板框架；不为尚未冻结的服务端能力提前做 UI。
 
-**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口、P2-D 本机会话历史与续聊、P2-E Claude 原生模型列表、P2-F Claude SDK 原生权限和 P2-G Claude 原生项目 Skill 已合并到 `dev`。P2-H Claude 图片附件与图片引用已通过 PR #33 和零收费 mock 验收，等待合并和人工真实登录验收。所有实验能力仍默认关闭，尚未修改生产环境。
+**当前状态:** 全站顶栏的“创作 / 插件”入口已完成最小修复并通过本地浏览器验证。`libtvShell` 侧栏实验模式、`pluginHub` 插件中心、`agentSkillHub` Agent/Skills 资源页、`canvasFloatingChrome` 画布浮动控制带、`agentPanelChrome` Agent 工作台、P2-C Claude Agent SDK 侧边栏入口、P2-D 本机会话历史与续聊、P2-E Claude 原生模型列表、P2-F Claude SDK 原生权限和 P2-G Claude 原生项目 Skill 已合并到 `dev`。P2-H Claude 图片附件与图片引用已由 PR #33 实现并通过 Quality CI 与零收费 mock 验收；插件中心模式切换文字不可见已由 PR #34 修复并通过 Quality CI，均等待合并和人工验收。所有实验能力仍默认关闭，尚未修改生产环境。
 
 ## 1. 逆向范围与证据
 

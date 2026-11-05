@@ -497,7 +497,7 @@ P2-C 初始实现：
 1. 新增 `GET /agent/claude/skills`，通过 SDK `supportedCommands()` 读取 `.claude/skills` 中的非内置 Skill；空 prompt 只执行初始化，不触发模型生成。
 2. Skill 列表映射为现有只读 Skill 卡片，使用 `claude:<name>` 稳定标识，不提供创建、编辑、删除或启停入口。
 3. Claude 模式使用 `/skill-name` 标记，Codex 继续使用 `$skill-name`；输入框 token、资源页卡片和发送内容按当前 Agent 切换。
-4. `/agent/claude/turn` 接收单个 `skill.name`；选择 Skill 时 `settingSources` 仅加载 `project`，同时设置 `disableAllHooks`，内置工具只开放 `Skill`。
+4. `/agent/claude/turn` 同时兼容单个 `skill.name` 和结构化 `skills` 数组；选择 Skill 时 `settingSources` 仅加载 `project`，同时设置 `disableAllHooks`，内置工具只开放 `Skill`。
 5. Skill 调用仍通过现有画布 MCP 执行写入，因此请求模式的画布工具审批继续生效。
 6. 切换 Agent 会清空旧 Skill 列表和选择，功能开关关闭时始终按 Codex Skill 读取。
 
@@ -505,7 +505,7 @@ P2-C 初始实现：
 
 - Skill 市场、远端安装、评分和云端收藏。
 - Claude 图片附件与图片引用已由 P2-H 补齐。
-- 多个 Skill 同时选择尚未支持；多工具确认队列已由 P2-I 补齐。
+- 多个 Skill 同时选择已由后续收口补齐；多工具确认队列已由 P2-I 补齐。
 - 真实 Claude 云端账号的收费验收。
 
 验收：

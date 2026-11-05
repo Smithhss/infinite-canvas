@@ -36,7 +36,7 @@ import {
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
 import { getDirectorCameraTrack, removeDirectorCameraKeyframe, sampleDirectorCameraTrack, setDirectorAnimationDuration, updateDirectorCameraKeyframe, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
-import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, getAvailableDirectorPathNodeParents, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
+import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN, getAvailableDirectorPathNodeParents, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, sampleDirectorMotionPath, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -47,7 +47,7 @@ type DirectorSceneRuntime = {
     capture: () => string | null;
     captureCameraPose: () => { position: DirectorVector3; target: DirectorVector3; fov: number } | null;
     previewCamera: (keyframe: DirectorCameraKeyframe) => void;
-    sync: (project: DirectorProjectState, selectedObjectId: string | null) => void;
+    sync: (project: DirectorProjectState, selectedObjectId: string | null, selectedMotionPathId: string | null) => void;
     dispose: () => void;
 };
 
@@ -97,10 +97,12 @@ export function CanvasDirectorShell({
     const [selectedKeyframeTime, setSelectedKeyframeTime] = useState<number | null>(null);
     const projectRef = useRef(project);
     const selectedObjectIdRef = useRef(selectedObjectId);
+    const selectedMotionPathIdRef = useRef(selectedMotionPathId);
     const playheadRef = useRef(playhead);
 
     projectRef.current = project;
     selectedObjectIdRef.current = selectedObjectId;
+    selectedMotionPathIdRef.current = selectedMotionPathId;
     playheadRef.current = playhead;
 
     useEffect(() => {
@@ -156,6 +158,8 @@ export function CanvasDirectorShell({
                 scene.add(objectRoot);
                 const assetRoot = new THREE.Group();
                 scene.add(assetRoot);
+                const pathRoot = new THREE.Group();
+                scene.add(pathRoot);
                 const studioGeometry = addStudioGeometry(THREE, scene);
                 const loadedAssets = new Map<string, { storageKey: string; object: Object3D }>();
                 const loadingAssets = new Map<string, string>();
@@ -351,7 +355,63 @@ export function CanvasDirectorShell({
 
                 let syncedObjects: DirectorProjectState["objects"] | null = null;
                 let syncedSelectedId: string | null | undefined;
-                const sync = (nextProject: DirectorProjectState, selectedId: string | null) => {
+                let syncedMotionPaths: DirectorMotionPath[] | null = null;
+                let syncedSelectedMotionPathId: string | null | undefined;
+                const pathColors = [0x60a5fa, 0x34d399, 0xf472b6, 0xfbbf24];
+                const syncPaths = (motionPaths: DirectorMotionPath[], selectedPathId: string | null) => {
+                    if (motionPaths === syncedMotionPaths && selectedPathId === syncedSelectedMotionPathId) return;
+                    clearObjectRoot(pathRoot);
+                    motionPaths.forEach((path, pathIndex) => {
+                        const selected = path.id === selectedPathId;
+                        const samples = sampleDirectorMotionPath(path);
+                        if (samples.length >= 2) {
+                            const geometry = new THREE.BufferGeometry().setFromPoints(
+                                samples.map((point) => new THREE.Vector3(point.x, point.y, point.z)),
+                            );
+                            const material = new THREE.LineBasicMaterial({
+                                color: selected ? 0xfb923c : pathColors[pathIndex % pathColors.length],
+                                transparent: true,
+                                opacity: selected ? 0.98 : 0.58,
+                                depthWrite: false,
+                                toneMapped: false,
+                            });
+                            const line = new THREE.Line(geometry, material);
+                            line.renderOrder = 3;
+                            line.userData.directorMotionPathId = path.id;
+                            pathRoot.add(line);
+                        }
+
+                        const visibleNodes = path.nodes.filter((node) => isDirectorPathNodeVisible(node, path));
+                        if (!visibleNodes.length) return;
+                        const positions: number[] = [];
+                        const colors: number[] = [];
+                        visibleNodes.forEach((node) => {
+                            positions.push(node.transform.position.x, node.transform.position.y, node.transform.position.z);
+                            const color = node.kind === "waypoint" ? 0xfbbf24 : node.kind === "aim" ? 0x38bdf8 : 0xf472b6;
+                            const parsed = new THREE.Color(color);
+                            colors.push(parsed.r, parsed.g, parsed.b);
+                        });
+                        const geometry = new THREE.BufferGeometry();
+                        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+                        geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+                        const material = new THREE.PointsMaterial({
+                            size: selected ? 0.26 : 0.2,
+                            vertexColors: true,
+                            sizeAttenuation: true,
+                            transparent: true,
+                            opacity: selected ? 1 : 0.82,
+                            depthWrite: false,
+                            toneMapped: false,
+                        });
+                        const points = new THREE.Points(geometry, material);
+                        points.renderOrder = 4;
+                        points.userData.directorMotionPathId = path.id;
+                        pathRoot.add(points);
+                    });
+                    syncedMotionPaths = motionPaths;
+                    syncedSelectedMotionPathId = selectedPathId;
+                };
+                const sync = (nextProject: DirectorProjectState, selectedId: string | null, selectedPathId: string | null) => {
                     if (nextProject.objects !== syncedObjects || selectedId !== syncedSelectedId) {
                         clearObjectRoot(objectRoot);
                         nextProject.objects.forEach((item) => {
@@ -365,6 +425,7 @@ export function CanvasDirectorShell({
                     applyEnvironment(studioGeometry.floor, studioGeometry.grid, nextProject.environment);
                     syncPanorama(nextProject.environment);
                     syncAssets(nextProject.sceneNodes);
+                    syncPaths(nextProject.animation.motionPaths, selectedPathId);
                     camera.position.set(nextProject.camera.position.x, nextProject.camera.position.y, nextProject.camera.position.z);
                     const cameraTarget = resolveDirectorCameraTarget(nextProject, nextProject.camera.followTargetId || nextProject.camera.lookAtTarget);
                     controls.target.set(
@@ -423,6 +484,7 @@ export function CanvasDirectorShell({
                         });
                         loadedAssets.clear();
                         clearObjectRoot(objectRoot);
+                        clearObjectRoot(pathRoot);
                         disposeScene(THREE, scene);
                         renderer.dispose();
                         renderer.forceContextLoss();
@@ -430,7 +492,7 @@ export function CanvasDirectorShell({
                     },
                 };
                 runtimeRef.current = runtime;
-                sync(projectRef.current, selectedObjectIdRef.current);
+                sync(projectRef.current, selectedObjectIdRef.current, selectedMotionPathIdRef.current);
                 render();
             } catch {
                 if (!cancelled) setSceneError(t("canvas.director.webglUnavailable"));
@@ -448,8 +510,8 @@ export function CanvasDirectorShell({
     }, [open, sceneRevision, t]);
 
     useEffect(() => {
-        runtimeRef.current?.sync(project, selectedObjectId);
-    }, [project, selectedObjectId]);
+        runtimeRef.current?.sync(project, selectedObjectId, selectedMotionPathId);
+    }, [project, selectedMotionPathId, selectedObjectId]);
 
     const activeCameraTrack = useMemo(() => getDirectorCameraTrack(project), [project]);
     const selectedKeyframe = useMemo(
@@ -487,6 +549,11 @@ export function CanvasDirectorShell({
     const selectedMotionPath = useMemo(() => project.animation.motionPaths.find((item) => item.id === selectedMotionPathId) || null, [project.animation.motionPaths, selectedMotionPathId]);
     const selectedPathNode = useMemo(() => selectedMotionPath?.nodes.find((item) => item.id === selectedPathNodeId) || null, [selectedMotionPath, selectedPathNodeId]);
     const availablePathNodeParents = useMemo(() => selectedMotionPath && selectedPathNode ? getAvailableDirectorPathNodeParents(selectedMotionPath, selectedPathNode.id) : [], [selectedMotionPath, selectedPathNode]);
+    const selectedMotionPathPreview = useMemo(() => {
+        if (!selectedMotionPath) return { samples: 0, waypoints: 0 };
+        const waypoints = selectedMotionPath.nodes.filter((node) => node.kind === "waypoint" && isDirectorPathNodeVisible(node, selectedMotionPath)).length;
+        return { samples: sampleDirectorMotionPath(selectedMotionPath).length, waypoints };
+    }, [selectedMotionPath]);
     const sceneTree = useMemo(() => buildDirectorSceneTree(project), [project]);
     const cameraTargets = useMemo(
         () => sceneTree.flatMap((entry) => {
@@ -1278,6 +1345,15 @@ export function CanvasDirectorShell({
                                 <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2" style={{ borderColor: canvasTheme.node.stroke }}>
                                     <span className="text-[11px] opacity-55">{t("canvas.director.motionPathClosed")}</span>
                                     <Switch size="small" checked={selectedMotionPath.closed} onChange={(closed) => updateSelectedMotionPath({ closed })} />
+                                </div>
+                                <div className="rounded-lg border px-3 py-2 text-[10px] leading-4" style={{ borderColor: canvasTheme.node.stroke }}>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="font-medium opacity-55">{t("canvas.director.motionPathPreview")}</span>
+                                        <span className="tabular-nums opacity-40">
+                                            {t("canvas.director.motionPathPreviewStats", { points: selectedMotionPathPreview.waypoints, samples: selectedMotionPathPreview.samples })}
+                                        </span>
+                                    </div>
+                                    <div className="mt-1 opacity-40">{t("canvas.director.motionPathPreviewHint", { count: DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN })}</div>
                                 </div>
                                 <div className="rounded-xl border p-3" style={{ borderColor: canvasTheme.node.stroke }}>
                                     <div className="flex items-center justify-between gap-3">

@@ -4,10 +4,12 @@ import {
     type DirectorPathNode,
     type DirectorPathNodeKind,
     type DirectorProjectState,
+    type DirectorVector3,
 } from "@/lib/canvas/director-project";
 
 type DirectorMotionPathPatch = Partial<Pick<DirectorMotionPath, "name" | "closed">>;
 type DirectorPathNodePatch = Partial<Pick<DirectorPathNode, "name" | "parentId" | "visible" | "locked" | "transform">>;
+export const DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN = 12;
 
 export function createDirectorMotionPath(index: number): DirectorMotionPath {
     const safeIndex = Math.max(0, Math.floor(index));
@@ -106,6 +108,29 @@ export function isDirectorPathNodeVisible(node: DirectorPathNode, path: Director
     return true;
 }
 
+export function sampleDirectorMotionPath(path: DirectorMotionPath, segmentsPerSpan = DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN): DirectorVector3[] {
+    const points = path.nodes
+        .filter((node) => node.kind === "waypoint" && isDirectorPathNodeVisible(node, path))
+        .map((node) => node.transform.position);
+    if (points.length < 2) return points.map((point) => ({ ...point }));
+
+    const segments = Math.max(1, Math.min(32, Math.floor(segmentsPerSpan)));
+    const closed = path.closed && points.length >= 3;
+    const segmentCount = closed ? points.length : points.length - 1;
+    const samples: DirectorVector3[] = [];
+    for (let index = 0; index < segmentCount; index += 1) {
+        const p0 = closed ? points[(index - 1 + points.length) % points.length] : points[Math.max(0, index - 1)];
+        const p1 = points[index];
+        const p2 = points[(index + 1) % points.length];
+        const p3 = closed ? points[(index + 2) % points.length] : points[Math.min(points.length - 1, index + 2)];
+        for (let step = 0; step < segments; step += 1) {
+            samples.push(catmullRomPoint(p0, p1, p2, p3, step / segments));
+        }
+    }
+    samples.push({ ...(closed ? points[0] : points[points.length - 1]) });
+    return samples;
+}
+
 function mapMotionPath(project: DirectorProjectState, pathId: string, update: (path: DirectorMotionPath) => DirectorMotionPath) {
     let changed = false;
     const motionPaths = project.animation.motionPaths.map((path) => {
@@ -119,4 +144,14 @@ function mapMotionPath(project: DirectorProjectState, pathId: string, update: (p
 
 function isAvailableParent(path: DirectorMotionPath, nodeId: string, parentId: string) {
     return parentId === path.id || getAvailableDirectorPathNodeParents(path, nodeId).some((node) => node.id === parentId);
+}
+
+function catmullRomPoint(p0: DirectorVector3, p1: DirectorVector3, p2: DirectorVector3, p3: DirectorVector3, t: number): DirectorVector3 {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return {
+        x: 0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+        y: 0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+        z: 0.5 * (2 * p1.z + (-p0.z + p2.z) * t + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * t2 + (-p0.z + 3 * p1.z - 3 * p2.z + p3.z) * t3),
+    };
 }

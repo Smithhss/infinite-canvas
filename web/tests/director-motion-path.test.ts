@@ -9,6 +9,7 @@ import {
     isDirectorPathNodeVisible,
     removeDirectorMotionPath,
     removeDirectorPathNode,
+    sampleDirectorMotionPath,
     updateDirectorMotionPath,
     updateDirectorPathNode,
 } from "../src/lib/canvas/director-motion-path";
@@ -137,4 +138,65 @@ test("path-node visibility inherits from every parent", () => {
     path.nodes[0] = { ...path.nodes[0], visible: true };
     path.nodes[1] = { ...path.nodes[1], visible: false };
     expect(isDirectorPathNodeVisible(path.nodes[1], path)).toBe(false);
+});
+
+test("samples visible waypoints as a Catmull-Rom curve", () => {
+    let project = projectWithPath();
+    const pathId = project.animation.motionPaths[0].id;
+    const first = createDirectorPathNode(pathId, "waypoint", 0);
+    const middle = createDirectorPathNode(pathId, "waypoint", 1);
+    const last = createDirectorPathNode(pathId, "waypoint", 2);
+    project = addDirectorPathNode(project, pathId, first);
+    project = addDirectorPathNode(project, pathId, middle);
+    project = addDirectorPathNode(project, pathId, last);
+    project = updateDirectorPathNode(project, pathId, first.id, { transform: { ...first.transform, position: { x: 0, y: 0, z: 0 } } });
+    project = updateDirectorPathNode(project, pathId, middle.id, { transform: { ...middle.transform, position: { x: 5, y: 2, z: -1 } } });
+    project = updateDirectorPathNode(project, pathId, last.id, { transform: { ...last.transform, position: { x: 10, y: 0, z: 0 } } });
+
+    const samples = sampleDirectorMotionPath(project.animation.motionPaths[0], 2);
+
+    expect(samples).toHaveLength(5);
+    expect(samples[0]).toEqual({ x: 0, y: 0, z: 0 });
+    expect(samples[2]).toEqual({ x: 5, y: 2, z: -1 });
+    expect(samples[4]).toEqual({ x: 10, y: 0, z: 0 });
+});
+
+test("closes sampled paths and ignores aim or focus nodes in the curve", () => {
+    let project = projectWithPath();
+    const pathId = project.animation.motionPaths[0].id;
+    const first = createDirectorPathNode(pathId, "waypoint", 0);
+    const aim = createDirectorPathNode(pathId, "aim", 1);
+    const second = createDirectorPathNode(pathId, "waypoint", 2);
+    const third = createDirectorPathNode(pathId, "waypoint", 3);
+    const focus = createDirectorPathNode(pathId, "focus", 4);
+    project = addDirectorPathNode(project, pathId, first);
+    project = addDirectorPathNode(project, pathId, aim);
+    project = addDirectorPathNode(project, pathId, second);
+    project = addDirectorPathNode(project, pathId, third);
+    project = addDirectorPathNode(project, pathId, focus);
+    project = updateDirectorMotionPath(project, pathId, { closed: true });
+
+    const path = project.animation.motionPaths[0];
+    const samples = sampleDirectorMotionPath(path, 1);
+
+    expect(samples).toHaveLength(4);
+    expect(samples[0]).toEqual(samples[3]);
+    expect(samples[1]).toEqual({ x: 0, y: 0, z: 0 });
+});
+
+test("omits waypoints hidden by an ancestor from sampling", () => {
+    let project = projectWithPath();
+    const pathId = project.animation.motionPaths[0].id;
+    const aim = createDirectorPathNode(pathId, "aim", 0);
+    const hiddenWaypoint = createDirectorPathNode(pathId, "waypoint", 1);
+    const visibleWaypoint = createDirectorPathNode(pathId, "waypoint", 2);
+    project = addDirectorPathNode(project, pathId, aim);
+    project = addDirectorPathNode(project, pathId, hiddenWaypoint);
+    project = addDirectorPathNode(project, pathId, visibleWaypoint);
+    project = updateDirectorPathNode(project, pathId, hiddenWaypoint.id, { parentId: aim.id });
+    project = updateDirectorPathNode(project, pathId, aim.id, { visible: false });
+
+    const samples = sampleDirectorMotionPath(project.animation.motionPaths[0], 2);
+
+    expect(samples).toEqual([{ x: 0, y: 0, z: 0 }]);
 });

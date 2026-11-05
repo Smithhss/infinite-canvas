@@ -191,6 +191,25 @@ test("keeps a camera motion path only while the path exists", () => {
     expect(missing.camera.motionPathId).toBeUndefined();
 });
 
+test("normalizes custom camera easing control points", () => {
+    const project = normalizeDirectorProject({
+        version: DIRECTOR_PROJECT_VERSION,
+        animation: {
+            cameraTracks: [{
+                id: "camera-track-main",
+                keyframes: [{
+                    time: 0,
+                    position: { x: 1, y: 2, z: 3 },
+                    easing: "custom",
+                    bezier: { x1: -1, y1: 2, x2: 0.3, y2: 0.7 },
+                }],
+            }],
+        },
+    });
+
+    expect(project.animation.cameraTracks[0].keyframes[0].bezier).toEqual({ x1: 0, y1: 1, x2: 0.3, y2: 0.7 });
+});
+
 test("normalizes a local panorama environment and rejects remote sources", () => {
     const project = normalizeDirectorProject({
         environment: {

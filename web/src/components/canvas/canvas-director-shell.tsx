@@ -25,6 +25,7 @@ import {
     UnsupportedDirectorProjectVersionError,
     type DirectorBackground,
     type DirectorCameraKeyframe,
+    type DirectorCubicBezier,
     type DirectorEnvironment,
     type DirectorMotionPath,
     type DirectorObject,
@@ -35,7 +36,7 @@ import {
     type DirectorSceneNode,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
-import { getDirectorCameraTrack, removeDirectorCameraKeyframe, sampleDirectorCameraTrack, setDirectorAnimationDuration, updateDirectorCameraKeyframe, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
+import { DIRECTOR_DEFAULT_CUSTOM_EASING, getDirectorCameraTrack, removeDirectorCameraKeyframe, sampleDirectorCameraTrack, sampleDirectorEasingCurve, setDirectorAnimationDuration, updateDirectorCameraKeyframe, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
 import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN, getAvailableDirectorPathNodeParents, interpolateDirectorMotionPathSamples, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, sampleDirectorMotionPath, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
@@ -754,7 +755,7 @@ export function CanvasDirectorShell({
         setSelectedKeyframeTime((current) => current !== null && Math.abs(current - time) < 0.0001 ? null : current);
     };
 
-    const updateSelectedKeyframe = (patch: Partial<Pick<DirectorCameraKeyframe, "time" | "easing" | "fov">>) => {
+    const updateSelectedKeyframe = (patch: Partial<Pick<DirectorCameraKeyframe, "time" | "easing" | "fov" | "bezier">>) => {
         if (selectedKeyframeTime === null) return;
         setPlaying(false);
         const nextTime = patch.time === undefined
@@ -1223,10 +1224,48 @@ export function CanvasDirectorShell({
                                                     { value: "smooth", label: t("canvas.director.easings.smooth") },
                                                     { value: "custom", label: t("canvas.director.easings.custom") },
                                                 ]}
-                                                onChange={(easing: DirectorCameraKeyframe["easing"]) => updateSelectedKeyframe({ easing })}
+                                                onChange={(easing: DirectorCameraKeyframe["easing"]) => updateSelectedKeyframe(
+                                                    easing === "custom"
+                                                        ? { easing, bezier: selectedKeyframe.bezier ?? DIRECTOR_DEFAULT_CUSTOM_EASING }
+                                                        : { easing },
+                                                )}
                                             />
                                         </div>
                                     </div>
+                                    {selectedKeyframe.easing === "custom" ? (
+                                        <div className="mt-2 rounded-lg border p-2" style={{ borderColor: canvasTheme.node.stroke }}>
+                                            <div className="mb-2 flex items-center justify-between gap-2">
+                                                <span className="text-[10px] opacity-45">{t("canvas.director.customEasing")}</span>
+                                                <span className="text-[10px] tabular-nums opacity-30">P1 / P2</span>
+                                            </div>
+                                            <EasingCurvePreview easing={selectedKeyframe.easing} bezier={selectedKeyframe.bezier} />
+                                            <div className="mt-2 grid grid-cols-2 gap-1.5">
+                                                {(["x1", "y1", "x2", "y2"] as const).map((key) => (
+                                                    <label key={key} className="flex items-center gap-1.5">
+                                                        <span className="w-4 text-[10px] uppercase opacity-35">{key}</span>
+                                                        <InputNumber
+                                                            size="small"
+                                                            className="min-w-0 flex-1"
+                                                            min={0}
+                                                            max={1}
+                                                            step={0.01}
+                                                            value={(selectedKeyframe.bezier ?? DIRECTOR_DEFAULT_CUSTOM_EASING)[key]}
+                                                            onChange={(value) => {
+                                                                if (value === null) return;
+                                                                updateSelectedKeyframe({
+                                                                    bezier: {
+                                                                        ...(selectedKeyframe.bezier ?? DIRECTOR_DEFAULT_CUSTOM_EASING),
+                                                                        [key]: value,
+                                                                    },
+                                                                });
+                                                            }}
+                                                        />
+                                                    </label>
+                                                ))}
+                                            </div>
+                                            <div className="mt-2 text-[10px] leading-4 opacity-35">{t("canvas.director.customEasingHint")}</div>
+                                        </div>
+                                    ) : null}
                                 </div>
                             ) : null}
                         </div>
@@ -1579,6 +1618,18 @@ export function CanvasDirectorShell({
                 </div>
             </div>
         </Modal>
+    );
+}
+
+function EasingCurvePreview({ easing, bezier }: { easing: DirectorCameraKeyframe["easing"]; bezier?: DirectorCubicBezier }) {
+    const points = sampleDirectorEasingCurve(easing, bezier, 32);
+    const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x * 100} ${48 - point.y * 48}`).join(" ");
+    return (
+        <svg viewBox="0 0 100 48" className="h-14 w-full overflow-visible text-current opacity-70" aria-hidden="true">
+            <path d="M 0 48 L 100 0" fill="none" stroke="currentColor" strokeWidth="0.7" strokeDasharray="2 3" opacity="0.22" />
+            <path d="M 0 0 L 0 48 L 100 48" fill="none" stroke="currentColor" strokeWidth="0.7" opacity="0.18" />
+            <path d={path} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
     );
 }
 

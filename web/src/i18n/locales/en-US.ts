@@ -501,6 +501,8 @@ export default {
             keyframeEmpty: "Move the camera, then add a keyframe at the playhead.",
             keyframeUnavailable: "The camera is not ready, so the keyframe could not be captured.",
             easings: { linear: "Linear", easeIn: "Ease in", easeOut: "Ease out", easeInOut: "Ease in-out", smooth: "Smooth", custom: "Custom" },
+            customEasing: "Custom speed curve",
+            customEasingHint: "Use control points from 0–1. A steeper curve changes the camera speed faster in this segment.",
             unsupportedVersion: "This project was created by a newer version ({{version}}). Saving and capture are disabled to avoid overwriting its data. Reset the scene only if you no longer need the original project.",
             backgrounds: { studio: "Studio", night: "Night", sunset: "Sunset" },
             position: "Position",

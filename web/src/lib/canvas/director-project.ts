@@ -85,6 +85,13 @@ export type DirectorSceneNode = {
 
 export type DirectorEasing = "linear" | "easeIn" | "easeOut" | "easeInOut" | "smooth" | "custom";
 
+export type DirectorCubicBezier = {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+};
+
 export type DirectorCameraKeyframe = {
     time: number;
     position: DirectorVector3;
@@ -92,6 +99,7 @@ export type DirectorCameraKeyframe = {
     lookAt?: DirectorVector3;
     fov?: number;
     easing: DirectorEasing;
+    bezier?: DirectorCubicBezier;
 };
 
 export type DirectorCameraTrack = {
@@ -361,8 +369,22 @@ function normalizeCameraKeyframe(value: unknown, index: number, duration: number
         ...(source.lookAt ? { lookAt: normalizeVector(source.lookAt, { x: 12, y: 8, z: 12 }, { x: 0, y: 0, z: 0 }) } : {}),
         ...(source.fov !== undefined ? { fov: clampNumber(source.fov, DIRECTOR_MIN_FOV, DIRECTOR_MAX_FOV, DIRECTOR_DEFAULT_FOV) } : {}),
         easing: easings.has(source.easing as DirectorEasing) ? (source.easing as DirectorEasing) : "linear",
+        ...normalizeOptionalBezier(source.bezier),
         order: index,
     }];
+}
+
+function normalizeOptionalBezier(value: unknown): { bezier?: DirectorCubicBezier } {
+    if (!value || typeof value !== "object") return {};
+    const source = value as Partial<DirectorCubicBezier>;
+    return {
+        bezier: {
+            x1: clampNumber(source.x1, 0, 1, 0.42),
+            y1: clampNumber(source.y1, 0, 1, 0),
+            x2: clampNumber(source.x2, 0, 1, 0.58),
+            y2: clampNumber(source.y2, 0, 1, 1),
+        },
+    };
 }
 
 function normalizeMotionPath(value: unknown, index: number): DirectorMotionPath | null {

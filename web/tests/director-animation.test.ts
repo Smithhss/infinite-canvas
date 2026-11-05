@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 
 import {
+    getDirectorEasingProgress,
     getDirectorCameraTrack,
     removeDirectorCameraKeyframe,
     sampleDirectorCameraTrack,
+    sampleDirectorEasingCurve,
     setDirectorAnimationDuration,
     updateDirectorCameraKeyframe,
     upsertDirectorCameraKeyframe,
@@ -64,4 +66,24 @@ test("retimes and changes the easing of an existing keyframe", () => {
 
     expect(track?.keyframes).toHaveLength(1);
     expect(track?.keyframes[0]).toMatchObject({ time: 7, easing: "easeOut", position: { x: 2 } });
+});
+
+test("uses custom cubic-bezier easing for camera interpolation", () => {
+    let project = upsertDirectorCameraKeyframe(createDirectorProject(), keyframe(0, 0));
+    project = upsertDirectorCameraKeyframe(project, {
+        ...keyframe(10, 10),
+        easing: "custom",
+        bezier: { x1: 0.9, y1: 0, x2: 1, y2: 0.1 },
+    });
+
+    const half = getDirectorEasingProgress(0.5, "custom", { x1: 0.9, y1: 0, x2: 1, y2: 0.1 });
+    const sample = sampleDirectorCameraTrack(getDirectorCameraTrack(project), 5);
+    const curve = sampleDirectorEasingCurve("custom", { x1: 0.9, y1: 0, x2: 1, y2: 0.1 }, 16);
+
+    expect(half).toBeLessThan(0.5);
+    expect(sample?.position.x).toBeLessThan(5);
+    expect(curve).toHaveLength(17);
+    expect(curve[0]).toEqual({ x: 0, y: 0 });
+    expect(curve[curve.length - 1]).toEqual({ x: 1, y: 1 });
+    expect(curve.every((point) => point.y >= 0 && point.y <= 1)).toBe(true);
 });

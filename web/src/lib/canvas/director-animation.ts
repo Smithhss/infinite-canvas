@@ -4,6 +4,7 @@ import {
     DIRECTOR_MIN_ANIMATION_DURATION,
     type DirectorCameraKeyframe,
     type DirectorCameraTrack,
+    type DirectorCubicBezier,
     type DirectorEasing,
     type DirectorProjectState,
     type DirectorQuaternion,
@@ -11,6 +12,7 @@ import {
 } from "@/lib/canvas/director-project";
 
 export const DIRECTOR_MAIN_CAMERA_TRACK_ID = "camera-track-main";
+export const DIRECTOR_DEFAULT_CUSTOM_EASING: DirectorCubicBezier = { x1: 0.42, y1: 0, x2: 0.58, y2: 1 };
 
 export function getDirectorCameraTrack(project: DirectorProjectState): DirectorCameraTrack | null {
     return project.animation.cameraTracks.find((track) => track.id === project.animation.activeCameraTrackId)
@@ -27,6 +29,7 @@ export function upsertDirectorCameraKeyframe(project: DirectorProjectState, keyf
         ...(keyframe.lookAt ? { lookAt: cloneVector(keyframe.lookAt) } : {}),
         ...(keyframe.quaternion ? { quaternion: normalizeQuaternion(keyframe.quaternion) } : {}),
         ...(keyframe.fov !== undefined ? { fov: clamp(keyframe.fov, 15, 90, 50) } : {}),
+        ...(keyframe.bezier ? { bezier: normalizeBezier(keyframe.bezier) } : {}),
         easing: normalizeEasing(keyframe.easing),
     };
     const currentTrack = getDirectorCameraTrack(project);
@@ -72,7 +75,7 @@ export function removeDirectorCameraKeyframe(project: DirectorProjectState, time
 export function updateDirectorCameraKeyframe(
     project: DirectorProjectState,
     time: number,
-    patch: Partial<Pick<DirectorCameraKeyframe, "time" | "fov" | "easing">>,
+    patch: Partial<Pick<DirectorCameraKeyframe, "time" | "fov" | "easing" | "bezier">>,
 ): DirectorProjectState {
     const keyframe = getDirectorCameraTrack(project)?.keyframes.find((item) => Math.abs(item.time - time) <= 0.0001);
     if (!keyframe) return project;
@@ -113,7 +116,7 @@ export function sampleDirectorCameraTrack(track: DirectorCameraTrack | null, tim
     const right = keyframes[rightIndex];
     const left = keyframes[rightIndex - 1];
     const progress = (clampedTime - left.time) / Math.max(0.0001, right.time - left.time);
-    const easedProgress = applyEasing(progress, right.easing);
+    const easedProgress = getDirectorEasingProgress(progress, right.easing, right.bezier);
     return {
         ...cloneKeyframe(left),
         time: clampedTime,
@@ -140,6 +143,7 @@ function cloneKeyframe(keyframe: DirectorCameraKeyframe): DirectorCameraKeyframe
         position: cloneVector(keyframe.position),
         ...(keyframe.lookAt ? { lookAt: cloneVector(keyframe.lookAt) } : {}),
         ...(keyframe.quaternion ? { quaternion: { ...keyframe.quaternion } } : {}),
+        ...(keyframe.bezier ? { bezier: { ...keyframe.bezier } } : {}),
     };
 }
 
@@ -172,11 +176,51 @@ function normalizeQuaternion(value: DirectorQuaternion): DirectorQuaternion {
     return { x: value.x / length, y: value.y / length, z: value.z / length, w: value.w / length };
 }
 
-function applyEasing(progress: number, easing: DirectorEasing) {
-    if (easing === "easeIn") return progress * progress;
-    if (easing === "easeOut") return 1 - (1 - progress) * (1 - progress);
-    if (easing === "easeInOut" || easing === "smooth") return progress * progress * (3 - 2 * progress);
-    return progress;
+export function getDirectorEasingProgress(progress: number, easing: DirectorEasing, bezier?: DirectorCubicBezier): number {
+    const value = clamp(progress, 0, 1, 0);
+    if (value <= 0) return 0;
+    if (value >= 1) return 1;
+    if (easing === "easeIn") return value * value;
+    if (easing === "easeOut") return 1 - (1 - value) * (1 - value);
+    if (easing === "easeInOut" || easing === "smooth") return value * value * (3 - 2 * value);
+    if (easing === "custom") return sampleBezierProgress(value, normalizeBezier(bezier));
+    return value;
+}
+
+export function sampleDirectorEasingCurve(easing: DirectorEasing, bezier?: DirectorCubicBezier, steps = 24) {
+    const count = Math.max(2, Math.min(64, Math.round(steps)));
+    return Array.from({ length: count + 1 }, (_, index) => {
+        const x = index / count;
+        return { x, y: getDirectorEasingProgress(x, easing, bezier) };
+    });
+}
+
+function sampleBezierProgress(progress: number, bezier: DirectorCubicBezier) {
+    let lower = 0;
+    let upper = 1;
+    for (let index = 0; index < 20; index += 1) {
+        const time = (lower + upper) / 2;
+        if (cubicBezierCoordinate(time, bezier.x1, bezier.x2) < progress) {
+            lower = time;
+        } else {
+            upper = time;
+        }
+    }
+    return clamp(cubicBezierCoordinate((lower + upper) / 2, bezier.y1, bezier.y2), 0, 1, 0);
+}
+
+function cubicBezierCoordinate(time: number, first: number, second: number) {
+    const inverse = 1 - time;
+    return 3 * inverse * inverse * time * first + 3 * inverse * time * time * second + time * time * time;
+}
+
+function normalizeBezier(value?: DirectorCubicBezier): DirectorCubicBezier {
+    return {
+        x1: clamp(value?.x1, 0, 1, DIRECTOR_DEFAULT_CUSTOM_EASING.x1),
+        y1: clamp(value?.y1, 0, 1, DIRECTOR_DEFAULT_CUSTOM_EASING.y1),
+        x2: clamp(value?.x2, 0, 1, DIRECTOR_DEFAULT_CUSTOM_EASING.x2),
+        y2: clamp(value?.y2, 0, 1, DIRECTOR_DEFAULT_CUSTOM_EASING.y2),
+    };
 }
 
 function normalizeEasing(value: unknown): DirectorEasing {

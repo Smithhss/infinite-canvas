@@ -501,6 +501,8 @@ export default {
             keyframeEmpty: "移动相机后，在播放头处添加关键帧。",
             keyframeUnavailable: "相机尚未就绪，无法记录关键帧。",
             easings: { linear: "线性", easeIn: "缓入", easeOut: "缓出", easeInOut: "缓入缓出", smooth: "平滑", custom: "自定义" },
+            customEasing: "自定义速度曲线",
+            customEasingHint: "控制点范围为 0–1；曲线越陡，该段相机速度变化越快。",
             unsupportedVersion: "该项目由更高版本（{{version}}）创建。为避免覆盖原数据，已禁用保存和捕获；只有确认不再需要原项目时才重置场景。",
             backgrounds: { studio: "影棚", night: "夜景", sunset: "日落" },
             position: "位置",

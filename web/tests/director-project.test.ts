@@ -175,6 +175,22 @@ test("keeps camera targets only while the referenced scene item exists", () => {
     expect(missing.camera.followTargetId).toBeUndefined();
 });
 
+test("keeps a camera motion path only while the path exists", () => {
+    const project = normalizeDirectorProject({
+        version: DIRECTOR_PROJECT_VERSION,
+        camera: { motionPathId: "path-a" },
+        animation: { motionPaths: [{ id: "path-a", nodes: [] }] },
+    });
+    expect(project.camera.motionPathId).toBe("path-a");
+
+    const missing = normalizeDirectorProject({
+        version: DIRECTOR_PROJECT_VERSION,
+        camera: { motionPathId: "path-missing" },
+        animation: { motionPaths: [{ id: "path-a", nodes: [] }] },
+    });
+    expect(missing.camera.motionPathId).toBeUndefined();
+});
+
 test("normalizes a local panorama environment and rejects remote sources", () => {
     const project = normalizeDirectorProject({
         environment: {

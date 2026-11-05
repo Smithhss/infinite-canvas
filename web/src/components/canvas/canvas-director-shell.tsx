@@ -36,7 +36,7 @@ import {
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
 import { getDirectorCameraTrack, removeDirectorCameraKeyframe, sampleDirectorCameraTrack, setDirectorAnimationDuration, updateDirectorCameraKeyframe, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
-import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN, getAvailableDirectorPathNodeParents, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, sampleDirectorMotionPath, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
+import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN, getAvailableDirectorPathNodeParents, interpolateDirectorMotionPathSamples, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, sampleDirectorMotionPath, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -47,6 +47,7 @@ type DirectorSceneRuntime = {
     capture: () => string | null;
     captureCameraPose: () => { position: DirectorVector3; target: DirectorVector3; fov: number } | null;
     previewCamera: (keyframe: DirectorCameraKeyframe) => void;
+    previewCameraPosition: (position: DirectorVector3) => void;
     sync: (project: DirectorProjectState, selectedObjectId: string | null, selectedMotionPathId: string | null) => void;
     dispose: () => void;
 };
@@ -344,6 +345,10 @@ export function CanvasDirectorShell({
                     camera.updateProjectionMatrix();
                     controls.update();
                 };
+                const previewCameraPosition = (position: DirectorVector3) => {
+                    camera.position.set(position.x, position.y, position.z);
+                    controls.update();
+                };
                 const contextLost = (event: Event) => {
                     event.preventDefault();
                     setSceneError(t("canvas.director.webglLost"));
@@ -468,6 +473,7 @@ export function CanvasDirectorShell({
                     capture,
                     captureCameraPose,
                     previewCamera,
+                    previewCameraPosition,
                     sync,
                     dispose: () => {
                         window.cancelAnimationFrame(frame);
@@ -518,9 +524,18 @@ export function CanvasDirectorShell({
         () => selectedKeyframeTime === null ? null : activeCameraTrack?.keyframes.find((keyframe) => Math.abs(keyframe.time - selectedKeyframeTime) < 0.0001) || null,
         [activeCameraTrack, selectedKeyframeTime],
     );
+    const cameraMotionPath = useMemo(
+        () => project.camera.motionPathId ? project.animation.motionPaths.find((path) => path.id === project.camera.motionPathId) || null : null,
+        [project.animation.motionPaths, project.camera.motionPathId],
+    );
+    const cameraMotionPathSamples = useMemo(
+        () => cameraMotionPath ? sampleDirectorMotionPath(cameraMotionPath) : [],
+        [cameraMotionPath],
+    );
+    const hasCameraMotionPathPreview = cameraMotionPathSamples.length >= 2;
 
     useEffect(() => {
-        if (!open || !playing || !activeCameraTrack?.keyframes.length) return;
+        if (!open || !playing || (!hasCameraMotionPathPreview && !activeCameraTrack?.keyframes.length)) return;
         const duration = project.animation.duration;
         const startedAt = performance.now() - playheadRef.current * 1000;
         let frame = 0;
@@ -531,8 +546,13 @@ export function CanvasDirectorShell({
                 lastUiUpdate = now;
                 setPlayhead(time);
             }
-            const sample = sampleDirectorCameraTrack(activeCameraTrack, time);
-            if (sample) runtimeRef.current?.previewCamera(sample);
+            if (hasCameraMotionPathPreview) {
+                const position = interpolateDirectorMotionPathSamples(cameraMotionPathSamples, time / duration);
+                if (position) runtimeRef.current?.previewCameraPosition(position);
+            } else {
+                const sample = sampleDirectorCameraTrack(activeCameraTrack, time);
+                if (sample) runtimeRef.current?.previewCamera(sample);
+            }
             if (time >= duration) {
                 setPlaying(false);
                 return;
@@ -541,7 +561,7 @@ export function CanvasDirectorShell({
         };
         frame = window.requestAnimationFrame(tick);
         return () => window.cancelAnimationFrame(frame);
-    }, [activeCameraTrack, open, playing, project.animation.duration]);
+    }, [activeCameraTrack, cameraMotionPathSamples, hasCameraMotionPathPreview, open, playing, project.animation.duration]);
 
     const selectedObject = useMemo(() => project.objects.find((item) => item.id === selectedObjectId) || null, [project.objects, selectedObjectId]);
     const selectedSceneNode = useMemo(() => project.sceneNodes.find((item) => item.id === selectedSceneNodeId) || null, [project.sceneNodes, selectedSceneNodeId]);
@@ -665,6 +685,7 @@ export function CanvasDirectorShell({
 
     const removeSelectedMotionPath = () => {
         if (!selectedMotionPath) return;
+        setPlaying(false);
         setProject((current) => removeDirectorMotionPath(current, selectedMotionPath.id));
         setSelectedMotionPathId(null);
         setSelectedPathNodeId(null);
@@ -679,10 +700,25 @@ export function CanvasDirectorShell({
         });
     };
 
+    const setCameraMotionPath = (value: string | undefined) => {
+        setProject((current) => {
+            const camera = { ...current.camera };
+            delete camera.motionPathId;
+            if (value) camera.motionPathId = value;
+            return { ...current, camera };
+        });
+        setPlaying(false);
+    };
+
     const previewCameraTime = (time: number) => {
         setPlaying(false);
         const nextTime = Math.min(project.animation.duration, Math.max(0, time));
         setPlayhead(nextTime);
+        if (hasCameraMotionPathPreview) {
+            const position = interpolateDirectorMotionPathSamples(cameraMotionPathSamples, nextTime / project.animation.duration);
+            if (position) runtimeRef.current?.previewCameraPosition(position);
+            return;
+        }
         const sample = sampleDirectorCameraTrack(activeCameraTrack, nextTime);
         if (sample) runtimeRef.current?.previewCamera(sample);
     };
@@ -865,6 +901,8 @@ export function CanvasDirectorShell({
     };
 
     const resetProject = () => {
+        setPlaying(false);
+        setPlayhead(0);
         setProject(createDirectorProject());
         setUnsupportedProjectVersion(null);
         setSelectedObjectId(null);
@@ -1051,6 +1089,24 @@ export function CanvasDirectorShell({
                                 onChange={(value: string | undefined) => setCameraTarget("followTargetId", value)}
                             />
                         </div>
+                        <div>
+                            <div className="mb-1 text-[11px] opacity-45">{t("canvas.director.cameraMotionPath")}</div>
+                            <Select
+                                className="w-full"
+                                allowClear
+                                placeholder={t("canvas.director.cameraMotionPathNone")}
+                                value={project.camera.motionPathId}
+                                options={project.animation.motionPaths.map((path) => ({ value: path.id, label: path.name }))}
+                                onChange={(value: string | undefined) => setCameraMotionPath(value)}
+                            />
+                            {cameraMotionPath ? (
+                                <div className="mt-1 text-[10px] leading-4 opacity-40">
+                                    {hasCameraMotionPathPreview
+                                        ? t("canvas.director.cameraMotionPathHint")
+                                        : t("canvas.director.cameraMotionPathNeedsWaypoints")}
+                                </div>
+                            ) : null}
+                        </div>
                         <div className="rounded-xl border p-3" style={{ borderColor: canvasTheme.node.stroke }}>
                             <div className="flex items-center justify-between gap-3">
                                 <div className="text-xs font-medium opacity-60">{t("canvas.director.animation")}</div>
@@ -1076,7 +1132,7 @@ export function CanvasDirectorShell({
                                         type="text"
                                         className="!h-7 !px-2"
                                         icon={playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
-                                        disabled={!activeCameraTrack?.keyframes.length}
+                                        disabled={!hasCameraMotionPathPreview && !activeCameraTrack?.keyframes.length}
                                         onClick={() => {
                                             if (playing) {
                                                 setPlaying(false);

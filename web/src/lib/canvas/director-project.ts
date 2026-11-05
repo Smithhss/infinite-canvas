@@ -44,6 +44,7 @@ export type DirectorCamera = {
     quaternion?: DirectorQuaternion;
     lookAtTarget?: string;
     followTargetId?: string;
+    motionPathId?: string;
 };
 
 export type DirectorObjectKind = "box" | "sphere" | "cylinder" | "cone";
@@ -210,6 +211,8 @@ export function normalizeDirectorProject(value: unknown): DirectorProjectState {
     const sceneNodeIds = new Set(sceneNodes.map((node) => node.id));
     const normalizedObjects = objects.map((object) => object.parentId && !sceneNodeIds.has(object.parentId) ? withoutObjectParent(object) : object);
     const targetIds = new Set([...normalizedObjects.map((object) => object.id), ...sceneNodes.map((node) => node.id)]);
+    const animation = normalizeAnimation(source.animation);
+    const motionPathIds = new Set(animation.motionPaths.map((path) => path.id));
 
     return {
         version: DIRECTOR_PROJECT_VERSION,
@@ -221,11 +224,12 @@ export function normalizeDirectorProject(value: unknown): DirectorProjectState {
             ...normalizeOptionalQuaternion(camera.quaternion),
             ...normalizeOptionalTargetField("lookAtTarget", camera.lookAtTarget, targetIds),
             ...normalizeOptionalTargetField("followTargetId", camera.followTargetId, targetIds),
+            ...normalizeOptionalTargetField("motionPathId", camera.motionPathId, motionPathIds),
         },
         objects: normalizedObjects,
         background: backgrounds.has(source.background as DirectorBackground) ? (source.background as DirectorBackground) : fallback.background,
         sceneNodes,
-        animation: normalizeAnimation(source.animation),
+        animation,
         environment: normalizeEnvironment(source.environment, legacy),
     };
 }
@@ -507,12 +511,12 @@ function normalizeOptionalQuaternion(value: unknown) {
     };
 }
 
-function normalizeOptionalIdField<Key extends "lookAtTarget" | "followTargetId">(key: Key, value: unknown): Partial<Record<Key, string>> {
+function normalizeOptionalIdField<Key extends "lookAtTarget" | "followTargetId" | "motionPathId">(key: Key, value: unknown): Partial<Record<Key, string>> {
     const id = normalizeOptionalId(value);
     return id ? { [key]: id } as Partial<Record<Key, string>> : {};
 }
 
-function normalizeOptionalTargetField<Key extends "lookAtTarget" | "followTargetId">(key: Key, value: unknown, targetIds: Set<string>): Partial<Record<Key, string>> {
+function normalizeOptionalTargetField<Key extends "lookAtTarget" | "followTargetId" | "motionPathId">(key: Key, value: unknown, targetIds: Set<string>): Partial<Record<Key, string>> {
     const field = normalizeOptionalIdField(key, value);
     return field[key] && targetIds.has(field[key]) ? field : {};
 }

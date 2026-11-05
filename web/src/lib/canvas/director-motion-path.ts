@@ -93,7 +93,9 @@ export function removeDirectorPathNode(project: DirectorProjectState, pathId: st
 export function removeDirectorMotionPath(project: DirectorProjectState, pathId: string): DirectorProjectState {
     const motionPaths = project.animation.motionPaths.filter((path) => path.id !== pathId);
     if (motionPaths.length === project.animation.motionPaths.length) return project;
-    return { ...project, animation: { ...project.animation, motionPaths } };
+    const camera = { ...project.camera };
+    if (camera.motionPathId === pathId) delete camera.motionPathId;
+    return { ...project, camera, animation: { ...project.animation, motionPaths } };
 }
 
 export function isDirectorPathNodeVisible(node: DirectorPathNode, path: DirectorMotionPath) {
@@ -129,6 +131,22 @@ export function sampleDirectorMotionPath(path: DirectorMotionPath, segmentsPerSp
     }
     samples.push({ ...(closed ? points[0] : points[points.length - 1]) });
     return samples;
+}
+
+export function interpolateDirectorMotionPathSamples(samples: DirectorVector3[], progress: number): DirectorVector3 | null {
+    if (!samples.length) return null;
+    const clamped = Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 0;
+    const exact = clamped * (samples.length - 1);
+    const leftIndex = Math.floor(exact);
+    const rightIndex = Math.min(samples.length - 1, leftIndex + 1);
+    const amount = exact - leftIndex;
+    const left = samples[leftIndex];
+    const right = samples[rightIndex];
+    return {
+        x: left.x + (right.x - left.x) * amount,
+        y: left.y + (right.y - left.y) * amount,
+        z: left.z + (right.z - left.z) * amount,
+    };
 }
 
 function mapMotionPath(project: DirectorProjectState, pathId: string, update: (path: DirectorMotionPath) => DirectorMotionPath) {

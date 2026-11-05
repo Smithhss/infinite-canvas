@@ -6,6 +6,7 @@ import {
     createDirectorMotionPath,
     createDirectorPathNode,
     getAvailableDirectorPathNodeParents,
+    interpolateDirectorMotionPathSamples,
     isDirectorPathNodeVisible,
     removeDirectorMotionPath,
     removeDirectorPathNode,
@@ -199,4 +200,19 @@ test("omits waypoints hidden by an ancestor from sampling", () => {
     const samples = sampleDirectorMotionPath(project.animation.motionPaths[0], 2);
 
     expect(samples).toEqual([{ x: 0, y: 0, z: 0 }]);
+});
+
+test("interpolates camera positions and clears a removed path assignment", () => {
+    const samples = [
+        { x: 0, y: 0, z: 0 },
+        { x: 10, y: 4, z: -2 },
+    ];
+    expect(interpolateDirectorMotionPathSamples(samples, 0.25)).toEqual({ x: 2.5, y: 1, z: -0.5 });
+    expect(interpolateDirectorMotionPathSamples(samples, 2)).toEqual({ x: 10, y: 4, z: -2 });
+    expect(interpolateDirectorMotionPathSamples([], 0.5)).toBeNull();
+
+    const initial = projectWithPath();
+    const pathId = initial.animation.motionPaths[0].id;
+    const assigned = { ...initial, camera: { ...initial.camera, motionPathId: pathId } };
+    expect(removeDirectorMotionPath(assigned, pathId).camera.motionPathId).toBeUndefined();
 });

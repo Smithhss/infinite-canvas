@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Copy, GripVertical, Plus, Trash2 } from "lucide-react";
+import { Copy, GripVertical, History, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { CanvasTheme } from "@/lib/canvas-theme";
-import { filterScriptShots, SCRIPT_V2_COLUMNS, SCRIPT_V2_ROW_COLORS, SCRIPT_V2_SHOT_SIZES } from "@/lib/canvas/script-v2";
+import { filterScriptShots, SCRIPT_V2_COLUMNS, SCRIPT_V2_ROW_COLORS, SCRIPT_V2_SHOT_SIZES, scriptShotPromptStatus } from "@/lib/canvas/script-v2";
 import { cn } from "@/lib/utils";
 import type { CanvasScriptColumnKey, CanvasScriptShot, CanvasScriptV2 } from "@/types/canvas";
 
@@ -15,6 +15,7 @@ type Props = {
     onInsertShot: (shotId: string) => void;
     onDuplicateShot: (shotId: string) => void;
     onMoveShot: (shotId: string, targetShotId: string) => void;
+    onOpenPrompt: (shotId: string) => void;
     onRemoveShot: (shotId: string) => void;
 };
 
@@ -34,7 +35,7 @@ const rowColorDots: Record<string, string> = {
     violet: "#8b5cf6",
 };
 
-export function CanvasScriptTable({ script, visibleColumns, theme, onCommitShot, onInsertShot, onDuplicateShot, onMoveShot, onRemoveShot }: Props) {
+export function CanvasScriptTable({ script, visibleColumns, theme, onCommitShot, onInsertShot, onDuplicateShot, onMoveShot, onOpenPrompt, onRemoveShot }: Props) {
     const { t } = useTranslation();
     const [draggingShotId, setDraggingShotId] = useState<string | null>(null);
     const columns = SCRIPT_V2_COLUMNS.filter((column) => visibleColumns.includes(column.key));
@@ -90,7 +91,7 @@ export function CanvasScriptTable({ script, visibleColumns, theme, onCommitShot,
                                 </button>
                             </div>
                             {columns.map((column) => (
-                                <ScriptTableCell key={column.key} column={column.key} row={row} theme={theme} onCommit={(patch) => onCommitShot(row.id, patch)} />
+                                <ScriptTableCell key={column.key} column={column.key} row={row} script={script} theme={theme} onCommit={(patch) => onCommitShot(row.id, patch)} onOpenPrompt={() => onOpenPrompt(row.id)} />
                             ))}
                             <div className="flex items-center gap-1 px-1.5">
                                 {SCRIPT_V2_ROW_COLORS.map((color) => (
@@ -152,13 +153,17 @@ export function CanvasScriptTable({ script, visibleColumns, theme, onCommitShot,
 function ScriptTableCell({
     column,
     row,
+    script,
     theme,
     onCommit,
+    onOpenPrompt,
 }: {
     column: CanvasScriptColumnKey;
     row: CanvasScriptShot;
+    script: CanvasScriptV2;
     theme: CanvasTheme;
     onCommit: (patch: Partial<Omit<CanvasScriptShot, "id" | "shotNumber">>) => void;
+    onOpenPrompt: () => void;
 }) {
     const { t } = useTranslation();
     const style = { borderColor: theme.toolbar.border, color: theme.node.text };
@@ -226,7 +231,36 @@ function ScriptTableCell({
         );
     }
 
-    const textareaColumns: CanvasScriptColumnKey[] = ["plot", "lighting", "audio", "dialogue", "imagePrompt", "videoPrompt", "imageToVideoPrompt"];
+    if (column === "imagePrompt") {
+        const status = scriptShotPromptStatus(script, row);
+        const statusColor = status === "ready" ? "#22c55e" : status === "stale" ? "#f59e0b" : theme.node.muted;
+        return (
+            <div className="relative min-h-[88px] border-r" style={{ borderColor: theme.toolbar.border }}>
+                <textarea
+                    key={`${row.id}-${row.promptVersion || 0}`}
+                    defaultValue={row.imageGenerationPrompt || ""}
+                    placeholder={t("canvas.storyboard.workbench.fields.imagePrompt")}
+                    className="min-h-[88px] w-full resize-none bg-transparent px-2.5 py-2 pr-10 text-xs leading-5 outline-none placeholder:opacity-45"
+                    style={{ color: theme.node.text }}
+                    onBlur={(event) => onCommit({ imageGenerationPrompt: event.target.value })}
+                />
+                <button
+                    type="button"
+                    className="absolute right-1 top-1 inline-flex h-7 items-center gap-1 rounded-md px-1.5 transition hover:bg-black/5 dark:hover:bg-white/10"
+                    style={{ color: theme.node.muted }}
+                    aria-label={t("canvas.storyboard.workbench.promptEditor.open")}
+                    title={t("canvas.storyboard.workbench.promptEditor.open")}
+                    onClick={onOpenPrompt}
+                >
+                    <span className="size-1.5 rounded-full" style={{ background: statusColor }} />
+                    <History className="size-3" />
+                    {row.promptHistory?.length ? <span className="text-[9px] tabular-nums">{row.promptHistory.length}</span> : null}
+                </button>
+            </div>
+        );
+    }
+
+    const textareaColumns: CanvasScriptColumnKey[] = ["plot", "lighting", "audio", "dialogue", "videoPrompt", "imageToVideoPrompt"];
     const valueByColumn = scriptCellValue(row, column);
     if (textareaColumns.includes(column)) {
         return (

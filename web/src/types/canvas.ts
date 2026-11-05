@@ -62,6 +62,11 @@ export type CanvasScriptShot = {
     lightingAndAtmosphere?: string;
     audioEffects?: string;
     imageGenerationPrompt?: string;
+    promptVersion?: number;
+    promptHistory?: CanvasScriptPromptVersion[];
+    promptSource?: CanvasScriptPromptSource;
+    promptSourceHash?: string;
+    promptUpdatedAt?: number;
     videoMotionPrompt?: string;
     imageToVideoMotionPrompt?: string;
     color?: string;
@@ -72,6 +77,15 @@ export type CanvasScriptViewMode = "table" | "creative" | "asset";
 export type CanvasScriptColumnKey = "shotNumber" | "duration" | "plot" | "characters" | "videoReference" | "shotSize" | "emotion" | "props" | "cameraMovement" | "lighting" | "audio" | "dialogue" | "imagePrompt" | "videoPrompt" | "imageToVideoPrompt";
 
 export type CanvasScriptColumnVisibility = Partial<Record<CanvasScriptColumnKey, boolean>>;
+
+export type CanvasScriptPromptSource = "composed" | "manual" | "restored";
+
+export type CanvasScriptPromptVersion = {
+    version: number;
+    prompt: string;
+    source: CanvasScriptPromptSource;
+    createdAt: number;
+};
 
 export type CanvasScriptFilterOperator = "contains" | "equals" | "greater" | "less";
 

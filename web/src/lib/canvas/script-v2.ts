@@ -3,6 +3,8 @@ import type {
     CanvasScriptColumnVisibility,
     CanvasScriptFilter,
     CanvasScriptFilterOperator,
+    CanvasScriptPromptSource,
+    CanvasScriptPromptVersion,
     CanvasScriptShot,
     CanvasScriptViewMode,
     CanvasScriptV2,
@@ -11,6 +13,8 @@ import type {
 import { normalizeScriptPreset } from "./script-preset";
 
 const DEFAULT_SHOT_DURATION_SECONDS = 4;
+export const SCRIPT_PROMPT_HISTORY_LIMIT = 20;
+export const SCRIPT_PROMPT_MAX_LENGTH = 8000;
 
 export const SCRIPT_V2_COLUMNS: Array<{ key: CanvasScriptColumnKey; labelKey: string; defaultVisible: boolean; width: string }> = [
     { key: "shotNumber", labelKey: "shotNumber", defaultVisible: true, width: "64px" },
@@ -123,6 +127,30 @@ export function normalizeScriptFilters(value: unknown): CanvasScriptFilter[] {
         });
 }
 
+const SCRIPT_PROMPT_SOURCES = new Set<CanvasScriptPromptSource>(["composed", "manual", "restored"]);
+
+function normalizePromptHistory(value: unknown): CanvasScriptPromptVersion[] {
+    if (!Array.isArray(value)) return [];
+    const versions = new Set<number>();
+    return value
+        .flatMap((item) => {
+            if (!item || typeof item !== "object") return [];
+            const candidate = item as Partial<CanvasScriptPromptVersion>;
+            const prompt = typeof candidate.prompt === "string" ? candidate.prompt.trim().slice(0, SCRIPT_PROMPT_MAX_LENGTH) : "";
+            const version = Number.isFinite(candidate.version) ? Math.max(1, Math.trunc(Number(candidate.version))) : 0;
+            if (!prompt || !version || versions.has(version)) return [];
+            versions.add(version);
+            return [{
+                version,
+                prompt,
+                source: SCRIPT_PROMPT_SOURCES.has(candidate.source as CanvasScriptPromptSource) ? candidate.source as CanvasScriptPromptSource : "manual",
+                createdAt: Number.isFinite(candidate.createdAt) ? Math.max(0, Math.trunc(Number(candidate.createdAt))) : 0,
+            }];
+        })
+        .sort((left, right) => right.version - left.version)
+        .slice(0, SCRIPT_PROMPT_HISTORY_LIMIT);
+}
+
 function renumberShots(rows: CanvasScriptShot[]) {
     return rows.map((row, index) => ({ ...row, shotNumber: index + 1 }));
 }
@@ -144,6 +172,11 @@ export function normalizeScriptV2(script?: Partial<CanvasScriptV2> | null): Canv
               lightingAndAtmosphere: row?.lightingAndAtmosphere || "",
               audioEffects: row?.audioEffects || "",
               imageGenerationPrompt: row?.imageGenerationPrompt || "",
+              promptVersion: Number.isFinite(row?.promptVersion) ? Math.max(1, Math.trunc(Number(row.promptVersion))) : undefined,
+              promptHistory: normalizePromptHistory(row?.promptHistory),
+              promptSource: SCRIPT_PROMPT_SOURCES.has(row?.promptSource as CanvasScriptPromptSource) ? row?.promptSource : undefined,
+              promptSourceHash: row?.promptSourceHash || undefined,
+              promptUpdatedAt: Number.isFinite(row?.promptUpdatedAt) ? Math.max(0, Math.trunc(Number(row.promptUpdatedAt))) : undefined,
               videoMotionPrompt: row?.videoMotionPrompt || "",
               imageToVideoMotionPrompt: row?.imageToVideoMotionPrompt || "",
               color: SCRIPT_V2_ROW_COLORS.includes(row?.color as (typeof SCRIPT_V2_ROW_COLORS)[number]) ? row.color : undefined,
@@ -227,6 +260,131 @@ export function removeScriptShot(script: CanvasScriptV2, shotId: string): Canvas
 
 export function scriptDurationSeconds(script: CanvasScriptV2) {
     return script.rows.reduce((total, row) => total + (Number.isFinite(row.durationSeconds) ? row.durationSeconds : 0), 0);
+}
+
+function hashScriptPromptSource(value: string) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+}
+
+export function scriptShotPromptSourceHash(script: CanvasScriptV2, shot: CanvasScriptShot) {
+    return hashScriptPromptSource(JSON.stringify({
+        theme: script.theme || "",
+        aspectRatio: script.aspectRatio || "",
+        styleDescription: script.styleDescription || "",
+        shotSize: shot.shotSize || "",
+        plotDescription: shot.plotDescription || "",
+        characters: shot.characters || [],
+        propTags: shot.propTags || [],
+        cameraMovement: shot.cameraMovement || "",
+        lightingAndAtmosphere: shot.lightingAndAtmosphere || "",
+    }));
+}
+
+export function buildScriptShotPrompt(script: CanvasScriptV2, shot: CanvasScriptShot) {
+    const segments = [
+        script.theme ? `主题：${script.theme}` : "",
+        script.styleDescription ? `视觉风格：${script.styleDescription}` : "",
+        shot.shotSize ? `景别：${shot.shotSize}` : "",
+        shot.plotDescription ? `画面：${shot.plotDescription}` : "",
+        shot.characters?.length ? `角色：${shot.characters.join("、")}` : "",
+        shot.propTags?.length ? `道具：${shot.propTags.join("、")}` : "",
+        shot.cameraMovement ? `运镜：${shot.cameraMovement}` : "",
+        shot.lightingAndAtmosphere ? `光影氛围：${shot.lightingAndAtmosphere}` : "",
+        script.aspectRatio ? `画幅：${script.aspectRatio}` : "",
+    ];
+    return segments.filter(Boolean).join("\n").trim();
+}
+
+export function validateScriptPrompt(value: string) {
+    const prompt = value.trim();
+    if (!prompt) return ["empty"] as const;
+    if (prompt.length > SCRIPT_PROMPT_MAX_LENGTH) return ["tooLong"] as const;
+    return [] as const;
+}
+
+export function scriptShotPromptStatus(script: CanvasScriptV2, shot: CanvasScriptShot): "draft" | "ready" | "stale" {
+    if (!shot.imageGenerationPrompt?.trim()) return "draft";
+    if (!shot.promptSourceHash) return "ready";
+    return shot.promptSourceHash === scriptShotPromptSourceHash(script, shot) ? "ready" : "stale";
+}
+
+function withScriptShotPrompt(
+    script: CanvasScriptV2,
+    shot: CanvasScriptShot,
+    prompt: string,
+    source: CanvasScriptPromptSource,
+    now: number,
+) {
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedPrompt) return shot;
+    const nextHash = scriptShotPromptSourceHash(script, shot);
+    const currentPrompt = (shot.imageGenerationPrompt || "").trim();
+    if (normalizedPrompt === currentPrompt) {
+        return {
+            ...shot,
+            promptSource: shot.promptSource || source,
+            promptSourceHash: nextHash,
+            promptUpdatedAt: now,
+        };
+    }
+
+    const history = normalizePromptHistory(shot.promptHistory);
+    const currentVersion = Math.max(shot.promptVersion || 0, history[0]?.version || 0);
+    const archived = currentPrompt
+        ? [{
+              version: Math.max(1, currentVersion),
+              prompt: currentPrompt,
+              source: shot.promptSource || "manual",
+              createdAt: shot.promptUpdatedAt || now,
+          }]
+        : [];
+    const nextVersion = Math.max(currentVersion, archived[0]?.version || 0) + 1;
+    return {
+        ...shot,
+        imageGenerationPrompt: normalizedPrompt,
+        promptVersion: nextVersion,
+        promptHistory: normalizePromptHistory([...archived, ...history]).slice(0, SCRIPT_PROMPT_HISTORY_LIMIT),
+        promptSource: source,
+        promptSourceHash: nextHash,
+        promptUpdatedAt: now,
+    };
+}
+
+export function updateScriptPrompt(
+    script: CanvasScriptV2,
+    shotId: string,
+    prompt: string,
+    source: CanvasScriptPromptSource = "manual",
+    now = Date.now(),
+) {
+    return {
+        ...script,
+        rows: script.rows.map((row) => (row.id === shotId ? withScriptShotPrompt(script, row, prompt, source, now) : row)),
+    };
+}
+
+export function composeAllScriptPrompts(script: CanvasScriptV2, now = Date.now()) {
+    let changed = false;
+    const rows = script.rows.map((row) => {
+        const prompt = buildScriptShotPrompt(script, row);
+        if (!prompt) return row;
+        const next = withScriptShotPrompt(script, row, prompt, "composed", now);
+        if (next !== row) changed = true;
+        return next;
+    });
+    return changed ? { ...script, rows } : script;
+}
+
+export function restoreScriptPrompt(script: CanvasScriptV2, shotId: string, version: number, now = Date.now()) {
+    const shot = script.rows.find((row) => row.id === shotId);
+    const target = normalizePromptHistory(shot?.promptHistory).find((entry) => entry.version === version);
+    if (!shot || !target) return script;
+    return updateScriptPrompt(script, shotId, target.prompt, "restored", now);
 }
 
 function scriptShotColumnText(row: CanvasScriptShot, column: CanvasScriptColumnKey) {

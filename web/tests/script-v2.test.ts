@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 
 import {
     addScriptShot,
+    buildScriptShotPrompt,
+    composeAllScriptPrompts,
     createEmptyScriptV2,
     duplicateScriptShot,
     filterScriptShots,
@@ -11,13 +13,18 @@ import {
     normalizeScriptFilters,
     normalizeScriptV2,
     removeScriptShot,
+    restoreScriptPrompt,
+    SCRIPT_PROMPT_MAX_LENGTH,
     SCRIPT_V2_SHOT_SIZES,
+    scriptShotPromptStatus,
     scriptDurationSeconds,
     updateScriptColumnVisibility,
     updateScriptFilters,
     updateScriptMeta,
+    updateScriptPrompt,
     updateScriptShot,
     updateScriptViewMode,
+    validateScriptPrompt,
 } from "../src/lib/canvas/script-v2";
 
 test("normalizes missing and partially persisted script data", () => {
@@ -148,4 +155,45 @@ test("exposes the twelve LibTV shot-size presets with stable values", () => {
         "全身景",
     ]);
     expect(new Set(SCRIPT_V2_SHOT_SIZES.map((shotSize) => shotSize.labelKey)).size).toBe(12);
+});
+
+test("composes local prompts and keeps restorable shot history", () => {
+    let script = addScriptShot(createEmptyScriptV2());
+    const shotId = script.rows[0].id;
+    script = updateScriptMeta(script, { theme: "雨夜追踪", styleDescription: "冷色电影感", aspectRatio: "16:9" });
+    script = updateScriptShot(script, shotId, {
+        shotSize: "中近景",
+        plotDescription: "林默在雨夜车站回头",
+        characters: ["林默"],
+        propTags: ["旧伞"],
+        cameraMovement: "缓慢推近",
+        lightingAndAtmosphere: "冷蓝逆光",
+    });
+    expect(buildScriptShotPrompt(script, script.rows[0])).toContain("景别：中近景");
+    expect(buildScriptShotPrompt(script, script.rows[0])).toContain("角色：林默");
+
+    script = composeAllScriptPrompts(script, 1000);
+    let shot = script.rows[0];
+    const composedPrompt = shot.imageGenerationPrompt || "";
+    expect(composedPrompt).toContain("画面：林默在雨夜车站回头");
+    expect(shot.promptVersion).toBe(1);
+    expect(shot.promptSource).toBe("composed");
+    expect(scriptShotPromptStatus(script, shot)).toBe("ready");
+
+    script = updateScriptShot(script, shotId, { plotDescription: "林默跑向站台" });
+    expect(scriptShotPromptStatus(script, script.rows[0])).toBe("stale");
+    script = updateScriptPrompt(script, shotId, "手动修正的最终提示词", "manual", 2000);
+    shot = script.rows[0];
+    expect(shot.promptVersion).toBe(2);
+    expect(shot.promptHistory?.[0]).toMatchObject({ version: 1, prompt: composedPrompt, source: "composed" });
+    expect(scriptShotPromptStatus(script, shot)).toBe("ready");
+
+    script = restoreScriptPrompt(script, shotId, 1, 3000);
+    shot = script.rows[0];
+    expect(shot.imageGenerationPrompt).toBe(composedPrompt);
+    expect(shot.promptVersion).toBe(3);
+    expect(shot.promptSource).toBe("restored");
+    expect(shot.promptHistory?.map((entry) => entry.version)).toEqual([2, 1]);
+    expect(validateScriptPrompt("   ")).toEqual(["empty"]);
+    expect(validateScriptPrompt("x".repeat(SCRIPT_PROMPT_MAX_LENGTH + 1))).toEqual(["tooLong"]);
 });

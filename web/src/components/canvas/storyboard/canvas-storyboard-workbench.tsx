@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { App } from "antd";
 import { ArrowLeft, ArrowRight, Boxes, Check, ChevronDown, Columns3, Download, FileText, Image as ImageIcon, ListChecks, ListFilter, LocateFixed, Plus, Redo2, ScrollText, Search, Sparkles, Table2, Trash2, Undo2, Video, WandSparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { CanvasScriptAssetSummary } from "@/components/canvas/script/canvas-script-asset-summary";
 import { CanvasScriptFilterPanel } from "@/components/canvas/script/canvas-script-filter-panel";
 import { CanvasScriptPresetModal } from "@/components/canvas/script/canvas-script-preset-modal";
+import { CanvasScriptPromptEditor } from "@/components/canvas/script/canvas-script-prompt-editor";
 import { CanvasScriptTable } from "@/components/canvas/script/canvas-script-table";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { buildStoryboardProjection, type StoryboardItem } from "@/lib/canvas/storyboard-projection";
@@ -12,6 +14,7 @@ import { filterStoryboardLibraryItems, groupStoryboardLibraryItems, STORYBOARD_L
 import { applyScriptPresetToScript } from "@/lib/canvas/script-preset";
 import {
     addScriptShot,
+    composeAllScriptPrompts,
     duplicateScriptShot,
     filterScriptShots,
     insertScriptShot,
@@ -19,12 +22,14 @@ import {
     normalizeScriptColumnVisibility,
     normalizeScriptV2,
     removeScriptShot,
+    restoreScriptPrompt,
     SCRIPT_V2_COLUMNS,
     SCRIPT_V2_SHOT_SIZES,
     scriptDurationSeconds,
     updateScriptColumnVisibility,
     updateScriptFilters,
     updateScriptMeta,
+    updateScriptPrompt,
     updateScriptShot,
     updateScriptViewMode,
 } from "@/lib/canvas/script-v2";
@@ -509,10 +514,12 @@ function ScriptDetail({
     onUpdateScript: (nodeId: string, script: CanvasScriptV2) => void;
 }) {
     const { t } = useTranslation();
+    const { modal } = App.useApp();
     const [draft, setDraft] = useState(() => normalizeScriptV2(item.script));
     const [presetOpen, setPresetOpen] = useState(false);
     const [fieldsOpen, setFieldsOpen] = useState(false);
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const [promptEditorShotId, setPromptEditorShotId] = useState<string | null>(null);
     const [, setHistoryRevision] = useState(0);
     const draftRef = useRef(draft);
     const historyRef = useRef<{ past: CanvasScriptV2[]; future: CanvasScriptV2[] }>({ past: [], future: [] });
@@ -520,6 +527,7 @@ function ScriptDetail({
     const visibleColumns = SCRIPT_V2_COLUMNS.filter((column) => columnVisibility[column.key]).map((column) => column.key);
     const visibleRows = filterScriptShots(draft);
     const activeFilterCount = (draft.filters || []).filter((filter) => filter.value.trim()).length;
+    const promptEditorShot = promptEditorShotId ? draft.rows.find((row) => row.id === promptEditorShotId) : undefined;
 
     useEffect(() => {
         draftRef.current = draft;
@@ -539,7 +547,28 @@ function ScriptDetail({
         onUpdateScript(item.nodeId, next);
     };
     const commitShot = (shotId: string, patch: Parameters<typeof updateScriptShot>[2]) => {
+        if (Object.prototype.hasOwnProperty.call(patch, "imageGenerationPrompt")) {
+            commit(updateScriptPrompt(draftRef.current, shotId, String(patch.imageGenerationPrompt || ""), "manual"));
+            return;
+        }
         commit(updateScriptShot(draftRef.current, shotId, patch));
+    };
+    const composeAllPrompts = () => {
+        const current = draftRef.current;
+        const next = composeAllScriptPrompts(current);
+        if (next === current) return;
+        const run = () => commit(next);
+        if (!current.rows.some((row) => row.imageGenerationPrompt?.trim())) {
+            run();
+            return;
+        }
+        modal.confirm({
+            title: t("canvas.storyboard.workbench.promptEditor.composeAllConfirmTitle"),
+            content: t("canvas.storyboard.workbench.promptEditor.composeAllConfirmDescription"),
+            okText: t("canvas.storyboard.workbench.promptEditor.composeAllConfirmAction"),
+            cancelText: t("common.cancel"),
+            onOk: run,
+        });
     };
     const setViewMode = (viewMode: CanvasScriptViewMode) => {
         commit(updateScriptViewMode(draft, viewMode));
@@ -738,7 +767,7 @@ function ScriptDetail({
                         </>
                     ) : (
                         <>
-                    <div className="mt-5 flex items-center gap-3">
+                    <div className="mt-5 flex flex-wrap items-center gap-3">
                         <h3 className="text-sm font-medium">{t("canvas.storyboard.workbench.shotTable")}</h3>
                         <span className="text-[10px]" style={{ color: theme.node.muted }}>
                             {activeFilterCount
@@ -747,7 +776,17 @@ function ScriptDetail({
                         </span>
                         <button
                             type="button"
-                            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10"
+                            disabled={!draft.rows.length}
+                            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition hover:bg-black/5 disabled:opacity-35 dark:hover:bg-white/10"
+                            style={{ color: theme.node.text }}
+                            onClick={composeAllPrompts}
+                        >
+                            <WandSparkles className="size-3.5" />
+                            {t("canvas.storyboard.workbench.promptEditor.composeAll")}
+                        </button>
+                        <button
+                            type="button"
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10"
                             style={{ color: theme.node.text }}
                             onClick={() => {
                                 const next = addScriptShot(draft);
@@ -772,6 +811,7 @@ function ScriptDetail({
                                 }}
                                 onDuplicateShot={(shotId) => commit(duplicateScriptShot(draftRef.current, shotId))}
                                 onMoveShot={(shotId, targetShotId) => commit(moveScriptShotToTarget(draftRef.current, shotId, targetShotId))}
+                                onOpenPrompt={setPromptEditorShotId}
                                 onRemoveShot={(shotId) => commit(removeScriptShot(draftRef.current, shotId))}
                             />
                         ) : (
@@ -840,7 +880,14 @@ function ScriptDetail({
                                     </div>
                                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                         <ScriptField label={t("canvas.storyboard.workbench.fields.imagePrompt")} theme={theme}>
-                                            <textarea value={row.imageGenerationPrompt || ""} onChange={(event) => setDraft(updateScriptShot(draft, row.id, { imageGenerationPrompt: event.target.value }))} onBlur={() => commit()} rows={3} className="w-full resize-y rounded-lg border px-2.5 py-2 text-xs leading-5 outline-none" style={scriptInputStyle(theme)} />
+                                            <textarea
+                                                key={`${row.id}-${row.promptVersion || 0}`}
+                                                defaultValue={row.imageGenerationPrompt || ""}
+                                                onBlur={(event) => commitShot(row.id, { imageGenerationPrompt: event.target.value })}
+                                                rows={3}
+                                                className="w-full resize-y rounded-lg border px-2.5 py-2 text-xs leading-5 outline-none"
+                                                style={scriptInputStyle(theme)}
+                                            />
                                         </ScriptField>
                                         <ScriptField label={t("canvas.storyboard.workbench.fields.videoPrompt")} theme={theme}>
                                             <textarea value={row.videoMotionPrompt || ""} onChange={(event) => setDraft(updateScriptShot(draft, row.id, { videoMotionPrompt: event.target.value }))} onBlur={() => commit()} rows={3} className="w-full resize-y rounded-lg border px-2.5 py-2 text-xs leading-5 outline-none" style={scriptInputStyle(theme)} />
@@ -871,6 +918,16 @@ function ScriptDetail({
                     )}
                 </div>
             </div>
+            {promptEditorShot ? (
+                <CanvasScriptPromptEditor
+                    script={draft}
+                    shot={promptEditorShot}
+                    theme={theme}
+                    onClose={() => setPromptEditorShotId(null)}
+                    onSave={(prompt) => commitShot(promptEditorShot.id, { imageGenerationPrompt: prompt })}
+                    onRestore={(version) => commit(restoreScriptPrompt(draftRef.current, promptEditorShot.id, version))}
+                />
+            ) : null}
             <CanvasScriptPresetModal
                 open={presetOpen}
                 preset={draft.preset}

@@ -5,3 +5,4 @@ export const AGENT_PLUGIN_INSTALL_COMMAND = ["git clone https://github.com/Smith
 export const AGENT_PLUGIN_REMOVE_COMMAND = "codex plugin remove infinite-canvas";
 export const AGENT_MCP_REMOVE_COMMAND = "codex mcp remove infinite-canvas";
 export const AGENT_CLI_COMMAND = "npx -y @smithhsiiiii/canvas-agent@latest";
+export const AGENT_CLAUDE_MCP_COMMAND = "claude mcp add --scope user --transport stdio infinite-canvas -- npx -y @smithhsiiiii/canvas-agent@latest mcp";

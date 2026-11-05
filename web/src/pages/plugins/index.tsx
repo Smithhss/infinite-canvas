@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Button, Input, Popconfirm, Switch, Tabs } from "antd";
-import { AlertTriangle, ArrowRight, Bot, CheckCircle2, CircleAlert, Code2, Copy, Download, FileTerminal, Image as ImageIcon, LoaderCircle, Puzzle, RefreshCw, ShieldCheck, Sparkles, TerminalSquare, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bot, CheckCircle2, CircleAlert, Code2, Copy, Download, Image as ImageIcon, LoaderCircle, Puzzle, RefreshCw, ShieldCheck, Sparkles, TerminalSquare, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router-dom";
 
@@ -10,12 +10,13 @@ import { useAgentStore } from "@/stores/use-agent-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import { resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
-import { AGENT_CLI_COMMAND, AGENT_PLUGIN_INSTALL_COMMAND } from "@/lib/agent/plugin-commands";
+import { AGENT_CLAUDE_MCP_COMMAND, AGENT_CLI_COMMAND, AGENT_PLUGIN_INSTALL_COMMAND } from "@/lib/agent/plugin-commands";
 import { canvasThemes } from "@/lib/canvas-theme";
 import type { OfficialPluginEntry } from "@/lib/canvas/plugin-registry";
 import type { InstalledPlugin } from "@/stores/canvas/use-plugin-store";
 
 type InstallMode = "plugin" | "cli";
+type AgentTarget = "codex" | "claude-code";
 
 export default function PluginsPage() {
     const enabled = isFeatureEnabled("pluginHub");
@@ -30,6 +31,7 @@ function PluginHubPage() {
     const theme = canvasThemes[colorTheme];
     const catalog = usePluginCatalog({ active: true });
     const [installMode, setInstallMode] = useState<InstallMode>("plugin");
+    const [agentTarget, setAgentTarget] = useState<AgentTarget>("codex");
 
     const connected = useAgentStore((state) => state.connected);
     const enabled = useAgentStore((state) => state.enabled);
@@ -43,7 +45,7 @@ function PluginHubPage() {
 
     const officialCount = catalog.official.length;
     const installedCount = catalog.officialRecordById.size + catalog.localPlugins.length + catalog.thirdPartyPlugins.length;
-    const command = installMode === "plugin" ? t("agent.connect.installPrompt") : AGENT_CLI_COMMAND;
+    const command = agentTarget === "claude-code" ? AGENT_CLAUDE_MCP_COMMAND : installMode === "plugin" ? t("agent.connect.installPrompt") : AGENT_CLI_COMMAND;
     const openAgent = () => {
         useAgentStore.getState().setAgentState({ activeTab: connected ? "chat" : "setup" });
         useAgentStore.getState().openPanel();
@@ -81,42 +83,58 @@ function PluginHubPage() {
 
                     <section className={`mt-8 rounded-[24px] border p-4 ${dark ? "border-white/[0.08] bg-[#171717]" : "border-stone-200 bg-white shadow-[0_24px_80px_-60px_rgba(28,25,23,.45)]"}`} aria-label={t("pluginHub.installPanelLabel")}>
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div className={`flex items-center gap-1 ${dark ? "text-white/60" : "text-stone-500"}`}>
-                                <span className={`grid size-10 place-items-center rounded-xl border ${dark ? "border-white/10 bg-white/[0.04]" : "border-stone-200 bg-stone-50"}`}><Bot className="size-5" /></span>
-                                <span className={`ml-1 h-8 w-px ${dark ? "bg-white/10" : "bg-stone-200"}`} />
-                                <Code2 className="mx-2 size-4.5" />
-                                <Sparkles className="mx-2 size-4.5" />
-                                <FileTerminal className="mx-2 size-4.5 max-sm:hidden" />
-                                <Puzzle className="mx-2 size-4.5" />
-                            </div>
-                            <div className={`inline-flex h-10 w-fit items-center rounded-full p-1 ${dark ? "bg-white/[0.06]" : "bg-stone-100"}`}>
-                                {(["plugin", "cli"] as const).map((mode) => (
+                            <div className={`flex flex-wrap items-center gap-1.5 ${dark ? "text-white/60" : "text-stone-500"}`} aria-label={t("pluginHub.chooseAgent")}>
+                                {(["codex", "claude-code"] as const).map((target) => (
                                     <button
-                                        key={mode}
+                                        key={target}
                                         type="button"
-                                        className={`inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs font-medium transition ${installMode === mode ? (dark ? "bg-[#383838] text-white shadow-sm" : "bg-stone-950 text-white shadow-sm") : dark ? "text-white/55 hover:text-white" : "text-stone-500 hover:text-stone-950"}`}
-                                        onClick={() => setInstallMode(mode)}
-                                        aria-pressed={installMode === mode}
-                                        style={installMode === mode ? { color: "#ffffff" } : undefined}
+                                        className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition ${agentTarget === target ? (dark ? "border-white/15 bg-white/[0.09] text-white" : "border-stone-300 bg-white text-stone-950 shadow-sm") : dark ? "border-transparent text-white/45 hover:border-white/10 hover:text-white/80" : "border-transparent text-stone-500 hover:border-stone-200 hover:text-stone-950"}`}
+                                        aria-pressed={agentTarget === target}
+                                        onClick={() => {
+                                            setAgentTarget(target);
+                                            if (target === "claude-code") setInstallMode("cli");
+                                        }}
                                     >
-                                        {mode === "plugin" ? <Puzzle className="size-3.5" /> : <Code2 className="size-3.5" />}
-                                        {t(mode === "plugin" ? "pluginHub.pluginShort" : "pluginHub.cliShort")}
+                                        {target === "codex" ? <Bot className="size-4" /> : <TerminalSquare className="size-4" />}
+                                        {t(target === "codex" ? "pluginHub.codexAgent" : "pluginHub.claudeCodeAgent")}
                                     </button>
                                 ))}
                             </div>
+                            {agentTarget === "codex" ? (
+                                <div className={`inline-flex h-10 w-fit items-center rounded-full p-1 ${dark ? "bg-white/[0.06]" : "bg-stone-100"}`}>
+                                    {(["plugin", "cli"] as const).map((mode) => (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            className={`inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs font-medium transition ${installMode === mode ? (dark ? "bg-[#383838] text-white shadow-sm" : "bg-stone-950 text-white shadow-sm") : dark ? "text-white/55 hover:text-white" : "text-stone-500 hover:text-stone-950"}`}
+                                            onClick={() => setInstallMode(mode)}
+                                            aria-pressed={installMode === mode}
+                                            style={installMode === mode ? { color: "#ffffff" } : undefined}
+                                        >
+                                            {mode === "plugin" ? <Puzzle className="size-3.5" /> : <Code2 className="size-3.5" />}
+                                            {t(mode === "plugin" ? "pluginHub.pluginShort" : "pluginHub.cliShort")}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <span className={`inline-flex h-9 items-center gap-2 rounded-full px-4 text-xs font-medium ${dark ? "bg-white/[0.06] text-white/70" : "bg-stone-100 text-stone-600"}`}>
+                                    <TerminalSquare className="size-3.5" />
+                                    {t("pluginHub.mcpShort")}
+                                </span>
+                            )}
                         </div>
 
                         <ol className={`mt-4 grid overflow-hidden rounded-[20px] border lg:grid-cols-2 ${dark ? "border-white/[0.07]" : "border-stone-200"}`}>
                             <li className={`min-w-0 p-5 sm:p-6 lg:border-r ${dark ? "border-white/[0.07]" : "border-stone-200"}`}>
                                 <StepNumber value="1" dark={dark} />
                                 <h2 className="mt-4 text-base font-semibold">{t("pluginHub.stepCopyTitle")}</h2>
-                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{t("pluginHub.stepCopyDescription")}</p>
+                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{t(agentTarget === "claude-code" ? "pluginHub.claudeCodeStepCopyDescription" : "pluginHub.stepCopyDescription")}</p>
                                 <CommandBlock command={command} onCopy={copyCommand} theme={theme} />
                             </li>
                             <li className="min-w-0 p-5 sm:p-6 lg:pl-7">
                                 <StepNumber value="2" dark={dark} />
                                 <h2 className="mt-4 text-base font-semibold">{t("pluginHub.stepConnectTitle")}</h2>
-                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{t("pluginHub.stepConnectDescription")}</p>
+                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{t(agentTarget === "claude-code" ? "pluginHub.claudeCodeStepConnectDescription" : "pluginHub.stepConnectDescription")}</p>
                                 <div className={`mt-5 flex items-center gap-3 rounded-[14px] border px-4 py-3 ${dark ? "border-white/[0.07] bg-white/[0.02]" : "border-stone-200 bg-stone-50/70"}`}>
                                     <span className={`grid size-8 shrink-0 place-items-center rounded-full ${phase === "connected" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>
                                         {phase === "connected" ? <CheckCircle2 className="size-4" /> : phase === "connecting" || phase === "mcp-starting" ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}

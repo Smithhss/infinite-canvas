@@ -326,14 +326,15 @@ export function CanvasDirectorShell({
                     pointerStart = { x: event.clientX, y: event.clientY };
                 };
                 const syncCamera = () => {
-                    setProject((current) => ({
-                        ...current,
-                        camera: {
-                            ...current.camera,
-                            position: vectorState(camera.position),
-                            target: vectorState(controls.target),
-                        },
-                    }));
+                    setProject((current) => {
+                        const position = vectorState(camera.position);
+                        const target = vectorState(controls.target);
+                        const cameraState = { ...current.camera, position, target };
+                        const track = getDirectorCameraTrack(current);
+                        return track
+                            ? updateDirectorCameraTrack({ ...current, camera: cameraState }, track.id, { position, target })
+                            : { ...current, camera: cameraState };
+                    });
                 };
                 const captureCameraPose = () => ({
                     position: vectorState(camera.position),
@@ -434,15 +435,15 @@ export function CanvasDirectorShell({
                     syncAssets(nextProject.sceneNodes);
                     syncPaths(nextProject.animation.motionPaths, selectedPathId);
                     const cameraSettings = getDirectorCameraTrackSettings(nextProject);
-                    camera.position.set(nextProject.camera.position.x, nextProject.camera.position.y, nextProject.camera.position.z);
+                    camera.position.set(cameraSettings.position.x, cameraSettings.position.y, cameraSettings.position.z);
                     const cameraTarget = resolveDirectorCameraTarget(nextProject, cameraSettings.followTargetId || cameraSettings.lookAtTarget);
                     controls.target.set(
-                        cameraTarget?.x ?? nextProject.camera.target.x,
-                        cameraTarget?.y ?? nextProject.camera.target.y,
-                        cameraTarget?.z ?? nextProject.camera.target.z,
+                        cameraTarget?.x ?? cameraSettings.target.x,
+                        cameraTarget?.y ?? cameraSettings.target.y,
+                        cameraTarget?.z ?? cameraSettings.target.z,
                     );
                     camera.fov = cameraSettings.fov;
-                    camera.zoom = nextProject.camera.zoom;
+                    camera.zoom = cameraSettings.zoom;
                     camera.updateProjectionMatrix();
                     controls.update();
                 };
@@ -703,6 +704,20 @@ export function CanvasDirectorShell({
             delete camera[key];
             if (value) camera[key] = value;
             return { ...current, camera };
+        });
+    };
+
+    const updateCameraTransform = (group: "position" | "target", axis: keyof DirectorVector3, value: number | null) => {
+        if (value === null) return;
+        setProject((current) => {
+            const track = getDirectorCameraTrack(current);
+            const transform = {
+                ...getDirectorCameraTrackSettings(current)[group],
+                [axis]: value,
+            };
+            return track
+                ? updateDirectorCameraTrack(current, track.id, { [group]: transform })
+                : { ...current, camera: { ...current.camera, [group]: transform } };
         });
     };
 
@@ -1128,7 +1143,43 @@ export function CanvasDirectorShell({
                                     : { ...current, camera: { ...current.camera, fov } };
                             })}
                         />
-                        <RangeField label={t("canvas.director.zoom")} value={project.camera.zoom} min={0.1} max={5} step={0.1} onChange={(zoom) => setProject((current) => ({ ...current, camera: { ...current.camera, zoom } }))} />
+                        <RangeField
+                            label={t("canvas.director.zoom")}
+                            value={cameraSettings.zoom}
+                            min={0.1}
+                            max={5}
+                            step={0.1}
+                            onChange={(zoom) => setProject((current) => {
+                                const track = getDirectorCameraTrack(current);
+                                return track
+                                    ? updateDirectorCameraTrack(current, track.id, { zoom })
+                                    : { ...current, camera: { ...current.camera, zoom } };
+                            })}
+                        />
+                        {([
+                            ["position", "sceneNodePosition"],
+                            ["target", "cameraTargetPoint"],
+                        ] as const).map(([group, label]) => (
+                            <div key={group}>
+                                <div className="mb-1 text-[11px] opacity-45">{t(`canvas.director.${label}`)}</div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {(["x", "y", "z"] as const).map((axis) => (
+                                        <div key={axis}>
+                                            <div className="mb-1 text-center text-[10px] uppercase opacity-35">{axis}</div>
+                                            <InputNumber
+                                                className="w-full"
+                                                aria-label={`${t(`canvas.director.${label}`)} ${axis.toUpperCase()}`}
+                                                min={axis === "y" ? -8 : group === "position" ? -24 : -12}
+                                                max={axis === "y" ? (group === "position" ? 16 : 8) : group === "position" ? 24 : 12}
+                                                step={0.1}
+                                                value={cameraSettings[group][axis]}
+                                                onChange={(value) => updateCameraTransform(group, axis, value)}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                         <div>
                             <div className="mb-1 text-[11px] opacity-45">{t("canvas.director.lookAt")}</div>
                             <Select

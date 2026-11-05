@@ -184,19 +184,34 @@ test("normalizes independent camera-track settings and falls back for legacy tra
         animation: {
             cameraTracks: [
                 { id: "legacy-track", keyframes: [] },
-                { id: "custom-track", fov: 120, lookAtTarget: "missing-object", followTargetId: "group-a", keyframes: [] },
+                {
+                    id: "custom-track",
+                    position: { x: 4, y: 3, z: 2 },
+                    target: { x: 1, y: 0.5, z: 0 },
+                    fov: 120,
+                    zoom: 4,
+                    lookAtTarget: "missing-object",
+                    followTargetId: "group-a",
+                    keyframes: [],
+                },
             ],
         },
     });
 
     expect(project.animation.activeCameraTrackId).toBe("legacy-track");
     expect(project.animation.cameraTracks[0]).toMatchObject({
+        position: { x: 8, y: 5.5, z: 10 },
+        target: { x: 0, y: 0.8, z: 0 },
         fov: 60,
+        zoom: 1,
         lookAtTarget: "hero-box",
         followTargetId: null,
     });
     expect(project.animation.cameraTracks[1]).toMatchObject({
+        position: { x: 4, y: 3, z: 2 },
+        target: { x: 1, y: 0.5, z: 0 },
         fov: 90,
+        zoom: 4,
         lookAtTarget: null,
         followTargetId: "group-a",
     });

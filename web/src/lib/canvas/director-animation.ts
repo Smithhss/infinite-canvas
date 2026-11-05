@@ -17,7 +17,10 @@ export const DIRECTOR_MAIN_CAMERA_TRACK_ID = "camera-track-main";
 export const DIRECTOR_DEFAULT_CUSTOM_EASING: DirectorCubicBezier = { x1: 0.42, y1: 0, x2: 0.58, y2: 1 };
 
 export type DirectorCameraTrackSettings = {
+    position: DirectorVector3;
+    target: DirectorVector3;
     fov: number;
+    zoom: number;
     lookAtTarget?: string;
     followTargetId?: string;
 };
@@ -32,25 +35,34 @@ export function getDirectorCameraTrackSettings(project: DirectorProjectState): D
     const track = getDirectorCameraTrack(project);
     if (!track) {
         return {
+            position: { ...project.camera.position },
+            target: { ...project.camera.target },
             fov: project.camera.fov,
+            zoom: project.camera.zoom,
             ...(project.camera.lookAtTarget ? { lookAtTarget: project.camera.lookAtTarget } : {}),
             ...(project.camera.followTargetId ? { followTargetId: project.camera.followTargetId } : {}),
         };
     }
     return {
+        position: { ...track.position },
+        target: { ...track.target },
         fov: track.fov,
+        zoom: track.zoom,
         ...(track.lookAtTarget ? { lookAtTarget: track.lookAtTarget } : {}),
         ...(track.followTargetId ? { followTargetId: track.followTargetId } : {}),
     };
 }
 
-export function createDirectorCameraTrack(index: number, settings?: DirectorCameraTrackSettings): DirectorCameraTrack {
+export function createDirectorCameraTrack(index: number, settings?: Partial<DirectorCameraTrackSettings>): DirectorCameraTrack {
     const safeIndex = Math.max(0, Math.floor(index));
     return {
         id: `camera-track-${Date.now().toString(36)}-${safeIndex}`,
         name: `Camera ${safeIndex + 1}`,
         cameraId: "camera-main",
+        position: settings?.position ? { ...settings.position } : { x: 8, y: 5.5, z: 10 },
+        target: settings?.target ? { ...settings.target } : { x: 0, y: 0.8, z: 0 },
         fov: settings?.fov ?? DIRECTOR_DEFAULT_FOV,
+        zoom: settings?.zoom ?? 1,
         lookAtTarget: settings?.lookAtTarget ?? null,
         followTargetId: settings?.followTargetId ?? null,
         keyframes: [],
@@ -76,13 +88,24 @@ export function setDirectorActiveCameraTrack(project: DirectorProjectState, trac
     return { ...project, animation: { ...project.animation, activeCameraTrackId: trackId } };
 }
 
-export function updateDirectorCameraTrack(project: DirectorProjectState, trackId: string, patch: Partial<Pick<DirectorCameraTrack, "name" | "fov">>): DirectorProjectState {
+export function updateDirectorCameraTrack(
+    project: DirectorProjectState,
+    trackId: string,
+    patch: Partial<Pick<DirectorCameraTrack, "name" | "position" | "target" | "fov" | "zoom">>,
+): DirectorProjectState {
     if (!project.animation.cameraTracks.some((track) => track.id === trackId)) return project;
     return {
         ...project,
         animation: {
             ...project.animation,
-            cameraTracks: project.animation.cameraTracks.map((track) => track.id === trackId ? { ...track, ...patch } : track),
+            cameraTracks: project.animation.cameraTracks.map((track) => track.id === trackId
+                ? {
+                      ...track,
+                      ...patch,
+                      ...(patch.position ? { position: { ...patch.position } } : {}),
+                      ...(patch.target ? { target: { ...patch.target } } : {}),
+                  }
+                : track),
         },
     };
 }
@@ -156,7 +179,10 @@ export function upsertDirectorCameraKeyframe(project: DirectorProjectState, keyf
         id: activeTrackId,
         name: "Camera 1",
         cameraId: "camera-main",
+        position: { ...project.camera.position },
+        target: { ...project.camera.target },
         fov: project.camera.fov,
+        zoom: project.camera.zoom,
         lookAtTarget: project.camera.lookAtTarget ?? null,
         followTargetId: project.camera.followTargetId ?? null,
         keyframes: [],

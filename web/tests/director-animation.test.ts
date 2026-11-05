@@ -117,13 +117,36 @@ test("adds, switches, renames and removes camera tracks", () => {
 
 test("keeps per-track camera settings and clears deleted targets", () => {
     const firstTrack = createDirectorCameraTrack(0, { fov: 62, lookAtTarget: "hero-box" });
-    const secondTrack = createDirectorCameraTrack(1, { fov: 35, followTargetId: "group-a" });
+    const secondTrack = createDirectorCameraTrack(1, {
+        position: { x: 4, y: 3, z: 2 },
+        target: { x: 1, y: 0.5, z: 0 },
+        fov: 35,
+        zoom: 1.8,
+        followTargetId: "group-a",
+    });
     let project = addDirectorCameraTrack(createDirectorProject(), firstTrack);
     project = addDirectorCameraTrack(project, secondTrack);
 
-    expect(getDirectorCameraTrackSettings(project)).toEqual({ fov: 35, followTargetId: "group-a" });
+    expect(getDirectorCameraTrackSettings(project)).toMatchObject({
+        position: { x: 4, y: 3, z: 2 },
+        target: { x: 1, y: 0.5, z: 0 },
+        fov: 35,
+        zoom: 1.8,
+        followTargetId: "group-a",
+    });
     project = setDirectorActiveCameraTrack(project, firstTrack.id);
-    expect(getDirectorCameraTrackSettings(project)).toEqual({ fov: 62, lookAtTarget: "hero-box" });
+    expect(getDirectorCameraTrackSettings(project)).toMatchObject({ fov: 62, lookAtTarget: "hero-box" });
+
+    project = updateDirectorCameraTrack(project, firstTrack.id, {
+        position: { x: 9, y: 7, z: 5 },
+        target: { x: 2, y: 1, z: -1 },
+        zoom: 2.4,
+    });
+    expect(getDirectorCameraTrackSettings(project)).toMatchObject({
+        position: { x: 9, y: 7, z: 5 },
+        target: { x: 2, y: 1, z: -1 },
+        zoom: 2.4,
+    });
 
     project = setDirectorCameraTrackTarget(project, firstTrack.id, "lookAtTarget", null);
     expect(getDirectorCameraTrack(project)?.lookAtTarget).toBeNull();

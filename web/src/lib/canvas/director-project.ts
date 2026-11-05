@@ -106,7 +106,10 @@ export type DirectorCameraTrack = {
     id: string;
     name: string;
     cameraId: string;
+    position: DirectorVector3;
+    target: DirectorVector3;
     fov: number;
+    zoom: number;
     lookAtTarget: string | null;
     followTargetId: string | null;
     keyframes: DirectorCameraKeyframe[];
@@ -362,7 +365,10 @@ function normalizeCameraTracks(value: unknown[], duration: number, camera: Direc
             id,
             name: normalizeName(source.name, `Camera ${index + 1}`),
             cameraId: normalizeId(source.cameraId, "camera-main"),
+            position: normalizeVector(source.position, { x: 24, y: 16, z: 24 }, camera.position),
+            target: normalizeVector(source.target, { x: 12, y: 8, z: 12 }, camera.target),
             fov: clampNumber(source.fov, DIRECTOR_MIN_FOV, DIRECTOR_MAX_FOV, camera.fov),
+            zoom: clampNumber(source.zoom, 0.1, 5, camera.zoom),
             lookAtTarget: normalizeCameraTrackTarget(source.lookAtTarget, camera.lookAtTarget, targetIds),
             followTargetId: normalizeCameraTrackTarget(source.followTargetId, camera.followTargetId, targetIds),
             keyframes,

@@ -78,6 +78,7 @@ export type DirectorSceneNode = {
     asset?: {
         fileName: string;
         byteSize: number;
+        storageKey?: string;
     };
 };
 
@@ -484,6 +485,7 @@ function normalizeAsset(value: unknown): DirectorSceneNode["asset"] | null {
     return {
         fileName: normalizeName(source.fileName, "asset.glb", 120),
         byteSize: source.byteSize,
+        ...(typeof source.storageKey === "string" && /^[a-z0-9_-]+:[a-z0-9_-]+$/i.test(source.storageKey) ? { storageKey: source.storageKey } : {}),
     };
 }
 

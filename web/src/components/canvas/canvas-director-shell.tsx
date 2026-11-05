@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, ColorPicker, Input, InputNumber, Modal, Select, Slider, Switch, theme as antdTheme } from "antd";
-import { Box, Camera, Circle, Cylinder, Folder, ImagePlus, Lightbulb, MapPin, Plus, RotateCcw, Route, Save, Trash2, Triangle } from "lucide-react";
+import { Box, Camera, Circle, Cylinder, Folder, ImagePlus, Lightbulb, MapPin, Plus, RotateCcw, Route, Save, Trash2, Triangle, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Group, Mesh, Object3D, Scene } from "three";
 
 import {
     DIRECTOR_MAX_FOV,
+    DIRECTOR_MAX_GLB_BYTES,
     DIRECTOR_MAX_OBJECTS,
     DIRECTOR_MAX_SCENE_NODES,
     DIRECTOR_MIN_FOV,
     createDirectorObject,
     createDirectorProject,
     createDirectorSceneNode,
+    hasValidDirectorGlbHeader,
     isValidDirectorCapture,
     normalizeDirectorColor,
     normalizeDirectorProject,
@@ -27,6 +29,7 @@ import {
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { getMediaBlob, uploadMediaFile } from "@/services/file-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 type DirectorSceneRuntime = {
@@ -62,6 +65,7 @@ export function CanvasDirectorShell({
     const { token } = antdTheme.useToken();
     const stageRef = useRef<HTMLDivElement>(null);
     const panoramaInputRef = useRef<HTMLInputElement>(null);
+    const glbInputRef = useRef<HTMLInputElement>(null);
     const runtimeRef = useRef<DirectorSceneRuntime | null>(null);
     const [initialProjectState] = useState(() => readDirectorProject(initialProject));
     const [project, setProject] = useState(initialProjectState.project);
@@ -70,6 +74,8 @@ export function CanvasDirectorShell({
     const [selectedSceneNodeId, setSelectedSceneNodeId] = useState<string | null>(null);
     const [sceneError, setSceneError] = useState<string | null>(null);
     const [capturing, setCapturing] = useState(false);
+    const [importingGlb, setImportingGlb] = useState(false);
+    const [assetErrors, setAssetErrors] = useState<Record<string, boolean>>({});
     const [sceneRevision, setSceneRevision] = useState(0);
     const projectRef = useRef(project);
     const selectedObjectIdRef = useRef(selectedObjectId);
@@ -85,6 +91,7 @@ export function CanvasDirectorShell({
         setSelectedObjectId(null);
         setSelectedSceneNodeId(null);
         setSceneError(null);
+        setAssetErrors({});
     }, [initialProject, open]);
 
     useEffect(() => {
@@ -98,6 +105,7 @@ export function CanvasDirectorShell({
             try {
                 const THREE = await import("three");
                 const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
+                const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
                 if (cancelled || !stageRef.current) return;
 
                 const stage = stageRef.current;
@@ -121,7 +129,12 @@ export function CanvasDirectorShell({
 
                 const objectRoot = new THREE.Group();
                 scene.add(objectRoot);
+                const assetRoot = new THREE.Group();
+                scene.add(assetRoot);
                 const studioGeometry = addStudioGeometry(THREE, scene);
+                const loadedAssets = new Map<string, { storageKey: string; object: Object3D }>();
+                const loadingAssets = new Map<string, string>();
+                let latestSceneNodes = projectRef.current.sceneNodes;
                 let panoramaMesh: Mesh | null = null;
                 let panoramaTexture: import("three").Texture | null = null;
                 let panoramaUrl: string | undefined;
@@ -173,6 +186,81 @@ export function CanvasDirectorShell({
                     }
                     applyPanoramaTransform(environment);
                 };
+                const applySceneNodeTransform = (object: Object3D, node: DirectorSceneNode) => {
+                    object.position.set(node.transform.position.x, node.transform.position.y, node.transform.position.z);
+                    object.rotation.set(
+                        THREE.MathUtils.degToRad(node.transform.rotation.x),
+                        THREE.MathUtils.degToRad(node.transform.rotation.y),
+                        THREE.MathUtils.degToRad(node.transform.rotation.z),
+                    );
+                    object.scale.set(node.transform.scale.x, node.transform.scale.y, node.transform.scale.z);
+                    object.visible = isSceneNodeVisible(node, latestSceneNodes);
+                };
+                const removeLoadedAsset = (nodeId: string) => {
+                    const loaded = loadedAssets.get(nodeId);
+                    if (!loaded) return;
+                    assetRoot.remove(loaded.object);
+                    disposeObject3D(loaded.object);
+                    loadedAssets.delete(nodeId);
+                };
+                const loadSceneAsset = (node: DirectorSceneNode) => {
+                    const storageKey = node.asset?.storageKey;
+                    if (!storageKey || loadingAssets.has(node.id)) return;
+                    loadingAssets.set(node.id, storageKey);
+                    void (async () => {
+                        try {
+                            const blob = await getMediaBlob(storageKey);
+                            if (!blob) throw new Error("missing");
+                            const buffer = await blob.arrayBuffer();
+                            if (!hasValidDirectorGlbHeader(buffer)) throw new Error("invalid");
+                            const gltf = await new GLTFLoader().parseAsync(buffer, "");
+                            const current = latestSceneNodes.find((item) => item.id === node.id);
+                            if (cancelled || current?.asset?.storageKey !== storageKey) {
+                                disposeObject3D(gltf.scene);
+                                return;
+                            }
+                            const object = new THREE.Group();
+                            object.userData.directorSceneNodeId = node.id;
+                            object.add(gltf.scene);
+                            gltf.scene.traverse((child) => {
+                                child.castShadow = true;
+                                child.receiveShadow = true;
+                            });
+                            applySceneNodeTransform(object, current);
+                            assetRoot.add(object);
+                            loadedAssets.set(node.id, { storageKey, object });
+                            setAssetErrors((currentErrors) => {
+                                if (!currentErrors[node.id]) return currentErrors;
+                                const { [node.id]: _removed, ...rest } = currentErrors;
+                                return rest;
+                            });
+                        } catch {
+                            if (!cancelled && latestSceneNodes.some((item) => item.id === node.id && item.asset?.storageKey === storageKey)) {
+                                setAssetErrors((currentErrors) => (currentErrors[node.id] ? currentErrors : { ...currentErrors, [node.id]: true }));
+                            }
+                        } finally {
+                            if (loadingAssets.get(node.id) === storageKey) loadingAssets.delete(node.id);
+                        }
+                    })();
+                };
+                const syncAssets = (sceneNodes: DirectorSceneNode[]) => {
+                    latestSceneNodes = sceneNodes;
+                    const desired = new Map(sceneNodes.flatMap((node) => node.kind === "asset" && node.asset?.storageKey ? [[node.id, node] as const] : []));
+                    loadedAssets.forEach((loaded, nodeId) => {
+                        if (desired.get(nodeId)?.asset?.storageKey !== loaded.storageKey) removeLoadedAsset(nodeId);
+                    });
+                    loadingAssets.forEach((storageKey, nodeId) => {
+                        if (desired.get(nodeId)?.asset?.storageKey !== storageKey) loadingAssets.delete(nodeId);
+                    });
+                    desired.forEach((node, nodeId) => {
+                        const loaded = loadedAssets.get(nodeId);
+                        if (loaded) {
+                            applySceneNodeTransform(loaded.object, node);
+                        } else {
+                            loadSceneAsset(node);
+                        }
+                    });
+                };
 
                 const raycaster = new THREE.Raycaster();
                 const pointer = new THREE.Vector2();
@@ -195,9 +283,10 @@ export function CanvasDirectorShell({
                     const rect = renderer.domElement.getBoundingClientRect();
                     pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
                     raycaster.setFromCamera(pointer, camera);
-                    const hit = raycaster.intersectObjects(objectRoot.children, true).find((item) => item.object.userData.directorObjectId);
-                    setSelectedObjectId(hit?.object.userData.directorObjectId || null);
-                    setSelectedSceneNodeId(null);
+                    const hit = raycaster.intersectObjects([objectRoot, assetRoot], true)[0];
+                    const selection = hit ? findDirectorSelection(hit.object) : null;
+                    setSelectedObjectId(selection?.objectId || null);
+                    setSelectedSceneNodeId(selection?.sceneNodeId || null);
                 };
                 const rememberPointer = (event: PointerEvent) => {
                     pointerStart = { x: event.clientX, y: event.clientY };
@@ -236,6 +325,7 @@ export function CanvasDirectorShell({
                     applyBackground(THREE, scene, nextProject.background);
                     applyEnvironment(studioGeometry.floor, studioGeometry.grid, nextProject.environment);
                     syncPanorama(nextProject.environment);
+                    syncAssets(nextProject.sceneNodes);
                     camera.position.set(nextProject.camera.position.x, nextProject.camera.position.y, nextProject.camera.position.z);
                     controls.target.set(nextProject.camera.target.x, nextProject.camera.target.y, nextProject.camera.target.z);
                     camera.fov = nextProject.camera.fov;
@@ -281,6 +371,11 @@ export function CanvasDirectorShell({
                         controls.removeEventListener("end", syncCamera);
                         controls.dispose();
                         clearPanorama();
+                        loadedAssets.forEach((loaded) => {
+                            assetRoot.remove(loaded.object);
+                            disposeObject3D(loaded.object);
+                        });
+                        loadedAssets.clear();
                         clearObjectRoot(objectRoot);
                         disposeScene(THREE, scene);
                         renderer.dispose();
@@ -358,10 +453,32 @@ export function CanvasDirectorShell({
         }));
     };
 
+    const updateSelectedSceneTransform = (group: keyof DirectorSceneNode["transform"], axis: keyof DirectorVector3, value: number | null) => {
+        if (!selectedSceneNode || value === null) return;
+        updateSelectedSceneNode({
+            transform: {
+                ...selectedSceneNode.transform,
+                [group]: { ...selectedSceneNode.transform[group], [axis]: value },
+            },
+        });
+    };
+
     const removeSelectedObject = () => {
         if (!selectedObjectId) return;
         setProject((current) => ({ ...current, objects: current.objects.filter((item) => item.id !== selectedObjectId) }));
         setSelectedObjectId(null);
+    };
+
+    const removeSelectedSceneNode = () => {
+        if (!selectedSceneNode) return;
+        const nodeId = selectedSceneNode.id;
+        const parentId = selectedSceneNode.parentId;
+        setProject((current) => ({
+            ...current,
+            sceneNodes: current.sceneNodes.filter((item) => item.id !== nodeId).map((item) => (item.parentId === nodeId ? { ...item, parentId } : item)),
+            objects: current.objects.map((item) => (item.parentId === nodeId ? (parentId ? { ...item, parentId } : withoutParent(item)) : item)),
+        }));
+        setSelectedSceneNodeId(null);
     };
 
     const updateEnvironment = (patch: Partial<DirectorEnvironment>) => {
@@ -385,6 +502,50 @@ export function CanvasDirectorShell({
         };
         reader.onerror = () => message.error(t("canvas.director.panoramaReadFailed"));
         reader.readAsDataURL(file);
+    };
+
+    const importGlbFile = async (file: File | undefined) => {
+        if (!file) return;
+        if (!/\.glb$/i.test(file.name)) {
+            message.error(t("canvas.director.glbUnsupported"));
+            return;
+        }
+        if (file.size > DIRECTOR_MAX_GLB_BYTES) {
+            message.error(t("canvas.director.glbTooLarge"));
+            return;
+        }
+        if (project.sceneNodes.length >= DIRECTOR_MAX_SCENE_NODES) {
+            message.warning(t("canvas.director.sceneNodeLimit", { count: DIRECTOR_MAX_SCENE_NODES }));
+            return;
+        }
+
+        let buffer: ArrayBuffer;
+        try {
+            buffer = await file.arrayBuffer();
+        } catch {
+            message.error(t("canvas.director.glbReadFailed"));
+            return;
+        }
+        if (!hasValidDirectorGlbHeader(buffer)) {
+            message.error(t("canvas.director.glbUnsupported"));
+            return;
+        }
+
+        setImportingGlb(true);
+        try {
+            const stored = await uploadMediaFile(file, "director-glb");
+            const item = createDirectorSceneNode("asset", project.sceneNodes.length, selectedSceneNodeId);
+            const title = file.name.replace(/\.glb$/i, "").trim();
+            item.name = (title || item.name).slice(0, 60);
+            item.asset = { fileName: file.name, byteSize: file.size, storageKey: stored.storageKey };
+            setProject((current) => ({ ...current, sceneNodes: [...current.sceneNodes, item] }));
+            setSelectedObjectId(null);
+            setSelectedSceneNodeId(item.id);
+        } catch {
+            message.error(t("canvas.director.glbStoreFailed"));
+        } finally {
+            setImportingGlb(false);
+        }
     };
 
     const save = () => {
@@ -492,10 +653,26 @@ export function CanvasDirectorShell({
                     <div className="mb-5">
                         <div className="mb-2 flex items-center justify-between gap-3">
                             <label className="text-xs font-medium opacity-60">{t("canvas.director.sceneTree")}</label>
-                            <Button size="small" type="text" className="!h-7 !px-2" icon={<Plus className="size-3.5" />} onClick={addSceneGroup}>
-                                {t("canvas.director.addSceneGroup")}
-                            </Button>
+                            <div className="flex min-w-0 items-center gap-1">
+                                <Button size="small" type="text" className="!h-7 !px-2" loading={importingGlb} icon={<Upload className="size-3.5" />} onClick={() => glbInputRef.current?.click()}>
+                                    {t("canvas.director.importGlb")}
+                                </Button>
+                                <Button size="small" type="text" className="!h-7 !px-2" icon={<Plus className="size-3.5" />} onClick={addSceneGroup}>
+                                    {t("canvas.director.addSceneGroup")}
+                                </Button>
+                            </div>
                         </div>
+                        <p className="mb-2 text-[10px] leading-4 opacity-40">{t("canvas.director.glbHint")}</p>
+                        <input
+                            ref={glbInputRef}
+                            type="file"
+                            accept=".glb,model/gltf-binary"
+                            className="hidden"
+                            onChange={(event) => {
+                                void importGlbFile(event.currentTarget.files?.[0]);
+                                event.currentTarget.value = "";
+                            }}
+                        />
                         <div className="max-h-52 overflow-y-auto rounded-xl border p-1.5" style={{ borderColor: canvasTheme.node.stroke }}>
                             {sceneTree.map((entry) => {
                                 const Icon = sceneTreeIcon(entry);
@@ -641,10 +818,28 @@ export function CanvasDirectorShell({
                         </div>
                     ) : selectedSceneNode ? (
                         <div className="space-y-5">
-                            <div>
-                                <div className="text-sm font-semibold">{selectedSceneNode.kind === "group" ? t("canvas.director.sceneGroup") : t("canvas.director.sceneNode")}</div>
-                                <div className="mt-1 text-xs opacity-45">{selectedSceneNode.id}</div>
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="text-sm font-semibold">
+                                        {selectedSceneNode.kind === "group"
+                                            ? t("canvas.director.sceneGroup")
+                                            : selectedSceneNode.kind === "asset"
+                                              ? t("canvas.director.sceneAsset")
+                                              : t("canvas.director.sceneNode")}
+                                    </div>
+                                    <div className="mt-1 truncate text-xs opacity-45">{selectedSceneNode.asset?.fileName || selectedSceneNode.id}</div>
+                                </div>
+                                <Button danger type="text" icon={<Trash2 className="size-4" />} onClick={removeSelectedSceneNode}>
+                                    {t("common.delete")}
+                                </Button>
                             </div>
+                            {selectedSceneNode.asset ? (
+                                <div className="rounded-lg border px-3 py-2 text-[11px] leading-5 opacity-60" style={{ borderColor: canvasTheme.node.stroke }}>
+                                    <div className="truncate">{selectedSceneNode.asset.fileName}</div>
+                                    <div>{formatAssetBytes(selectedSceneNode.asset.byteSize)}</div>
+                                    {assetErrors[selectedSceneNode.id] ? <div className="mt-1 text-red-500 opacity-100">{t("canvas.director.glbLoadFailed")}</div> : null}
+                                </div>
+                            ) : null}
                             <div>
                                 <div className="mb-2 text-xs font-medium opacity-60">{t("canvas.director.sceneNodeName")}</div>
                                 <Input
@@ -672,6 +867,33 @@ export function CanvasDirectorShell({
                                     ]}
                                     onChange={(parentId: string) => updateSelectedSceneNode({ parentId: parentId || null })}
                                 />
+                            </div>
+                            <div className="space-y-3">
+                                <div className="text-xs font-medium opacity-60">{t("canvas.director.sceneNodeTransform")}</div>
+                                {([
+                                    ["position", "sceneNodePosition"],
+                                    ["rotation", "sceneNodeRotation"],
+                                    ["scale", "sceneNodeScale"],
+                                ] as const).map(([group, label]) => (
+                                    <div key={group}>
+                                        <div className="mb-1 text-[11px] opacity-45">{t(`canvas.director.${label}`)}</div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {(["x", "y", "z"] as const).map((axis) => (
+                                                <div key={axis}>
+                                                    <div className="mb-1 text-center text-[10px] uppercase opacity-35">{axis}</div>
+                                                    <InputNumber
+                                                        className="w-full"
+                                                        min={group === "scale" ? 0.01 : group === "rotation" ? -360 : axis === "y" ? -8 : -24}
+                                                        max={group === "scale" ? 100 : group === "rotation" ? 360 : axis === "y" ? 16 : 24}
+                                                        step={group === "rotation" ? 1 : 0.1}
+                                                        value={selectedSceneNode.transform[group][axis]}
+                                                        onChange={(value) => updateSelectedSceneTransform(group, axis, value)}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     ) : (
@@ -717,6 +939,38 @@ function defaultSceneNodeName(node: DirectorSceneNode, index: number, t: (key: s
     return node.kind === "group"
         ? t("canvas.director.defaultSceneGroupName", { count: index })
         : t("canvas.director.defaultSceneNodeName", { count: index });
+}
+
+function isSceneNodeVisible(node: DirectorSceneNode, sceneNodes: DirectorSceneNode[]) {
+    const nodes = new Map(sceneNodes.map((item) => [item.id, item]));
+    const visited = new Set<string>();
+    let current: DirectorSceneNode | undefined = node;
+    while (current) {
+        if (!current.visible || visited.has(current.id)) return false;
+        visited.add(current.id);
+        current = current.parentId ? nodes.get(current.parentId) : undefined;
+    }
+    return true;
+}
+
+function findDirectorSelection(object: Object3D) {
+    let current: Object3D | null = object;
+    while (current) {
+        const objectId = typeof current.userData.directorObjectId === "string" ? current.userData.directorObjectId : null;
+        const sceneNodeId = typeof current.userData.directorSceneNodeId === "string" ? current.userData.directorSceneNodeId : null;
+        if (objectId || sceneNodeId) return { objectId, sceneNodeId };
+        current = current.parent;
+    }
+    return null;
+}
+
+function withoutParent(object: DirectorObject): DirectorObject {
+    const { parentId: _parentId, ...rest } = object;
+    return rest;
+}
+
+function formatAssetBytes(bytes: number) {
+    return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(2)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 function addStudioGeometry(THREE: typeof import("three"), scene: Scene) {
@@ -798,7 +1052,7 @@ function disposeObject3D(object: Object3D) {
         const mesh = child as Mesh;
         mesh.geometry?.dispose();
         const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
-        materials.forEach((material) => material.dispose());
+        materials.forEach(disposeMaterial);
     });
 }
 
@@ -807,9 +1061,16 @@ function disposeScene(THREE: typeof import("three"), scene: Scene) {
         const mesh = child as Mesh;
         mesh.geometry?.dispose();
         const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
-        materials.forEach((material) => material.dispose());
+        materials.forEach(disposeMaterial);
     });
     scene.clear();
+}
+
+function disposeMaterial(material: import("three").Material) {
+    Object.values(material as unknown as Record<string, unknown>).forEach((value) => {
+        if (value && typeof value === "object" && "isTexture" in value) (value as import("three").Texture).dispose();
+    });
+    material.dispose();
 }
 
 function vectorState(vector: { x: number; y: number; z: number }): DirectorVector3 {

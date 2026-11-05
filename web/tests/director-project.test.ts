@@ -180,7 +180,7 @@ test("keeps a real scene hierarchy and breaks parent cycles", () => {
             { id: "group-a", name: " Group A ", kind: "group", parentId: "group-b" },
             { id: "group-b", name: "Group B", kind: "group", parentId: "group-a" },
             { id: "light-key", name: "Key Light", kind: "light", parentId: "group-a" },
-            { id: "asset-glb", name: "GLB Asset", kind: "asset", parentId: "missing", asset: { fileName: "scene.glb", byteSize: 3890196 } },
+            { id: "asset-glb", name: "GLB Asset", kind: "asset", parentId: "missing", asset: { fileName: "scene.glb", byteSize: 3890196, storageKey: "director-glb:abc123" } },
         ],
     });
 
@@ -189,7 +189,7 @@ test("keeps a real scene hierarchy and breaks parent cycles", () => {
     expect(project.sceneNodes[1].parentId).toBe("group-a");
     expect(project.sceneNodes[2].parentId).toBe("group-a");
     expect(project.sceneNodes[3].parentId).toBeNull();
-    expect(project.sceneNodes[3].asset).toEqual({ fileName: "scene.glb", byteSize: 3890196 });
+    expect(project.sceneNodes[3].asset).toEqual({ fileName: "scene.glb", byteSize: 3890196, storageKey: "director-glb:abc123" });
 });
 
 test("creates a bounded scene group with an optional parent", () => {
@@ -214,11 +214,13 @@ test("rejects non-GLB or oversized scene asset metadata", () => {
         sceneNodes: [
             { id: "splat", kind: "asset", asset: { fileName: "scene.spz", byteSize: 1024 } },
             { id: "oversized", kind: "asset", asset: { fileName: "scene.glb", byteSize: DIRECTOR_MAX_GLB_BYTES + 1 } },
+            { id: "remote", kind: "asset", asset: { fileName: "scene.glb", byteSize: 1024, storageKey: "https://example.com/scene.glb" } },
         ],
     });
 
     expect(project.sceneNodes[0].asset).toBeUndefined();
     expect(project.sceneNodes[1].asset).toBeUndefined();
+    expect(project.sceneNodes[2].asset).toEqual({ fileName: "scene.glb", byteSize: 1024 });
 });
 
 test("normalizes camera keyframes and migrates legacy motion-path points", () => {

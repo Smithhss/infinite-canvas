@@ -36,6 +36,12 @@ test("agent hub is active only on its standalone route", () => {
     expect(isShellNavigationActive(agent, "/", "?ff_agentSkillHub=1")).toBe(false);
 });
 
+test("3D-BOX navigation opens its project page instead of the director", () => {
+    const item = { key: "director-3d", labelKey: "topNav.threeDBox", icon: shellPrimaryNavigation[0].icon, to: "/3d-box?ff_director3d=1" };
+    expect(isShellNavigationActive(item, "/3d-box", "?ff_director3d=1&ff_libtvShell=1")).toBe(true);
+    expect(isShellNavigationActive(item, "/canvas/project", "?ff_director3d=1&openDirector=1")).toBe(false);
+});
+
 test("shell navigation preserves feature flags but drops transient query state", () => {
     expect(withShellFeatureFlags("/assets", "?mode=new&ff_libtvShell=1&ff_director3d=1")).toBe("/assets?ff_libtvShell=1&ff_director3d=1");
     expect(withShellFeatureFlags("/canvas?mode=new", "?ff_libtvShell=1&mode=recent")).toBe("/canvas?mode=new&ff_libtvShell=1");

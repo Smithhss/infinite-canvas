@@ -1,4 +1,4 @@
-import { Bot, ChevronDown, Menu, Puzzle, Sparkles, SquareDashed } from "lucide-react";
+import { Bot, Box, ChevronDown, Menu, Puzzle, Sparkles, SquareDashed } from "lucide-react";
 import { Button, Dropdown, Tooltip } from "antd";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -26,19 +26,22 @@ export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolea
     const togglePanel = useAgentStore((state) => state.togglePanel);
     const panelOpen = useAgentStore((state) => state.panelOpen);
     const agentSkillHubEnabled = isFeatureEnabled("agentSkillHub");
+    const threeDBoxEnabled = isFeatureEnabled("director3d");
     const hideHeader = /^\/canvas\/[^/]+/.test(pathname);
     const slug = pathname.split("/").filter(Boolean)[0];
     const activeToolSlug = navigationTools.some((tool) => tool.slug === slug) ? (slug as NavigationToolSlug) : undefined;
     const generalTools = navigationTools.filter((tool) => isNavigationToolEnabled(tool) && tool.slug !== "canvas");
-    const createActive = slug === "canvas" || slug === "agent" || panelOpen;
+    const createActive = slug === "canvas" || slug === "agent" || slug === "3d-box" || panelOpen;
     const createItems = [
         { key: "canvas", icon: <SquareDashed className="size-4" />, label: t("navigation.canvas") },
         { key: "agent", icon: <Bot className="size-4" />, label: t("topNav.creativeAgent") },
+        ...(threeDBoxEnabled ? [{ key: "director-3d", icon: <Box className="size-4" />, label: t("topNav.threeDBox") }] : []),
     ];
 
     const handleCreateMenuClick = ({ key }: { key: string }) => {
         setCreateMenuOpen(false);
         if (key === "canvas") navigate(withShellFeatureFlags("/canvas", search));
+        if (key === "director-3d") navigate(withShellFeatureFlags("/3d-box?ff_director3d=1", search));
         if (key === "agent") {
             if (agentSkillHubEnabled) navigate(withShellFeatureFlags("/agent", search));
             else togglePanel();

@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import { parseSkillMarkdown, SkillStoreError } from "./store.js";
 
 const GITHUB_API = "https://api.github.com";
@@ -24,6 +26,7 @@ export type RemoteSkillPreview = {
     repository: string;
     path: string;
     sourceUrl: string;
+    contentHash: string;
 };
 
 type GithubSource = {
@@ -86,6 +89,7 @@ export async function previewGithubSkill(sourceValue: string, fetchImpl: FetchLi
         repository,
         path: skillPath,
         sourceUrl: `https://github.com/${repository}/blob/${encodeURIComponent(ref)}/${skillPath}`,
+        contentHash: crypto.createHash("sha256").update(raw).digest("hex"),
     };
 }
 

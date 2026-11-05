@@ -196,6 +196,8 @@ export function startHttpServer() {
     }));
     app.post("/agent/codex/skills/install", codexMutation(async (req, res) => {
         const preview = await previewGithubSkill(String(req.body?.url || ""));
+        const contentHash = String(req.body?.contentHash || "");
+        if (!contentHash || contentHash !== preview.contentHash) throw new SkillStoreError("Skill 内容已变化，请重新预览后再安装", 409);
         const data = await skillStore.create({
             name: preview.name,
             description: preview.description,

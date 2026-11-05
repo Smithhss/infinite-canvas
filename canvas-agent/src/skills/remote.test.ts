@@ -46,6 +46,7 @@ test("从仓库定位并解析唯一的 SKILL.md", async () => {
         repository: "example/product-grid",
         path: "skills/product-grid/SKILL.md",
         sourceUrl: "https://github.com/example/product-grid/blob/main/skills/product-grid/SKILL.md",
+        contentHash: "3b806fa783bec7ae267bc19c673b42f32179fc1e13619e5d78dc3b4cb561d044",
     });
     assert.match(requests.at(-1) || "", /raw\.githubusercontent\.com/);
 });

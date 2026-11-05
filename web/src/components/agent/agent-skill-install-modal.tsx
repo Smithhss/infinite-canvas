@@ -73,7 +73,7 @@ export function AgentSkillInstallModal({ open, onClose, onInstalled }: { open: b
         setInstalling(true);
         setPreviewError("");
         try {
-            await installRemoteSkill(endpoint, token, previewSource);
+            await installRemoteSkill(endpoint, token, previewSource, preview.contentHash);
             if (!connectionIsCurrent()) return;
             await onInstalled();
             if (!connectionIsCurrent()) return;

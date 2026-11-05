@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, ColorPicker, Input, InputNumber, Modal, Select, Slider, Switch, theme as antdTheme } from "antd";
-import { Box, Camera, Circle, Crosshair, Cylinder, Diamond, EyeOff, Focus, Folder, ImagePlus, Lightbulb, Lock, MapPin, Pause, Play, Plus, RotateCcw, Route, Save, Trash2, Triangle, Upload } from "lucide-react";
+import { Box, Camera, Circle, Clapperboard, Crosshair, Cylinder, Diamond, EyeOff, Focus, Folder, Footprints, ImagePlus, LayoutGrid, Lightbulb, Lock, MapPin, MessagesSquare, Mic, Pause, Play, Plus, Presentation, RotateCcw, Route, Save, Table2, Trash2, Triangle, Upload, UserRound, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Group, Mesh, Object3D, Scene } from "three";
 
@@ -39,6 +39,7 @@ import {
 } from "@/lib/canvas/director-project";
 import { addDirectorCameraTrack, clearDirectorCameraTargets, createDirectorCameraTrack, DIRECTOR_DEFAULT_CUSTOM_EASING, getDirectorCameraTrack, getDirectorCameraTrackSettings, removeDirectorCameraKeyframe, removeDirectorCameraTrack, sampleDirectorCameraTrack, sampleDirectorEasingCurve, setDirectorActiveCameraTrack, setDirectorAnimationDuration, setDirectorCameraTrackClip, setDirectorCameraTrackTarget, updateDirectorCameraKeyframe, updateDirectorCameraTrack, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
 import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN, getAvailableDirectorPathNodeParents, interpolateDirectorMotionPathSamples, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, sampleDirectorMotionPath, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
+import { DIRECTOR_CAMERA_PRESETS, DIRECTOR_SCENE_PRESETS, applyDirectorCameraPresetById, applyDirectorScenePresetById, isDirectorScenePresetActive, matchesDirectorCameraPreset, type DirectorCameraPresetId, type DirectorScenePresetId } from "@/lib/canvas/director-presets";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -61,6 +62,18 @@ const objectKinds: Array<{ kind: DirectorObjectKind; icon: typeof Box }> = [
     { kind: "cone", icon: Triangle },
 ];
 
+const scenePresetIcons: Record<DirectorScenePresetId, typeof Box> = {
+    blank: LayoutGrid,
+    dialogue2: MessagesSquare,
+    dialogue3: Users,
+    interview: Mic,
+    monologue: UserRound,
+    lecture: Presentation,
+    chase: Clapperboard,
+    outdoor_walk: Footprints,
+    meeting: Table2,
+};
+
 export function CanvasDirectorShell({
     open,
     initialProject,
@@ -74,7 +87,7 @@ export function CanvasDirectorShell({
     onSave: (project: DirectorProjectState) => void;
     onCapture: (dataUrl: string, project: DirectorProjectState) => Promise<void>;
 }) {
-    const { message } = App.useApp();
+    const { message, modal } = App.useApp();
     const { t } = useTranslation();
     const colorTheme = useThemeStore((state) => state.theme);
     const canvasTheme = canvasThemes[colorTheme];
@@ -826,6 +839,46 @@ export function CanvasDirectorShell({
         });
     };
 
+    const applyCameraPreset = (presetId: DirectorCameraPresetId) => {
+        setPlaying(false);
+        setSelectedKeyframeTime(null);
+        setProject((current) => applyDirectorCameraPresetById(current, presetId));
+    };
+
+    const applyScenePreset = (presetId: DirectorScenePresetId) => {
+        const preset = DIRECTOR_SCENE_PRESETS.find((item) => item.id === presetId);
+        if (!preset) return;
+        const apply = () => {
+            setProject((current) => applyDirectorScenePresetById(current, presetId, {
+                objectName: (item, index) => t(item.nameKey, {
+                    count: preset.objects.slice(0, index + 1).filter((previous) => previous.nameKey === item.nameKey).length,
+                }),
+                cameraName: (item) => t(item.nameKey),
+            }));
+            setPlaying(false);
+            setPlayhead(0);
+            setSelectedKeyframeTime(null);
+            setSelectedObjectId(null);
+            setSelectedSceneNodeId(null);
+            setSelectedMotionPathId(null);
+            setSelectedPathNodeId(null);
+            message.success(t("canvas.director.scenePresetApplied", { name: t(preset.labelKey) }));
+        };
+        const replacesContent = project.objects.length > 0 || project.animation.cameraTracks.length > 0 || project.animation.motionPaths.length > 0;
+        if (!replacesContent) {
+            apply();
+            return;
+        }
+        modal.confirm({
+            title: t("canvas.director.scenePresetReplaceTitle"),
+            content: t("canvas.director.scenePresetReplaceDescription"),
+            okText: t("canvas.director.scenePresetApply"),
+            cancelText: t("common.cancel"),
+            okButtonProps: { danger: true },
+            onOk: apply,
+        });
+    };
+
     const removeCameraKeyframe = (time: number) => {
         setPlaying(false);
         setProject((current) => removeDirectorCameraKeyframe(current, time));
@@ -1150,8 +1203,64 @@ export function CanvasDirectorShell({
                         </div>
                     </div>
 
+                    <div className="mb-5">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                            <div>
+                                <div className="text-xs font-medium opacity-60">{t("canvas.director.scenePresetTitle")}</div>
+                                <div className="mt-1 text-[10px] leading-4 opacity-40">{t("canvas.director.scenePresetHint")}</div>
+                            </div>
+                            <span className="shrink-0 text-[10px] tabular-nums opacity-30">{DIRECTOR_SCENE_PRESETS.length}</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                            {DIRECTOR_SCENE_PRESETS.map((preset) => {
+                                const Icon = scenePresetIcons[preset.id];
+                                const active = isDirectorScenePresetActive(project, preset);
+                                return (
+                                    <button
+                                        key={preset.id}
+                                        type="button"
+                                        className={`flex min-h-[58px] items-start gap-2 rounded-xl border px-2.5 py-2 text-left transition ${active ? "bg-black/[0.06] dark:bg-white/[0.09]" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]"}`}
+                                        style={{ borderColor: canvasTheme.node.stroke }}
+                                        onClick={() => applyScenePreset(preset.id)}
+                                    >
+                                        <Icon className="mt-0.5 size-4 shrink-0 opacity-60" />
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block truncate text-[11px] font-medium">{t(preset.labelKey)}</span>
+                                            <span className="mt-0.5 block text-[9px] leading-4 opacity-45">{t(preset.descriptionKey)}</span>
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     <div className="mb-5 space-y-4">
                         <div className="text-xs font-medium opacity-60">{t("canvas.director.camera")}</div>
+                        <div>
+                            <div className="mb-2 flex items-center justify-between gap-3">
+                                <span className="text-[11px] font-medium opacity-60">{t("canvas.director.cameraPresetTitle")}</span>
+                                <span className="text-[10px] tabular-nums opacity-30">{DIRECTOR_CAMERA_PRESETS.length}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                                {DIRECTOR_CAMERA_PRESETS.map((preset) => {
+                                    const active = matchesDirectorCameraPreset(project, preset);
+                                    return (
+                                        <button
+                                            key={preset.id}
+                                            type="button"
+                                            className={`flex h-8 min-w-0 items-center justify-between gap-1 rounded-lg border px-2 text-[10px] transition ${active ? "bg-black/[0.06] font-medium dark:bg-white/[0.09]" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]"}`}
+                                            style={{ borderColor: canvasTheme.node.stroke }}
+                                            onClick={() => applyCameraPreset(preset.id)}
+                                            title={`${t(preset.labelKey)} · FOV ${preset.fov}°`}
+                                        >
+                                            <span className="truncate">{t(preset.labelKey)}</span>
+                                            <span className="shrink-0 tabular-nums opacity-35">{preset.fov}°</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="mt-1.5 text-[10px] leading-4 opacity-35">{t("canvas.director.cameraPresetHint")}</div>
+                        </div>
                         <RangeField
                             label={t("canvas.director.fov")}
                             value={cameraSettings.fov}

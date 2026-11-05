@@ -1,22 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, ColorPicker, InputNumber, Modal, Select, Slider, theme as antdTheme } from "antd";
-import { Box, Camera, Circle, Cylinder, RotateCcw, Save, Trash2, Triangle } from "lucide-react";
+import { App, Button, ColorPicker, InputNumber, Modal, Select, Slider, Switch, theme as antdTheme } from "antd";
+import { Box, Camera, Circle, Cylinder, Folder, Lightbulb, MapPin, RotateCcw, Route, Save, Trash2, Triangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Group, Mesh, Object3D, Scene } from "three";
 
 import {
+    DIRECTOR_MAX_FOV,
     DIRECTOR_MAX_OBJECTS,
+    DIRECTOR_MIN_FOV,
     createDirectorObject,
     createDirectorProject,
     isValidDirectorCapture,
     normalizeDirectorColor,
     normalizeDirectorProject,
+    UnsupportedDirectorProjectVersionError,
     type DirectorBackground,
+    type DirectorEnvironment,
     type DirectorObject,
     type DirectorObjectKind,
     type DirectorProjectState,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
+import { buildDirectorSceneTree, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -53,7 +58,9 @@ export function CanvasDirectorShell({
     const { token } = antdTheme.useToken();
     const stageRef = useRef<HTMLDivElement>(null);
     const runtimeRef = useRef<DirectorSceneRuntime | null>(null);
-    const [project, setProject] = useState(() => normalizeDirectorProject(initialProject));
+    const [initialProjectState] = useState(() => readDirectorProject(initialProject));
+    const [project, setProject] = useState(initialProjectState.project);
+    const [unsupportedProjectVersion, setUnsupportedProjectVersion] = useState(initialProjectState.unsupportedVersion);
     const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
     const [sceneError, setSceneError] = useState<string | null>(null);
     const [capturing, setCapturing] = useState(false);
@@ -66,8 +73,9 @@ export function CanvasDirectorShell({
 
     useEffect(() => {
         if (!open) return;
-        const next = normalizeDirectorProject(initialProject);
-        setProject(next);
+        const next = readDirectorProject(initialProject);
+        setProject(next.project);
+        setUnsupportedProjectVersion(next.unsupportedVersion);
         setSelectedObjectId(null);
         setSceneError(null);
     }, [initialProject, open]);
@@ -106,7 +114,7 @@ export function CanvasDirectorShell({
 
                 const objectRoot = new THREE.Group();
                 scene.add(objectRoot);
-                addStudioGeometry(THREE, scene);
+                const studioGeometry = addStudioGeometry(THREE, scene);
 
                 const raycaster = new THREE.Raycaster();
                 const pointer = new THREE.Vector2();
@@ -139,6 +147,7 @@ export function CanvasDirectorShell({
                     setProject((current) => ({
                         ...current,
                         camera: {
+                            ...current.camera,
                             position: vectorState(camera.position),
                             target: vectorState(controls.target),
                         },
@@ -153,15 +162,25 @@ export function CanvasDirectorShell({
                 renderer.domElement.addEventListener("webglcontextlost", contextLost);
                 controls.addEventListener("end", syncCamera);
 
+                let syncedObjects: DirectorProjectState["objects"] | null = null;
+                let syncedSelectedId: string | null | undefined;
                 const sync = (nextProject: DirectorProjectState, selectedId: string | null) => {
-                    clearObjectRoot(objectRoot);
-                    nextProject.objects.forEach((item) => {
-                        const mesh = createObjectMesh(THREE, item, item.id === selectedId);
-                        objectRoot.add(mesh);
-                    });
+                    if (nextProject.objects !== syncedObjects || selectedId !== syncedSelectedId) {
+                        clearObjectRoot(objectRoot);
+                        nextProject.objects.forEach((item) => {
+                            const mesh = createObjectMesh(THREE, item, item.id === selectedId);
+                            objectRoot.add(mesh);
+                        });
+                        syncedObjects = nextProject.objects;
+                        syncedSelectedId = selectedId;
+                    }
                     applyBackground(THREE, scene, nextProject.background);
+                    applyEnvironment(studioGeometry.floor, studioGeometry.grid, nextProject.environment);
                     camera.position.set(nextProject.camera.position.x, nextProject.camera.position.y, nextProject.camera.position.z);
                     controls.target.set(nextProject.camera.target.x, nextProject.camera.target.y, nextProject.camera.target.z);
+                    camera.fov = nextProject.camera.fov;
+                    camera.zoom = nextProject.camera.zoom;
+                    camera.updateProjectionMatrix();
                     controls.update();
                 };
 
@@ -231,6 +250,7 @@ export function CanvasDirectorShell({
     }, [project, selectedObjectId]);
 
     const selectedObject = useMemo(() => project.objects.find((item) => item.id === selectedObjectId) || null, [project.objects, selectedObjectId]);
+    const sceneTree = useMemo(() => buildDirectorSceneTree(project), [project]);
 
     const addObject = (kind: DirectorObjectKind) => {
         if (project.objects.length >= DIRECTOR_MAX_OBJECTS) {
@@ -261,13 +281,25 @@ export function CanvasDirectorShell({
         setSelectedObjectId(null);
     };
 
+    const updateEnvironment = (patch: Partial<DirectorEnvironment>) => {
+        setProject((current) => ({ ...current, environment: { ...current.environment, ...patch } }));
+    };
+
     const save = () => {
+        if (unsupportedProjectVersion !== null) {
+            message.error(t("canvas.director.unsupportedVersion", { version: String(unsupportedProjectVersion) }));
+            return;
+        }
         const next = normalizeDirectorProject(project);
         onSave(next);
         message.success(t("canvas.director.saved"));
     };
 
     const capture = async () => {
+        if (unsupportedProjectVersion !== null) {
+            message.error(t("canvas.director.unsupportedVersion", { version: String(unsupportedProjectVersion) }));
+            return;
+        }
         const dataUrl = runtimeRef.current?.capture();
         if (!dataUrl || !isValidDirectorCapture(dataUrl)) {
             message.error(t("canvas.director.captureFailed"));
@@ -286,6 +318,7 @@ export function CanvasDirectorShell({
 
     const resetProject = () => {
         setProject(createDirectorProject());
+        setUnsupportedProjectVersion(null);
         setSelectedObjectId(null);
     };
 
@@ -311,12 +344,12 @@ export function CanvasDirectorShell({
                     <Button icon={<RotateCcw className="size-4" />} onClick={resetProject}>
                         {t("canvas.director.reset")}
                     </Button>
-                    <div className="flex items-center gap-2">
+                    <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
                         <Button onClick={onClose}>{t("common.close")}</Button>
-                        <Button icon={<Save className="size-4" />} onClick={save}>
+                        <Button icon={<Save className="size-4" />} disabled={unsupportedProjectVersion !== null} onClick={save}>
                             {t("common.save")}
                         </Button>
-                        <Button type="primary" loading={capturing} disabled={Boolean(sceneError)} icon={<Camera className="size-4" />} onClick={() => void capture()}>
+                        <Button type="primary" loading={capturing} disabled={Boolean(sceneError) || unsupportedProjectVersion !== null} icon={<Camera className="size-4" />} onClick={() => void capture()}>
                             {t("canvas.director.capture")}
                         </Button>
                     </div>
@@ -348,6 +381,60 @@ export function CanvasDirectorShell({
                 </div>
 
                 <div className="thin-scrollbar max-h-[620px] overflow-y-auto p-4">
+                    {unsupportedProjectVersion !== null ? (
+                        <div className="mb-4 rounded-xl border px-3 py-2 text-xs leading-5" style={{ background: token.colorWarningBg, borderColor: token.colorWarningBorder, color: token.colorWarningText }}>
+                            {t("canvas.director.unsupportedVersion", { version: String(unsupportedProjectVersion) })}
+                        </div>
+                    ) : null}
+                    <div className="mb-5">
+                        <label className="mb-2 block text-xs font-medium opacity-60">{t("canvas.director.sceneTree")}</label>
+                        <div className="max-h-52 overflow-y-auto rounded-xl border p-1.5" style={{ borderColor: canvasTheme.node.stroke }}>
+                            {sceneTree.map((entry) => {
+                                const Icon = sceneTreeIcon(entry);
+                                const label = sceneTreeLabel(entry, t);
+                                const content = (
+                                    <>
+                                        <Icon className="size-3.5 shrink-0 opacity-55" />
+                                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                                    </>
+                                );
+                                return entry.objectId ? (
+                                    <button
+                                        key={entry.id}
+                                        type="button"
+                                        className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[11px] transition ${entry.objectId === selectedObjectId ? "bg-black/[0.06] font-medium dark:bg-white/[0.09]" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]"}`}
+                                        style={{ paddingLeft: 8 + entry.depth * 12 }}
+                                        onClick={() => setSelectedObjectId(entry.objectId!)}
+                                    >
+                                        {content}
+                                    </button>
+                                ) : (
+                                    <div key={entry.id} className="flex h-8 items-center gap-2 px-2 text-[11px] opacity-70" style={{ paddingLeft: 8 + entry.depth * 12 }}>
+                                        {content}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="mb-5 space-y-4">
+                        <div className="text-xs font-medium opacity-60">{t("canvas.director.camera")}</div>
+                        <RangeField label={t("canvas.director.fov")} value={project.camera.fov} min={DIRECTOR_MIN_FOV} max={DIRECTOR_MAX_FOV} step={1} suffix="°" onChange={(fov) => setProject((current) => ({ ...current, camera: { ...current.camera, fov } }))} />
+                        <RangeField label={t("canvas.director.zoom")} value={project.camera.zoom} min={0.1} max={5} step={0.1} onChange={(zoom) => setProject((current) => ({ ...current, camera: { ...current.camera, zoom } }))} />
+                    </div>
+
+                    <div className="mb-5 space-y-3">
+                        <div className="flex items-center justify-between gap-3 text-xs font-medium opacity-60">
+                            <span>{t("canvas.director.ground")}</span>
+                            <Switch size="small" checked={project.environment.groundVisible} onChange={(groundVisible) => updateEnvironment({ groundVisible })} />
+                        </div>
+                        <RangeField label={t("canvas.director.groundOpacity")} value={project.environment.groundOpacity} min={0} max={1} step={0.1} onChange={(groundOpacity) => updateEnvironment({ groundOpacity })} />
+                        <div>
+                            <div className="mb-1 text-[11px] opacity-45">{t("canvas.director.groundHeight")}</div>
+                            <InputNumber className="w-full" min={-8} max={8} step={0.1} value={project.environment.groundHeight} onChange={(groundHeight) => groundHeight !== null && updateEnvironment({ groundHeight })} />
+                        </div>
+                    </div>
+
                     <div className="mb-5">
                         <label className="mb-2 block text-xs font-medium opacity-60">{t("canvas.director.background")}</label>
                         <Select
@@ -428,6 +515,19 @@ function RangeField({ label, value, min, max, step, suffix = "", onChange }: { l
     );
 }
 
+function sceneTreeIcon(entry: DirectorSceneTreeEntry) {
+    if (entry.kind === "camera") return Camera;
+    if (entry.kind === "group") return Folder;
+    if (entry.kind === "light") return Lightbulb;
+    if (entry.kind === "path") return Route;
+    return entry.kind === "waypoint" ? MapPin : Box;
+}
+
+function sceneTreeLabel(entry: DirectorSceneTreeEntry, t: (key: string) => string) {
+    if (entry.kind === "camera") return t("canvas.director.mainCamera");
+    return entry.label;
+}
+
 function addStudioGeometry(THREE: typeof import("three"), scene: Scene) {
     scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1c1917, 2.2));
     const keyLight = new THREE.DirectionalLight(0xffffff, 3.2);
@@ -439,7 +539,7 @@ function addStudioGeometry(THREE: typeof import("three"), scene: Scene) {
     rimLight.position.set(-8, 5, -7);
     scene.add(rimLight);
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x25272c, roughness: 0.9 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x25272c, roughness: 0.9, transparent: true, opacity: 0.4 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
@@ -447,6 +547,7 @@ function addStudioGeometry(THREE: typeof import("three"), scene: Scene) {
     const grid = new THREE.GridHelper(40, 40, 0x78716c, 0x44403c);
     grid.position.y = 0.01;
     scene.add(grid);
+    return { floor, grid };
 }
 
 function applyBackground(THREE: typeof import("three"), scene: Scene, background: DirectorBackground) {
@@ -457,6 +558,17 @@ function applyBackground(THREE: typeof import("three"), scene: Scene, background
     }[background];
     scene.background = new THREE.Color(preset.background);
     scene.fog = new THREE.Fog(preset.fog, preset.fogNear, preset.fogFar);
+}
+
+function applyEnvironment(floor: Mesh, grid: import("three").GridHelper, environment: DirectorEnvironment) {
+    floor.visible = environment.groundVisible;
+    floor.position.y = environment.groundHeight;
+    const material = floor.material as import("three").MeshStandardMaterial;
+    material.opacity = environment.groundOpacity;
+    material.transparent = environment.groundOpacity < 1;
+    material.needsUpdate = true;
+    grid.visible = environment.groundVisible;
+    grid.position.y = environment.groundHeight + 0.01;
 }
 
 function createObjectMesh(THREE: typeof import("three"), item: DirectorObject, selected: boolean) {
@@ -511,4 +623,15 @@ function disposeScene(THREE: typeof import("three"), scene: Scene) {
 
 function vectorState(vector: { x: number; y: number; z: number }): DirectorVector3 {
     return { x: vector.x, y: vector.y, z: vector.z };
+}
+
+function readDirectorProject(value: unknown) {
+    try {
+        return { project: normalizeDirectorProject(value), unsupportedVersion: null };
+    } catch (error) {
+        if (error instanceof UnsupportedDirectorProjectVersionError) {
+            return { project: createDirectorProject(), unsupportedVersion: error.version };
+        }
+        throw error;
+    }
 }

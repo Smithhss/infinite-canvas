@@ -7,7 +7,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import { createDirectorProject, type DirectorBackground } from "@/lib/canvas/director-project";
-import { getThreeDBoxProjectTitle, getThreeDBoxProjects } from "@/lib/canvas/three-d-box-projects";
+import { getThreeDBoxProjectPreview, getThreeDBoxProjectTitle, getThreeDBoxProjects } from "@/lib/canvas/three-d-box-projects";
 import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -151,9 +151,8 @@ function ThreeDBoxHome() {
 
 function ThreeDBoxProjectCard({ project, index, dark, onOpen, onDuplicate, onDelete }: { project: CanvasProject; index: number; dark: boolean; onOpen: () => void; onDuplicate: () => void; onDelete: () => void }) {
     const { i18n, t } = useTranslation();
-    const background = project.director?.background || "studio";
-    const backgroundLabel = t(`canvas.director.backgrounds.${background}`);
-    const objectCount = project.director?.objects.length || 0;
+    const { background, objectCount, unsupportedVersion } = getThreeDBoxProjectPreview(project.director);
+    const backgroundLabel = unsupportedVersion === null ? t(`canvas.director.backgrounds.${background}`) : t("threeDBoxHub.unsupportedVersion", { version: String(unsupportedVersion) });
 
     return (
         <article

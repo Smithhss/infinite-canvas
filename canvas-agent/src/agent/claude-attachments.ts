@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
+import { withoutAgentMemoryContext } from "./memory-context.js";
 import type { AgentAttachment } from "./types.js";
 
 const MAX_IMAGES = 6;
@@ -96,7 +97,7 @@ export function withoutAttachmentContext(value: string) {
 
 /** 从 Claude 会话记录恢复用户原文，隐藏附件和画布引用两类模型上下文。 */
 export function withoutClaudeModelContext(value: string) {
-    const withoutAttachments = withoutAttachmentContext(value);
+    const withoutAttachments = withoutAttachmentContext(withoutAgentMemoryContext(value));
     if (!withoutAttachments.endsWith(CANVAS_CONTEXT_INSTRUCTION)) return withoutAttachments;
     const index = withoutAttachments.lastIndexOf(CANVAS_CONTEXT_MARKER);
     return index < 0 ? withoutAttachments : withoutAttachments.slice(0, index);

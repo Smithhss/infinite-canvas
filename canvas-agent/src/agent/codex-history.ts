@@ -1,5 +1,6 @@
 import { field } from "../utils/value.js";
 import type { CodexPlanUpdate } from "./codex-protocol.js";
+import { withoutAgentMemoryContext } from "./memory-context.js";
 
 type AgentHistoryMessage = { id: string; itemId: string; threadId: string; turnId: string; role: "user" | "assistant" | "tool" | "error"; title?: string; text: string; detail?: unknown; activityItems?: Record<string, string> };
 export type CodexSupplementalHistoryItem = { threadId: string; turnId: string; itemId: string; sequence?: number; item: Record<string, unknown> };
@@ -479,7 +480,8 @@ function displayUserText(text: string) {
     const marker = "用户请求：";
     const index = value.lastIndexOf(marker);
     const prompt = index >= 0 ? value.slice(index + marker.length) : value;
-    return prompt.split("\n\n本轮可用图片附件（顺序与图片输入一致）：", 1)[0].trim();
+    const visible = withoutAgentMemoryContext(prompt);
+    return visible.split("\n\n本轮可用图片附件（顺序与图片输入一致）：", 1)[0].split("\n\n本轮引用的当前画布素材：", 1)[0].trim();
 }
 
 /** 将未知值转换为数组。 */

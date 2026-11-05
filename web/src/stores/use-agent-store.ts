@@ -41,7 +41,7 @@ export type AgentConversationState = {
     sourceClientId?: string;
     error?: string;
 };
-export type AgentPanelTab = "chat" | "setup" | "history" | "skills" | "log";
+export type AgentPanelTab = "chat" | "setup" | "history" | "skills" | "memory" | "log";
 
 const CONNECT_TIMEOUT_MS = 6000;
 const initialAgentProvider = typeof window === "undefined" ? "codex" : ((localStorage.getItem("canvas-agent-provider") as AgentProvider | null) ?? "codex");

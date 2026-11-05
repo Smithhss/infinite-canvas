@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, ColorPicker, Input, InputNumber, Modal, Select, Slider, Switch, theme as antdTheme } from "antd";
-import { Box, Camera, Circle, Cylinder, Folder, Lightbulb, MapPin, Plus, RotateCcw, Route, Save, Trash2, Triangle } from "lucide-react";
+import { Box, Camera, Circle, Cylinder, Folder, ImagePlus, Lightbulb, MapPin, Plus, RotateCcw, Route, Save, Trash2, Triangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Group, Mesh, Object3D, Scene } from "three";
 
@@ -25,6 +25,7 @@ import {
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
+import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -60,6 +61,7 @@ export function CanvasDirectorShell({
     const canvasTheme = canvasThemes[colorTheme];
     const { token } = antdTheme.useToken();
     const stageRef = useRef<HTMLDivElement>(null);
+    const panoramaInputRef = useRef<HTMLInputElement>(null);
     const runtimeRef = useRef<DirectorSceneRuntime | null>(null);
     const [initialProjectState] = useState(() => readDirectorProject(initialProject));
     const [project, setProject] = useState(initialProjectState.project);
@@ -120,6 +122,57 @@ export function CanvasDirectorShell({
                 const objectRoot = new THREE.Group();
                 scene.add(objectRoot);
                 const studioGeometry = addStudioGeometry(THREE, scene);
+                let panoramaMesh: Mesh | null = null;
+                let panoramaTexture: import("three").Texture | null = null;
+                let panoramaUrl: string | undefined;
+                let panoramaRequest = 0;
+
+                const clearPanorama = () => {
+                    panoramaRequest += 1;
+                    if (panoramaMesh) {
+                        scene.remove(panoramaMesh);
+                        panoramaMesh.geometry.dispose();
+                        const materials = Array.isArray(panoramaMesh.material) ? panoramaMesh.material : [panoramaMesh.material];
+                        materials.forEach((material) => material.dispose());
+                        panoramaMesh = null;
+                    }
+                    panoramaTexture?.dispose();
+                    panoramaTexture = null;
+                    panoramaUrl = undefined;
+                };
+                const applyPanoramaTransform = (environment: DirectorEnvironment) => {
+                    if (!panoramaMesh) return;
+                    panoramaMesh.scale.setScalar(environment.panoramaRadius);
+                    panoramaMesh.rotation.y = THREE.MathUtils.degToRad(environment.panoramaRotationY);
+                };
+                const syncPanorama = (environment: DirectorEnvironment) => {
+                    if (environment.panoramaUrl !== panoramaUrl) {
+                        clearPanorama();
+                        panoramaUrl = environment.panoramaUrl;
+                        if (panoramaUrl) {
+                            const requestedUrl = panoramaUrl;
+                            const request = ++panoramaRequest;
+                            void new THREE.TextureLoader().loadAsync(requestedUrl).then((texture) => {
+                                if (cancelled || request !== panoramaRequest) {
+                                    texture.dispose();
+                                    return;
+                                }
+                                texture.colorSpace = THREE.SRGBColorSpace;
+                                texture.minFilter = THREE.LinearFilter;
+                                panoramaTexture = texture;
+                                panoramaMesh = new THREE.Mesh(
+                                    new THREE.SphereGeometry(1, 64, 40),
+                                    new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, toneMapped: false, fog: false }),
+                                );
+                                scene.add(panoramaMesh);
+                                applyPanoramaTransform(environment);
+                            }).catch(() => {
+                                if (!cancelled && request === panoramaRequest) panoramaUrl = undefined;
+                            });
+                        }
+                    }
+                    applyPanoramaTransform(environment);
+                };
 
                 const raycaster = new THREE.Raycaster();
                 const pointer = new THREE.Vector2();
@@ -182,6 +235,7 @@ export function CanvasDirectorShell({
                     }
                     applyBackground(THREE, scene, nextProject.background);
                     applyEnvironment(studioGeometry.floor, studioGeometry.grid, nextProject.environment);
+                    syncPanorama(nextProject.environment);
                     camera.position.set(nextProject.camera.position.x, nextProject.camera.position.y, nextProject.camera.position.z);
                     controls.target.set(nextProject.camera.target.x, nextProject.camera.target.y, nextProject.camera.target.z);
                     camera.fov = nextProject.camera.fov;
@@ -226,6 +280,7 @@ export function CanvasDirectorShell({
                         renderer.domElement.removeEventListener("webglcontextlost", contextLost);
                         controls.removeEventListener("end", syncCamera);
                         controls.dispose();
+                        clearPanorama();
                         clearObjectRoot(objectRoot);
                         disposeScene(THREE, scene);
                         renderer.dispose();
@@ -311,6 +366,25 @@ export function CanvasDirectorShell({
 
     const updateEnvironment = (patch: Partial<DirectorEnvironment>) => {
         setProject((current) => ({ ...current, environment: { ...current.environment, ...patch } }));
+    };
+
+    const loadPanoramaFile = (file: File | undefined) => {
+        if (!file) return;
+        if (file.size > MAX_PANORAMA_SOURCE_BYTES) {
+            message.error(t("canvas.director.panoramaTooLarge"));
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            const source = normalizePanoramaSource(reader.result);
+            if (!source) {
+                message.error(t("canvas.director.panoramaUnsupported"));
+                return;
+            }
+            updateEnvironment({ panoramaUrl: source });
+        };
+        reader.onerror = () => message.error(t("canvas.director.panoramaReadFailed"));
+        reader.readAsDataURL(file);
     };
 
     const save = () => {
@@ -478,6 +552,37 @@ export function CanvasDirectorShell({
                             <div className="mb-1 text-[11px] opacity-45">{t("canvas.director.groundHeight")}</div>
                             <InputNumber className="w-full" min={-8} max={8} step={0.1} value={project.environment.groundHeight} onChange={(groundHeight) => groundHeight !== null && updateEnvironment({ groundHeight })} />
                         </div>
+                    </div>
+
+                    <div className="mb-5 rounded-xl border p-3" style={{ borderColor: canvasTheme.node.stroke }}>
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-xs font-medium opacity-60">{t("canvas.director.panorama")}</div>
+                                <div className="mt-1 text-[10px] leading-4 opacity-40">{t("canvas.director.panoramaHint")}</div>
+                            </div>
+                            <Button size="small" type="text" className="!h-7 shrink-0 !px-2" icon={<ImagePlus className="size-3.5" />} onClick={() => panoramaInputRef.current?.click()}>
+                                {project.environment.panoramaUrl ? t("canvas.director.replacePanorama") : t("canvas.director.loadPanorama")}
+                            </Button>
+                        </div>
+                        {project.environment.panoramaUrl ? (
+                            <div className="mt-3 space-y-3">
+                                <div className="relative overflow-hidden rounded-lg border" style={{ borderColor: canvasTheme.node.stroke }}>
+                                    <img src={project.environment.panoramaUrl} alt={t("canvas.director.panorama")} className="aspect-[2/1] w-full object-cover" />
+                                    <Button className="!absolute right-1.5 top-1.5" size="small" danger type="primary" icon={<Trash2 className="size-3.5" />} aria-label={t("canvas.director.removePanorama")} onClick={() => updateEnvironment({ panoramaUrl: undefined })} />
+                                </div>
+                                <RangeField label={t("canvas.director.panoramaRotation")} value={project.environment.panoramaRotationY} min={-180} max={180} step={1} suffix="°" onChange={(panoramaRotationY) => updateEnvironment({ panoramaRotationY })} />
+                            </div>
+                        ) : null}
+                        <input
+                            ref={panoramaInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="hidden"
+                            onChange={(event) => {
+                                loadPanoramaFile(event.currentTarget.files?.[0]);
+                                event.currentTarget.value = "";
+                            }}
+                        />
                     </div>
 
                     <div className="mb-5">

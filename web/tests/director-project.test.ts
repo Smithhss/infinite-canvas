@@ -158,6 +158,22 @@ test("normalizes camera FOV, zoom and quaternion boundaries", () => {
     expect(project.camera.quaternion).toEqual({ x: 0, y: 0, z: 0, w: 1 });
 });
 
+test("normalizes a local panorama environment and rejects remote sources", () => {
+    const project = normalizeDirectorProject({
+        environment: {
+            panoramaUrl: "data:image/png;base64,AAAA",
+            panoramaRotationY: 450,
+            panoramaRadius: 0,
+        },
+    });
+    expect(project.environment.panoramaUrl).toBe("data:image/png;base64,AAAA");
+    expect(project.environment.panoramaRotationY).toBe(360);
+    expect(project.environment.panoramaRadius).toBe(1);
+
+    const remote = normalizeDirectorProject({ environment: { panoramaUrl: "https://example.com/panorama.png" } });
+    expect(remote.environment.panoramaUrl).toBeUndefined();
+});
+
 test("keeps a real scene hierarchy and breaks parent cycles", () => {
     const project = normalizeDirectorProject({
         sceneNodes: [

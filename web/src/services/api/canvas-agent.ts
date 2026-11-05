@@ -39,11 +39,16 @@ export type AgentSkillResourceDetail = AgentSkillResourceSummary & { content: st
 export type AgentSkillInput = { name?: string; description: string; instructions: string; interface?: AgentSkillInterface | null; expectedRevision?: string };
 export type AgentSkillDraft = { name: string; displayName: string; description: string; instructions: string; shortDescription: string; defaultPrompt: string };
 export type AgentSkillDraftInput = { source: "conversation" | "canvas"; threadId: string; clientId: string; model?: string; effort?: AgentReasoningEffort };
+export type AgentRemoteSkillSearchResult = { repository: string; url: string; description: string; stars: number; defaultBranch: string; updatedAt: string };
+export type AgentRemoteSkillPreview = { name: string; description: string; instructions: string; repository: string; path: string; sourceUrl: string };
 export type AgentSkillsResponse = { ok?: boolean; data?: AgentSkillSummary[]; errors?: unknown[] };
 export type AgentSkillResponse = { ok?: boolean; data?: AgentSkillDetail };
 export type AgentSkillResourcesResponse = { ok?: boolean; data?: AgentSkillResourceSummary[] };
 export type AgentSkillResourceResponse = { ok?: boolean; data?: AgentSkillResourceDetail };
 export type AgentSkillDraftResponse = { ok?: boolean; data?: AgentSkillDraft };
+export type AgentRemoteSkillSearchResponse = { ok?: boolean; data?: AgentRemoteSkillSearchResult[] };
+export type AgentRemoteSkillPreviewResponse = { ok?: boolean; data?: AgentRemoteSkillPreview };
+export type AgentRemoteSkillInstallResponse = { ok?: boolean; data?: AgentSkillDetail & { sourceUrl?: string } };
 
 export async function postState(endpoint: string, token: string, clientId: string, snapshot: CanvasAgentSnapshot | null) {
     try {
@@ -109,6 +114,18 @@ export function fetchClaudeSkills(endpoint: string, token: string) {
 
 export function fetchCodexSkill(endpoint: string, token: string, name: string) {
     return fetchAgentJson<AgentSkillResponse>(endpoint, token, `/agent/codex/skills/${encodeURIComponent(name)}`);
+}
+
+export function searchRemoteSkills(endpoint: string, token: string, query: string) {
+    return fetchAgentJson<AgentRemoteSkillSearchResponse>(endpoint, token, `/agent/codex/skills/search?q=${encodeURIComponent(query)}`);
+}
+
+export function previewRemoteSkill(endpoint: string, token: string, url: string) {
+    return fetchAgentJson<AgentRemoteSkillPreviewResponse>(endpoint, token, "/agent/codex/skills/preview", jsonPost({ url }));
+}
+
+export function installRemoteSkill(endpoint: string, token: string, url: string) {
+    return fetchAgentJson<AgentRemoteSkillInstallResponse>(endpoint, token, "/agent/codex/skills/install", jsonPost({ url }));
 }
 
 export function createCodexSkill(endpoint: string, token: string, input: AgentSkillInput) {

@@ -23,6 +23,7 @@ export type DirectorCameraTrackSettings = {
     zoom: number;
     lookAtTarget?: string;
     followTargetId?: string;
+    motionPathId?: string;
 };
 
 export function getDirectorCameraTrack(project: DirectorProjectState): DirectorCameraTrack | null {
@@ -41,6 +42,7 @@ export function getDirectorCameraTrackSettings(project: DirectorProjectState): D
             zoom: project.camera.zoom,
             ...(project.camera.lookAtTarget ? { lookAtTarget: project.camera.lookAtTarget } : {}),
             ...(project.camera.followTargetId ? { followTargetId: project.camera.followTargetId } : {}),
+            ...(project.camera.motionPathId ? { motionPathId: project.camera.motionPathId } : {}),
         };
     }
     return {
@@ -50,6 +52,7 @@ export function getDirectorCameraTrackSettings(project: DirectorProjectState): D
         zoom: track.zoom,
         ...(track.lookAtTarget ? { lookAtTarget: track.lookAtTarget } : {}),
         ...(track.followTargetId ? { followTargetId: track.followTargetId } : {}),
+        ...(track.motionPathId ? { motionPathId: track.motionPathId } : {}),
     };
 }
 
@@ -65,6 +68,7 @@ export function createDirectorCameraTrack(index: number, settings?: Partial<Dire
         zoom: settings?.zoom ?? 1,
         lookAtTarget: settings?.lookAtTarget ?? null,
         followTargetId: settings?.followTargetId ?? null,
+        motionPathId: settings?.motionPathId ?? null,
         keyframes: [],
     };
 }
@@ -91,7 +95,7 @@ export function setDirectorActiveCameraTrack(project: DirectorProjectState, trac
 export function updateDirectorCameraTrack(
     project: DirectorProjectState,
     trackId: string,
-    patch: Partial<Pick<DirectorCameraTrack, "name" | "position" | "target" | "fov" | "zoom">>,
+    patch: Partial<Pick<DirectorCameraTrack, "name" | "position" | "target" | "fov" | "zoom" | "motionPathId">>,
 ): DirectorProjectState {
     if (!project.animation.cameraTracks.some((track) => track.id === trackId)) return project;
     return {
@@ -185,6 +189,7 @@ export function upsertDirectorCameraKeyframe(project: DirectorProjectState, keyf
         zoom: project.camera.zoom,
         lookAtTarget: project.camera.lookAtTarget ?? null,
         followTargetId: project.camera.followTargetId ?? null,
+        motionPathId: project.camera.motionPathId ?? null,
         keyframes: [],
     };
     const keyframes = sortAndDedupeKeyframes([

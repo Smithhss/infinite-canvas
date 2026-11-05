@@ -233,6 +233,23 @@ test("keeps a camera motion path only while the path exists", () => {
     expect(missing.camera.motionPathId).toBeUndefined();
 });
 
+test("normalizes independent camera-track motion paths", () => {
+    const project = normalizeDirectorProject({
+        version: DIRECTOR_PROJECT_VERSION,
+        camera: { motionPathId: "path-a" },
+        animation: {
+            motionPaths: [{ id: "path-a", nodes: [] }, { id: "path-b", nodes: [] }],
+            cameraTracks: [
+                { id: "legacy-track", keyframes: [] },
+                { id: "custom-track", motionPathId: "path-b", keyframes: [] },
+                { id: "missing-track", motionPathId: "path-missing", keyframes: [] },
+            ],
+        },
+    });
+
+    expect(project.animation.cameraTracks.map((track) => track.motionPathId)).toEqual(["path-a", "path-b", null]);
+});
+
 test("normalizes custom camera easing control points", () => {
     const project = normalizeDirectorProject({
         version: DIRECTOR_PROJECT_VERSION,

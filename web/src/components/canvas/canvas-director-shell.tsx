@@ -529,10 +529,10 @@ export function CanvasDirectorShell({
         () => selectedKeyframeTime === null ? null : activeCameraTrack?.keyframes.find((keyframe) => Math.abs(keyframe.time - selectedKeyframeTime) < 0.0001) || null,
         [activeCameraTrack, selectedKeyframeTime],
     );
-    const cameraMotionPath = useMemo(
-        () => project.camera.motionPathId ? project.animation.motionPaths.find((path) => path.id === project.camera.motionPathId) || null : null,
-        [project.animation.motionPaths, project.camera.motionPathId],
-    );
+    const cameraMotionPath = useMemo(() => {
+        const pathId = activeCameraTrack ? activeCameraTrack.motionPathId : project.camera.motionPathId;
+        return pathId ? project.animation.motionPaths.find((path) => path.id === pathId) || null : null;
+    }, [activeCameraTrack, project.animation.motionPaths, project.camera.motionPathId]);
     const cameraMotionPathSamples = useMemo(
         () => cameraMotionPath ? sampleDirectorMotionPath(cameraMotionPath) : [],
         [cameraMotionPath],
@@ -723,6 +723,8 @@ export function CanvasDirectorShell({
 
     const setCameraMotionPath = (value: string | undefined) => {
         setProject((current) => {
+            const track = getDirectorCameraTrack(current);
+            if (track) return updateDirectorCameraTrack(current, track.id, { motionPathId: value ?? null });
             const camera = { ...current.camera };
             delete camera.motionPathId;
             if (value) camera.motionPathId = value;
@@ -1208,7 +1210,7 @@ export function CanvasDirectorShell({
                                 className="w-full"
                                 allowClear
                                 placeholder={t("canvas.director.cameraMotionPathNone")}
-                                value={project.camera.motionPathId}
+                                value={cameraMotionPath?.id}
                                 options={project.animation.motionPaths.map((path) => ({ value: path.id, label: path.name }))}
                                 onChange={(value: string | undefined) => setCameraMotionPath(value)}
                             />

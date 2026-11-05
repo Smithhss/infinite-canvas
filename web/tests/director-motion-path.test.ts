@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { DIRECTOR_MAX_PATH_POINTS, createDirectorProject } from "../src/lib/canvas/director-project";
+import { createDirectorCameraTrack } from "../src/lib/canvas/director-animation";
 import {
     addDirectorPathNode,
     createDirectorMotionPath,
@@ -214,5 +215,13 @@ test("interpolates camera positions and clears a removed path assignment", () =>
     const initial = projectWithPath();
     const pathId = initial.animation.motionPaths[0].id;
     const assigned = { ...initial, camera: { ...initial.camera, motionPathId: pathId } };
-    expect(removeDirectorMotionPath(assigned, pathId).camera.motionPathId).toBeUndefined();
+    const cameraTrack = { ...createDirectorCameraTrack(0), motionPathId: pathId };
+    const withTrack = {
+        ...assigned,
+        animation: { ...assigned.animation, cameraTracks: [cameraTrack] },
+    };
+    const removed = removeDirectorMotionPath(withTrack, pathId);
+
+    expect(removed.camera.motionPathId).toBeUndefined();
+    expect(removed.animation.cameraTracks[0].motionPathId).toBeNull();
 });

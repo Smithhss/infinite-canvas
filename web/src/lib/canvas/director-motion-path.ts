@@ -95,7 +95,17 @@ export function removeDirectorMotionPath(project: DirectorProjectState, pathId: 
     if (motionPaths.length === project.animation.motionPaths.length) return project;
     const camera = { ...project.camera };
     if (camera.motionPathId === pathId) delete camera.motionPathId;
-    return { ...project, camera, animation: { ...project.animation, motionPaths } };
+    return {
+        ...project,
+        camera,
+        animation: {
+            ...project.animation,
+            motionPaths,
+            cameraTracks: project.animation.cameraTracks.map((track) => (
+                track.motionPathId === pathId ? { ...track, motionPathId: null } : track
+            )),
+        },
+    };
 }
 
 export function isDirectorPathNodeVisible(node: DirectorPathNode, path: DirectorMotionPath) {

@@ -123,6 +123,7 @@ test("keeps per-track camera settings and clears deleted targets", () => {
         fov: 35,
         zoom: 1.8,
         followTargetId: "group-a",
+        motionPathId: "path-a",
     });
     let project = addDirectorCameraTrack(createDirectorProject(), firstTrack);
     project = addDirectorCameraTrack(project, secondTrack);
@@ -133,6 +134,7 @@ test("keeps per-track camera settings and clears deleted targets", () => {
         fov: 35,
         zoom: 1.8,
         followTargetId: "group-a",
+        motionPathId: "path-a",
     });
     project = setDirectorActiveCameraTrack(project, firstTrack.id);
     expect(getDirectorCameraTrackSettings(project)).toMatchObject({ fov: 62, lookAtTarget: "hero-box" });
@@ -142,6 +144,7 @@ test("keeps per-track camera settings and clears deleted targets", () => {
         target: { x: 2, y: 1, z: -1 },
         zoom: 2.4,
     });
+    expect(getDirectorCameraTrack(project)?.motionPathId).toBeNull();
     expect(getDirectorCameraTrackSettings(project)).toMatchObject({
         position: { x: 9, y: 7, z: 5 },
         target: { x: 2, y: 1, z: -1 },

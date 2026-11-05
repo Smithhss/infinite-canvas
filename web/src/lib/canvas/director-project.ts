@@ -112,6 +112,7 @@ export type DirectorCameraTrack = {
     zoom: number;
     lookAtTarget: string | null;
     followTargetId: string | null;
+    motionPathId: string | null;
     keyframes: DirectorCameraKeyframe[];
 };
 
@@ -234,7 +235,7 @@ export function normalizeDirectorProject(value: unknown): DirectorProjectState {
         ...normalizeOptionalTargetField("lookAtTarget", camera.lookAtTarget, targetIds),
         ...normalizeOptionalTargetField("followTargetId", camera.followTargetId, targetIds),
     };
-    const animation = normalizeAnimation(source.animation, normalizedCameraBase, targetIds);
+    const animation = normalizeAnimation(source.animation, normalizedCameraBase, targetIds, camera.motionPathId);
     const motionPathIds = new Set(animation.motionPaths.map((path) => path.id));
     const normalizedCamera: DirectorCamera = {
         ...normalizedCameraBase,
@@ -322,10 +323,9 @@ function normalizeEnvironment(value: unknown, legacy = false): DirectorEnvironme
     };
 }
 
-function normalizeAnimation(value: unknown, camera: DirectorCamera, targetIds: Set<string>): DirectorAnimation {
+function normalizeAnimation(value: unknown, camera: DirectorCamera, targetIds: Set<string>, cameraMotionPathId?: unknown): DirectorAnimation {
     const source = value && typeof value === "object" ? (value as Partial<DirectorAnimation>) : {};
     const duration = clampNumber(source.duration, DIRECTOR_MIN_ANIMATION_DURATION, DIRECTOR_MAX_ANIMATION_DURATION, DIRECTOR_DEFAULT_ANIMATION_DURATION);
-    const cameraTracks = Array.isArray(source.cameraTracks) ? normalizeCameraTracks(source.cameraTracks, duration, camera, targetIds) : [];
     const seenPaths = new Set<string>();
     const motionPaths = Array.isArray(source.motionPaths)
         ? source.motionPaths.slice(0, DIRECTOR_MAX_MOTION_PATHS).flatMap((item, index) => {
@@ -334,6 +334,15 @@ function normalizeAnimation(value: unknown, camera: DirectorCamera, targetIds: S
               seenPaths.add(path.id);
               return [path];
           })
+        : [];
+    const motionPathIds = new Set(motionPaths.map((path) => path.id));
+    const fallbackMotionPathId = normalizeOptionalId(cameraMotionPathId);
+    const cameraWithMotionPath = {
+        ...camera,
+        ...(fallbackMotionPathId && motionPathIds.has(fallbackMotionPathId) ? { motionPathId: fallbackMotionPathId } : {}),
+    };
+    const cameraTracks = Array.isArray(source.cameraTracks)
+        ? normalizeCameraTracks(source.cameraTracks, duration, cameraWithMotionPath, targetIds, motionPathIds)
         : [];
     const activeCameraTrackId = cameraTracks.some((track) => track.id === source.activeCameraTrackId)
         ? source.activeCameraTrackId
@@ -346,7 +355,13 @@ function normalizeAnimation(value: unknown, camera: DirectorCamera, targetIds: S
     };
 }
 
-function normalizeCameraTracks(value: unknown[], duration: number, camera: DirectorCamera, targetIds: Set<string>): DirectorCameraTrack[] {
+function normalizeCameraTracks(
+    value: unknown[],
+    duration: number,
+    camera: DirectorCamera,
+    targetIds: Set<string>,
+    motionPathIds: Set<string>,
+): DirectorCameraTrack[] {
     const seen = new Set<string>();
     return value.slice(0, DIRECTOR_MAX_CAMERA_TRACKS).flatMap((item, index) => {
         if (!item || typeof item !== "object") return [];
@@ -371,6 +386,7 @@ function normalizeCameraTracks(value: unknown[], duration: number, camera: Direc
             zoom: clampNumber(source.zoom, 0.1, 5, camera.zoom),
             lookAtTarget: normalizeCameraTrackTarget(source.lookAtTarget, camera.lookAtTarget, targetIds),
             followTargetId: normalizeCameraTrackTarget(source.followTargetId, camera.followTargetId, targetIds),
+            motionPathId: normalizeCameraTrackMotionPath(source.motionPathId, camera.motionPathId, motionPathIds),
             keyframes,
         }];
     });
@@ -380,6 +396,12 @@ function normalizeCameraTrackTarget(value: unknown, fallback: string | undefined
     const candidate = value === undefined ? fallback : value;
     const id = normalizeOptionalId(candidate);
     return id && targetIds.has(id) ? id : null;
+}
+
+function normalizeCameraTrackMotionPath(value: unknown, fallback: string | undefined, motionPathIds: Set<string>): string | null {
+    const candidate = value === undefined ? fallback : value;
+    const id = normalizeOptionalId(candidate);
+    return id && motionPathIds.has(id) ? id : null;
 }
 
 function normalizeCameraKeyframe(value: unknown, index: number, duration: number): Array<DirectorCameraKeyframe & { order: number }> {

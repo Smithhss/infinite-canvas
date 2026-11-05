@@ -69,6 +69,21 @@ export function removeDirectorCameraKeyframe(project: DirectorProjectState, time
     };
 }
 
+export function updateDirectorCameraKeyframe(
+    project: DirectorProjectState,
+    time: number,
+    patch: Partial<Pick<DirectorCameraKeyframe, "time" | "fov" | "easing">>,
+): DirectorProjectState {
+    const keyframe = getDirectorCameraTrack(project)?.keyframes.find((item) => Math.abs(item.time - time) <= 0.0001);
+    if (!keyframe) return project;
+    const withoutCurrent = removeDirectorCameraKeyframe(project, time);
+    return upsertDirectorCameraKeyframe(withoutCurrent, {
+        ...keyframe,
+        ...patch,
+        time: patch.time ?? keyframe.time,
+    });
+}
+
 export function setDirectorAnimationDuration(project: DirectorProjectState, value: number): DirectorProjectState {
     const duration = clamp(value, DIRECTOR_MIN_ANIMATION_DURATION, DIRECTOR_MAX_ANIMATION_DURATION, project.animation.duration);
     return {

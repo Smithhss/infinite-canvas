@@ -5,6 +5,7 @@ import {
     removeDirectorCameraKeyframe,
     sampleDirectorCameraTrack,
     setDirectorAnimationDuration,
+    updateDirectorCameraKeyframe,
     upsertDirectorCameraKeyframe,
 } from "../src/lib/canvas/director-animation";
 import { createDirectorProject, type DirectorCameraKeyframe } from "../src/lib/canvas/director-project";
@@ -54,4 +55,13 @@ test("removes a keyframe and clamps the timeline duration", () => {
 
     expect(project.animation.duration).toBe(8);
     expect(getDirectorCameraTrack(project)?.keyframes.map((item) => item.time)).toEqual([8]);
+});
+
+test("retimes and changes the easing of an existing keyframe", () => {
+    let project = upsertDirectorCameraKeyframe(createDirectorProject(), keyframe(2, 2));
+    project = updateDirectorCameraKeyframe(project, 2, { time: 7, easing: "easeOut" });
+    const track = getDirectorCameraTrack(project);
+
+    expect(track?.keyframes).toHaveLength(1);
+    expect(track?.keyframes[0]).toMatchObject({ time: 7, easing: "easeOut", position: { x: 2 } });
 });

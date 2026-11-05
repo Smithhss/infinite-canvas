@@ -30,7 +30,7 @@ import {
     type DirectorSceneNode,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
-import { getDirectorCameraTrack, removeDirectorCameraKeyframe, sampleDirectorCameraTrack, setDirectorAnimationDuration, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
+import { getDirectorCameraTrack, removeDirectorCameraKeyframe, sampleDirectorCameraTrack, setDirectorAnimationDuration, updateDirectorCameraKeyframe, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -86,6 +86,7 @@ export function CanvasDirectorShell({
     const [sceneRevision, setSceneRevision] = useState(0);
     const [playhead, setPlayhead] = useState(0);
     const [playing, setPlaying] = useState(false);
+    const [selectedKeyframeTime, setSelectedKeyframeTime] = useState<number | null>(null);
     const projectRef = useRef(project);
     const selectedObjectIdRef = useRef(selectedObjectId);
     const playheadRef = useRef(playhead);
@@ -105,6 +106,7 @@ export function CanvasDirectorShell({
         setAssetErrors({});
         setPlayhead(0);
         setPlaying(false);
+        setSelectedKeyframeTime(null);
     }, [initialProject, open]);
 
     useEffect(() => {
@@ -438,6 +440,10 @@ export function CanvasDirectorShell({
     }, [project, selectedObjectId]);
 
     const activeCameraTrack = useMemo(() => getDirectorCameraTrack(project), [project]);
+    const selectedKeyframe = useMemo(
+        () => selectedKeyframeTime === null ? null : activeCameraTrack?.keyframes.find((keyframe) => Math.abs(keyframe.time - selectedKeyframeTime) < 0.0001) || null,
+        [activeCameraTrack, selectedKeyframeTime],
+    );
 
     useEffect(() => {
         if (!open || !playing || !activeCameraTrack?.keyframes.length) return;
@@ -550,12 +556,32 @@ export function CanvasDirectorShell({
             fov: pose.fov,
             easing: "smooth",
         }));
+        setSelectedKeyframeTime(Math.round(time * 100) / 100);
     };
 
     const updateAnimationDuration = (duration: number) => {
         setPlaying(false);
         setPlayhead((current) => Math.min(current, duration));
+        setSelectedKeyframeTime((current) => current === null ? null : Math.min(current, duration));
         setProject((current) => setDirectorAnimationDuration(current, duration));
+    };
+
+    const removeCameraKeyframe = (time: number) => {
+        setPlaying(false);
+        setProject((current) => removeDirectorCameraKeyframe(current, time));
+        setSelectedKeyframeTime((current) => current !== null && Math.abs(current - time) < 0.0001 ? null : current);
+    };
+
+    const updateSelectedKeyframe = (patch: Partial<Pick<DirectorCameraKeyframe, "time" | "easing" | "fov">>) => {
+        if (selectedKeyframeTime === null) return;
+        setPlaying(false);
+        const nextTime = patch.time === undefined
+            ? selectedKeyframeTime
+            : Math.min(project.animation.duration, Math.max(0, patch.time));
+        setProject((current) => updateDirectorCameraKeyframe(current, selectedKeyframeTime, { ...patch, time: nextTime }));
+        setSelectedKeyframeTime(nextTime);
+        const sample = sampleDirectorCameraTrack(activeCameraTrack, nextTime);
+        if (sample) runtimeRef.current?.previewCamera(sample);
     };
 
     const updateSelectedSceneTransform = (group: keyof DirectorSceneNode["transform"], axis: keyof DirectorVector3, value: number | null) => {
@@ -914,8 +940,11 @@ export function CanvasDirectorShell({
                                     <div key={keyframe.time} className="flex items-center gap-1">
                                         <button
                                             type="button"
-                                            className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left text-[10px] transition hover:bg-black/[0.035] dark:hover:bg-white/[0.05]"
-                                            onClick={() => previewCameraTime(keyframe.time)}
+                                            className={`flex h-7 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left text-[10px] transition ${selectedKeyframeTime !== null && Math.abs(selectedKeyframeTime - keyframe.time) < 0.0001 ? "bg-black/[0.06] font-medium dark:bg-white/[0.09]" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]"}`}
+                                            onClick={() => {
+                                                setSelectedKeyframeTime(keyframe.time);
+                                                previewCameraTime(keyframe.time);
+                                            }}
                                         >
                                             <Diamond className="size-3 shrink-0 opacity-45" />
                                             <span className="tabular-nums">{formatDirectorTime(keyframe.time)}</span>
@@ -928,7 +957,7 @@ export function CanvasDirectorShell({
                                             className="!h-7 !w-7 !p-0"
                                             icon={<Trash2 className="size-3" />}
                                             aria-label={t("canvas.director.removeKeyframe")}
-                                            onClick={() => setProject((current) => removeDirectorCameraKeyframe(current, keyframe.time))}
+                                            onClick={() => removeCameraKeyframe(keyframe.time)}
                                         />
                                     </div>
                                 )) : (
@@ -937,6 +966,41 @@ export function CanvasDirectorShell({
                                     </div>
                                 )}
                             </div>
+                            {selectedKeyframe ? (
+                                <div className="mt-2 border-t pt-2" style={{ borderColor: canvasTheme.node.stroke }}>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <div className="mb-1 text-[10px] opacity-45">{t("canvas.director.keyframeTime")}</div>
+                                            <InputNumber
+                                                size="small"
+                                                className="w-full"
+                                                min={0}
+                                                max={project.animation.duration}
+                                                step={0.1}
+                                                value={selectedKeyframe.time}
+                                                onChange={(time) => time !== null && updateSelectedKeyframe({ time })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <div className="mb-1 text-[10px] opacity-45">{t("canvas.director.keyframeEasing")}</div>
+                                            <Select
+                                                size="small"
+                                                className="w-full"
+                                                value={selectedKeyframe.easing}
+                                                options={[
+                                                    { value: "linear", label: t("canvas.director.easings.linear") },
+                                                    { value: "easeIn", label: t("canvas.director.easings.easeIn") },
+                                                    { value: "easeOut", label: t("canvas.director.easings.easeOut") },
+                                                    { value: "easeInOut", label: t("canvas.director.easings.easeInOut") },
+                                                    { value: "smooth", label: t("canvas.director.easings.smooth") },
+                                                    { value: "custom", label: t("canvas.director.easings.custom") },
+                                                ]}
+                                                onChange={(easing: DirectorCameraKeyframe["easing"]) => updateSelectedKeyframe({ easing })}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
                         </div>
                     </div>
 

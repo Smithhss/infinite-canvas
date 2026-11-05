@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { UserStatusActions } from "@/components/layout/user-status-actions";
-import { getShellToolNavigation, isShellNavigationActive, shellCreateNavigation, shellPrimaryNavigation, withShellFeatureFlags, type ShellNavigationAction, type ShellNavigationItem } from "@/components/layout/navigation-groups";
+import { getShellCreateNavigation, getShellToolNavigation, isShellNavigationActive, shellPrimaryNavigation, withShellFeatureFlags, type ShellNavigationAction, type ShellNavigationItem } from "@/components/layout/navigation-groups";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import { cn } from "@/lib/utils";
@@ -48,14 +48,15 @@ export function AppSidebar({ onOpenPlugins }: AppSidebarProps) {
             <>
                 <Icon className="size-[18px] shrink-0" />
                 <span className={cn("truncate text-[13px]", collapsed ? "hidden" : "hidden xl:inline")}>{t(item.labelKey)}</span>
+                {item.badgeKey ? <span className={cn("ml-auto rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-stone-400 dark:text-white/35", collapsed ? "hidden" : "hidden xl:inline")}>{t(item.badgeKey)}</span> : null}
             </>
         );
         const className = cn(
-            "relative flex h-9 w-full shrink-0 items-center gap-3 rounded-lg px-3 text-left transition-colors",
+            "relative flex h-8 w-full shrink-0 items-center gap-2.5 rounded-md px-2 text-left transition-colors",
             options?.group ? "text-stone-400 dark:text-stone-500" : "text-stone-600 hover:bg-stone-100 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/[0.06] dark:hover:text-white",
             active && !options?.group && "bg-stone-100 font-medium text-stone-950 dark:bg-white/[0.08] dark:text-white",
-            collapsed && "justify-center px-0 xl:justify-start xl:px-3",
-            !collapsed && "lg:justify-center lg:px-0 xl:justify-start xl:px-3",
+            collapsed && "justify-center px-0 xl:justify-start xl:px-2",
+            !collapsed && "lg:justify-center lg:px-0 xl:justify-start xl:px-2",
         );
 
         const button = item.to ? (
@@ -79,7 +80,7 @@ export function AppSidebar({ onOpenPlugins }: AppSidebarProps) {
         <aside
             data-libtv-sidebar
             className={cn(
-                "hidden h-full shrink-0 flex-col border-r border-stone-200/80 bg-[#f7f5ef] text-stone-950 transition-[width] duration-200 lg:flex dark:border-stone-800/80 dark:bg-[#11110f] dark:text-stone-100",
+                "hidden h-full shrink-0 flex-col border-r border-stone-200/80 bg-[#f7f7f4] text-stone-950 transition-[width] duration-200 lg:flex dark:border-white/[0.07] dark:bg-[#121212] dark:text-stone-100",
                 collapsed ? "w-[72px]" : "w-[72px] xl:w-[240px]",
             )}
         >
@@ -106,12 +107,12 @@ export function AppSidebar({ onOpenPlugins }: AppSidebarProps) {
             </div>
 
             <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-2 py-3">
-                <nav className="space-y-1" aria-label={t("topNav.navigation")}>
+                <nav className="space-y-0.5" aria-label={t("topNav.navigation")}>
                     {shellPrimaryNavigation.map((item) => navItem(item))}
                 </nav>
 
                 <SidebarGroup title={t("topNav.createGroup")} collapsed={collapsed}>
-                    {shellCreateNavigation.map((item) => navItem(item))}
+                    {getShellCreateNavigation().map((item) => navItem(item))}
                 </SidebarGroup>
 
                 <SidebarGroup title={t("topNav.tools")} collapsed={collapsed}>
@@ -133,9 +134,9 @@ export function AppSidebar({ onOpenPlugins }: AppSidebarProps) {
 
 function SidebarGroup({ title, collapsed, children }: { title: string; collapsed: boolean; children: ReactNode }) {
     return (
-        <section className="mt-5">
-            <p className={cn("mb-1.5 px-3 text-[11px] font-medium text-stone-400 dark:text-stone-500", collapsed ? "hidden" : "hidden xl:block")}>{title}</p>
-            <div className="space-y-1">{children}</div>
+        <section className="mt-4">
+            <p className={cn("mb-1.5 px-2 text-[12px] font-medium text-stone-400 dark:text-white/30", collapsed ? "hidden" : "hidden xl:block")}>{title}</p>
+            <div className="space-y-0.5">{children}</div>
         </section>
     );
 }

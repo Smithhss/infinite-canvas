@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Modal, Segmented, Switch, Tooltip } from "antd";
-import { CircleDot, Eraser, Grid2x2, Group, Hand, History, Image as ImageIcon, Images, Info, Keyboard, MoreHorizontal, Moon, MousePointer2, Music2, Palette, Plus, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
+import { CircleDot, CircleHelp, Eraser, Grid2x2, Group, Hand, History, Image as ImageIcon, Images, Info, Keyboard, MoreHorizontal, Moon, MousePointer2, Music2, Palette, Plus, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { getNodeSpec } from "@/constant/canvas";
@@ -144,7 +144,7 @@ export function CanvasCommandDock(props: CanvasCommandDockProps) {
                 </section>
             ) : null}
 
-            <div className="pointer-events-auto flex h-11 items-center gap-0.5 rounded-xl border p-1 backdrop-blur-md" style={dockStyle} role="toolbar" aria-label={t("canvas.commandDock.label")}>
+            <div className="pointer-events-auto flex h-12 items-center gap-1 rounded-[16px] border px-1.5 backdrop-blur-md" style={dockStyle} role="toolbar" aria-label={t("canvas.commandDock.label")}>
                 <DockButton theme={theme} label={t("canvas.commandDock.create")} active={panel === "create"} hasPopup onClick={() => togglePanel("create")}>
                     <Plus className="size-4.5" />
                 </DockButton>
@@ -167,6 +167,9 @@ export function CanvasCommandDock(props: CanvasCommandDockProps) {
                 </DockButton>
                 <DockButton theme={theme} label={t("canvas.commandDock.more")} active={panel === "more"} hasPopup onClick={() => togglePanel("more")}>
                     <MoreHorizontal className="size-4.5" />
+                </DockButton>
+                <DockButton theme={theme} label={t("canvas.shortcuts")} onClick={() => setShortcutsOpen(true)}>
+                    <CircleHelp className="size-4.5" />
                 </DockButton>
             </div>
 
@@ -196,7 +199,7 @@ function DockButton({ theme, label, active = false, disabled = false, hasPopup =
                 aria-expanded={hasPopup ? active : undefined}
                 aria-haspopup={hasPopup ? "dialog" : undefined}
                 disabled={disabled}
-                className="grid size-8 place-items-center rounded-lg transition hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-white/10"
+                className="grid size-9 place-items-center rounded-xl transition hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-white/10"
                 style={{ background: active ? theme.toolbar.activeBg : "transparent", color: active ? theme.toolbar.activeText : theme.toolbar.item, outlineColor: theme.toolbar.activeText }}
                 onClick={onClick}
             >

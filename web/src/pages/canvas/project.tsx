@@ -963,6 +963,10 @@ function InfiniteCanvasPage() {
     const builtinAgentEnabled = isFeatureEnabled("builtinCanvasAgent");
     const directorEnabled = isFeatureEnabled("director3d");
     const panoramaEnabled = isFeatureEnabled("panorama");
+
+    useEffect(() => {
+        if (projectLoaded && directorEnabled && searchParams.get("openDirector") === "1") setDirectorOpen(true);
+    }, [directorEnabled, projectLoaded, searchParams]);
     const canvasFloatingChromeEnabled = isFeatureEnabled("canvasFloatingChrome");
     const builtinAgent = useBuiltinCanvasAgent({ snapshot: agentSnapshot, applyAgentOps, applyAgentSnapshot });
 
@@ -3497,6 +3501,7 @@ function InfiniteCanvasPage() {
                     onStop={confirmStopGeneration}
                     onDisconnectReference={disconnectNodeReference}
                     onStartReferenceSelection={startNodeReferenceSelection}
+                    onUpload={(nodeId) => handleUploadRequest(nodeId)}
                     modeOverride={getNodeDefinition(panelNode.type)?.useBuiltinPanel?.mode}
                     onImageSettingsOpenChange={(open) => {
                         setNodeImageSettingsOpen(open);
@@ -3512,6 +3517,7 @@ function InfiniteCanvasPage() {
             handleConfigNodeChange,
             handleGenerateNode,
             handleNodePromptChange,
+            handleUploadRequest,
             mentionReferencesByNodeId,
             nodes,
             renderPluginPanel,

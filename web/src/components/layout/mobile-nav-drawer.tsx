@@ -7,7 +7,7 @@ import { changeAppLocale, type AppLocale } from "@/i18n";
 import { DOCS_URL } from "@/constant/env";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import { cn } from "@/lib/utils";
-import { getShellToolNavigation, isShellNavigationActive, shellCreateNavigation, shellPrimaryNavigation, withShellFeatureFlags, type ShellNavigationItem } from "@/components/layout/navigation-groups";
+import { getShellCreateNavigation, getShellToolNavigation, isShellNavigationActive, shellPrimaryNavigation, withShellFeatureFlags, type ShellNavigationItem } from "@/components/layout/navigation-groups";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -48,11 +48,13 @@ export function MobileNavDrawer({ open, compact = false, onClose, onOpenAgent, o
             <Link key={item.key} to={withShellFeatureFlags(item.to, search)} aria-current={active ? "page" : undefined} onClick={onClose} className={className}>
                 <Icon className="size-5" />
                 <span>{t(item.labelKey)}</span>
+                {item.badgeKey ? <span className="ml-auto rounded bg-black/[0.05] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-stone-400 dark:bg-white/[0.06] dark:text-white/35">{t(item.badgeKey)}</span> : null}
             </Link>
         ) : (
             <button key={item.key} type="button" className={cn(className, "w-full border-0 bg-transparent text-left")} aria-current={active ? "page" : undefined} onClick={() => runAction(item)}>
                 <Icon className="size-5" />
                 <span>{t(item.labelKey)}</span>
+                {item.badgeKey ? <span className="ml-auto rounded bg-black/[0.05] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-stone-400 dark:bg-white/[0.06] dark:text-white/35">{t(item.badgeKey)}</span> : null}
             </button>
         );
     };
@@ -62,7 +64,7 @@ export function MobileNavDrawer({ open, compact = false, onClose, onOpenAgent, o
             <div className="space-y-1">{shellPrimaryNavigation.map(navItem)}</div>
             <div className="mt-4 space-y-1 border-t border-stone-200 pt-3 dark:border-stone-800">
                 <p className="px-3 pb-1 text-xs font-medium text-stone-400 dark:text-stone-500">{t("topNav.createGroup")}</p>
-                {shellCreateNavigation.map(navItem)}
+                {getShellCreateNavigation().map(navItem)}
             </div>
             <div className="mt-4 space-y-1 border-t border-stone-200 pt-3 dark:border-stone-800">
                 <p className="px-3 pb-1 text-xs font-medium text-stone-400 dark:text-stone-500">{t("topNav.tools")}</p>

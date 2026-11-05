@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Button, Input, Popconfirm, Switch, Tabs } from "antd";
-import { AlertTriangle, ArrowRight, Bot, CheckCircle2, CircleAlert, Code2, Copy, Download, FileTerminal, LoaderCircle, Puzzle, RefreshCw, ShieldCheck, Sparkles, TerminalSquare, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bot, CheckCircle2, CircleAlert, Code2, Copy, Download, FileTerminal, Image as ImageIcon, LoaderCircle, Puzzle, RefreshCw, ShieldCheck, Sparkles, TerminalSquare, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router-dom";
 
@@ -26,7 +26,8 @@ export default function PluginsPage() {
 function PluginHubPage() {
     const { t } = useTranslation();
     const copyText = useCopyText();
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const colorTheme = useThemeStore((state) => state.theme);
+    const theme = canvasThemes[colorTheme];
     const catalog = usePluginCatalog({ active: true });
     const [installMode, setInstallMode] = useState<InstallMode>("plugin");
 
@@ -48,126 +49,96 @@ function PluginHubPage() {
         useAgentStore.getState().openPanel();
     };
     const copyCommand = () => copyText(command, t("pluginHub.commandCopied"));
+    const dark = colorTheme === "dark";
 
     return (
-        <main className="h-full overflow-y-auto bg-[radial-gradient(circle_at_10%_0%,rgba(20,184,166,.08),transparent_32%),radial-gradient(circle_at_90%_18%,rgba(245,158,11,.08),transparent_28%)]">
-            <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-7 lg:px-10 lg:py-9">
-                <section className="relative overflow-hidden rounded-[28px] border border-stone-200/80 bg-white/75 shadow-[0_24px_80px_-48px_rgba(28,25,23,.55)] dark:border-stone-800/80 dark:bg-stone-950/70">
-                    <div className="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full bg-teal-400/10 blur-3xl dark:bg-teal-300/10" />
-                    <div className="pointer-events-none absolute -bottom-32 left-1/3 size-72 rounded-full bg-amber-400/10 blur-3xl dark:bg-amber-300/10" />
-                    <div className="relative grid gap-8 px-5 py-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-10 lg:py-10">
-                        <div>
-                            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-stone-200 px-3 py-1 text-[11px] font-medium text-stone-500 dark:border-stone-700 dark:text-stone-400">
-                                <Sparkles className="size-3.5 text-amber-500" />
-                                {t("pluginHub.eyebrow")}
-                            </div>
-                            <h1 className="max-w-2xl text-3xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-4xl dark:text-stone-100">{t("pluginHub.title")}</h1>
-                            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500 dark:text-stone-400">{t("pluginHub.description")}</p>
-                            <div className="mt-6 flex flex-wrap items-center gap-2">
-                                <Button type="primary" size="large" className="!h-10 !rounded-xl" icon={<TerminalSquare className="size-4" />} onClick={copyCommand}>
-                                    {t("pluginHub.copyInstall")}
-                                </Button>
-                                <Button size="large" className="!h-10 !rounded-xl" icon={connected ? <Bot className="size-4" /> : <ArrowRight className="size-4" />} onClick={openAgent}>
-                                    {connected ? t("pluginHub.openAgent") : t("pluginHub.connectAgent")}
-                                </Button>
-                            </div>
-                            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-stone-500 dark:text-stone-400">
-                                <span className="inline-flex items-center gap-1.5">
-                                    <ShieldCheck className="size-3.5 text-teal-600 dark:text-teal-400" />
-                                    {t("pluginHub.integrity")}
-                                </span>
-                                <span className="inline-flex items-center gap-1.5">
-                                    <CircleAlert className="size-3.5 text-amber-600 dark:text-amber-400" />
-                                    {t("pluginHub.browserWarning")}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                            <MetricCard icon={<CheckCircle2 className="size-4" />} label={t("pluginHub.agentStatus")} value={statusLabel} tone={phase === "connected" ? "good" : phase === "failed" ? "bad" : "neutral"} />
-                            <MetricCard icon={<Puzzle className="size-4" />} label={t("pluginHub.installedCount")} value={String(installedCount)} />
-                            <MetricCard icon={<Download className="size-4" />} label={t("pluginHub.catalogCount")} value={String(officialCount)} />
-                        </div>
+        <main className={`h-full overflow-y-auto transition-colors ${dark ? "bg-[#141414] text-[#f7f7f7]" : "bg-[#f4f2ed] text-[#1c1917]"}`}>
+            <div className="mx-auto w-full max-w-[1512px] px-4 pb-16 pt-4 sm:px-7 lg:px-10">
+                <div className="flex min-h-8 items-center justify-end gap-2">
+                    <span className={`inline-flex h-8 items-center gap-2 rounded-lg px-3 text-xs ${dark ? "bg-white/[0.04] text-white/65" : "bg-white text-stone-500 shadow-sm"}`}>
+                        <span className={`size-1.5 rounded-full ${phase === "connected" ? "bg-emerald-500" : phase === "failed" ? "bg-rose-500" : "bg-amber-500"}`} />
+                        {t("pluginHub.agentStatus")} · {statusLabel}
+                    </span>
+                    <Button type="text" size="small" className="!h-8 !rounded-lg !px-2.5" icon={<Bot className="size-3.5" />} onClick={openAgent}>
+                        {t(connected ? "pluginHub.openAgent" : "pluginHub.connectAgent")}
+                    </Button>
+                </div>
+
+                <section className="mx-auto max-w-[1370px] pt-7 sm:pt-10">
+                    <div className="mx-auto flex h-28 w-full max-w-xl items-center justify-center sm:h-36" aria-label={t("pluginHub.heroAppsLabel")}>
+                        <HeroAppGlyph icon={<Bot className="size-6" />} className="-ml-5 bg-[#d96b48] text-white sm:size-14" />
+                        <HeroAppGlyph icon={<Sparkles className="size-7" />} className="-ml-5 bg-[#ef8f70] text-white sm:size-14" />
+                        <HeroAppGlyph icon={<Puzzle className="size-8" />} className="-ml-5 z-10 size-16 bg-[#101010] text-white sm:size-20" raised />
+                        <HeroAppGlyph icon={<Code2 className="size-7" />} className="-ml-5 bg-[#f5f5f5] text-[#111111] sm:size-14" />
+                        <HeroAppGlyph icon={<ImageIcon className="size-6" />} className="-ml-5 bg-[#ef4444] text-white sm:size-14" />
+                        <HeroAppGlyph icon={<TerminalSquare className="size-6" />} className="-ml-5 bg-[#57b893] text-white sm:size-14" />
                     </div>
-                </section>
 
-                <section className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,.8fr)]">
-                    <Panel title={t("pluginHub.compatibilityTitle")} description={t("pluginHub.compatibilityDescription")}>
-                        <div className="grid gap-2 sm:grid-cols-3">
-                            <CompatibilityCard icon={<Code2 className="size-4" />} name="Codex" description={t("pluginHub.codexDescription")} status={t("pluginHub.available")} available />
-                            <CompatibilityCard icon={<Bot className="size-4" />} name="Claude" description={t("pluginHub.claudeDescription")} status={t("pluginHub.available")} available />
-                            <CompatibilityCard icon={<FileTerminal className="size-4" />} name="Claude Code" description={t("pluginHub.claudeCodeDescription")} status={t("pluginHub.planned")} />
+                    <div className="mx-auto mt-5 max-w-2xl text-center sm:mt-7">
+                        <h1 className={`text-2xl font-bold tracking-[-0.035em] sm:text-[28px] ${dark ? "text-[#f7f7f7]" : "text-stone-950"}`}>{t("pluginHub.heroTitle")}</h1>
+                        <p className={`mt-2 text-[13px] leading-6 ${dark ? "text-white/45" : "text-stone-500"}`}>{t("pluginHub.heroDescription")}</p>
+                    </div>
+
+                    <section className={`mt-8 rounded-[24px] border p-4 ${dark ? "border-white/[0.08] bg-[#171717]" : "border-stone-200 bg-white shadow-[0_24px_80px_-60px_rgba(28,25,23,.45)]"}`} aria-label={t("pluginHub.installPanelLabel")}>
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className={`flex items-center gap-1 ${dark ? "text-white/60" : "text-stone-500"}`}>
+                                <span className={`grid size-10 place-items-center rounded-xl border ${dark ? "border-white/10 bg-white/[0.04]" : "border-stone-200 bg-stone-50"}`}><Bot className="size-5" /></span>
+                                <span className={`ml-1 h-8 w-px ${dark ? "bg-white/10" : "bg-stone-200"}`} />
+                                <Code2 className="mx-2 size-4.5" />
+                                <Sparkles className="mx-2 size-4.5" />
+                                <FileTerminal className="mx-2 size-4.5 max-sm:hidden" />
+                                <Puzzle className="mx-2 size-4.5" />
+                            </div>
+                            <div className={`inline-flex h-10 w-fit items-center rounded-full p-1 ${dark ? "bg-white/[0.06]" : "bg-stone-100"}`}>
+                                {(["plugin", "cli"] as const).map((mode) => (
+                                    <button
+                                        key={mode}
+                                        type="button"
+                                        className={`inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs font-medium transition ${installMode === mode ? (dark ? "bg-[#383838] text-white shadow-sm" : "bg-stone-950 text-white shadow-sm") : dark ? "text-white/55 hover:text-white" : "text-stone-500 hover:text-stone-950"}`}
+                                        onClick={() => setInstallMode(mode)}
+                                        aria-pressed={installMode === mode}
+                                        style={installMode === mode ? { color: "#ffffff" } : undefined}
+                                    >
+                                        {mode === "plugin" ? <Puzzle className="size-3.5" /> : <Code2 className="size-3.5" />}
+                                        {t(mode === "plugin" ? "pluginHub.pluginShort" : "pluginHub.cliShort")}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    </Panel>
 
-                    <Panel title={t("pluginHub.connectionTitle")} description={t("pluginHub.connectionDescription")}>
-                        <div className="rounded-2xl border border-stone-200/80 bg-stone-50/80 p-3.5 dark:border-stone-800 dark:bg-stone-900/50">
-                            <div className="flex items-start gap-3">
-                                <span className={phase === "connected" ? "text-teal-600 dark:text-teal-400" : phase === "failed" ? "text-rose-600 dark:text-rose-400" : "text-stone-400 dark:text-stone-500"}>
-                                    {phase === "connected" ? <CheckCircle2 className="size-5" /> : phase === "connecting" || phase === "mcp-starting" ? <LoaderCircle className="size-5 animate-spin" /> : <Bot className="size-5" />}
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                    <div className="text-sm font-medium text-stone-900 dark:text-stone-100">{t(`agent.connect.${phaseTitleKey(phase)}`)}</div>
-                                    <div className="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">{connectError || activity}</div>
+                        <ol className={`mt-4 grid overflow-hidden rounded-[20px] border lg:grid-cols-2 ${dark ? "border-white/[0.07]" : "border-stone-200"}`}>
+                            <li className={`min-w-0 p-5 sm:p-6 lg:border-r ${dark ? "border-white/[0.07]" : "border-stone-200"}`}>
+                                <StepNumber value="1" dark={dark} />
+                                <h2 className="mt-4 text-base font-semibold">{t("pluginHub.stepCopyTitle")}</h2>
+                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{t("pluginHub.stepCopyDescription")}</p>
+                                <CommandBlock command={command} onCopy={copyCommand} theme={theme} />
+                            </li>
+                            <li className="min-w-0 p-5 sm:p-6 lg:pl-7">
+                                <StepNumber value="2" dark={dark} />
+                                <h2 className="mt-4 text-base font-semibold">{t("pluginHub.stepConnectTitle")}</h2>
+                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{t("pluginHub.stepConnectDescription")}</p>
+                                <div className={`mt-5 flex items-center gap-3 rounded-[14px] border px-4 py-3 ${dark ? "border-white/[0.07] bg-white/[0.02]" : "border-stone-200 bg-stone-50/70"}`}>
+                                    <span className={`grid size-8 shrink-0 place-items-center rounded-full ${phase === "connected" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>
+                                        {phase === "connected" ? <CheckCircle2 className="size-4" /> : phase === "connecting" || phase === "mcp-starting" ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate text-xs font-medium">{statusLabel}</div>
+                                        <div className={`mt-0.5 truncate text-[11px] ${dark ? "text-white/35" : "text-stone-500"}`}>{connectError || activity || t("pluginHub.stepTwoHint")}</div>
+                                    </div>
+                                    <Button size="small" className="!h-8 shrink-0 !rounded-lg" onClick={openAgent}>{t(connected ? "pluginHub.openAgent" : "pluginHub.openSetup")}</Button>
                                 </div>
-                            </div>
-                            <Button className="mt-3 !h-8 !rounded-lg" block onClick={openAgent} icon={<ArrowRight className="size-3.5" />}>
-                                {connected ? t("pluginHub.openAgent") : t("pluginHub.openSetup")}
-                            </Button>
-                        </div>
-                        <div className="mt-3 flex items-center gap-2 text-[11px] text-stone-500 dark:text-stone-400">
-                            <span className={`size-1.5 rounded-full ${pluginDetected ? "bg-teal-500" : "bg-stone-300 dark:bg-stone-600"}`} />
-                            {pluginDetected ? t("pluginHub.pluginDetected") : t("pluginHub.pluginNotDetected")}
-                        </div>
-                    </Panel>
+                            </li>
+                        </ol>
+                    </section>
                 </section>
 
-                <section className="mt-6">
-                    <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-                        <div>
-                            <h2 className="text-lg font-semibold tracking-[-0.02em] text-stone-950 dark:text-stone-100">{t("pluginHub.installTitle")}</h2>
-                            <p className="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">{t("pluginHub.installDescription")}</p>
-                        </div>
-                        <div className="inline-flex w-fit rounded-xl border border-stone-200 bg-white p-1 dark:border-stone-800 dark:bg-stone-950">
-                            {(["plugin", "cli"] as const).map((mode) => (
-                                <button
-                                    key={mode}
-                                    type="button"
-                                    className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                                    style={installMode === mode ? { background: theme.toolbar.activeBg, color: theme.toolbar.activeText } : { color: theme.node.muted }}
-                                    onClick={() => setInstallMode(mode)}
-                                    aria-pressed={installMode === mode}
-                                >
-                                    {t(mode === "plugin" ? "pluginHub.pluginMode" : "pluginHub.cliMode")}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                        <Panel title={t("pluginHub.stepOne")} description={t("pluginHub.stepOneDescription")}>
-                            <CommandBlock
-                                command={installMode === "plugin" ? AGENT_PLUGIN_INSTALL_COMMAND : AGENT_CLI_COMMAND}
-                                onCopy={() => copyText(installMode === "plugin" ? AGENT_PLUGIN_INSTALL_COMMAND : AGENT_CLI_COMMAND, t("pluginHub.commandCopied"))}
-                                theme={theme}
-                            />
-                        </Panel>
-                        <Panel title={t("pluginHub.stepTwo")} description={t("pluginHub.stepTwoDescription")}>
-                            <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-3 rounded-xl border border-dashed border-stone-300 px-3.5 py-3 dark:border-stone-700">
-                                <span className={`grid size-8 shrink-0 place-items-center rounded-full ${phase === "connected" ? "bg-teal-500/10 text-teal-600 dark:text-teal-400" : "bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400"}`}>
-                                    {phase === "connected" ? <CheckCircle2 className="size-4" /> : <ArrowRight className="size-4" />}
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                    <div className="text-xs font-medium text-stone-900 dark:text-stone-100">{t("pluginHub.stepTwoStatus")}</div>
-                                    <div className="mt-0.5 text-[11px] leading-4 text-stone-500 dark:text-stone-400">{t("pluginHub.stepTwoHint")}</div>
-                                </div>
-                                <Button size="small" className="!h-8 !rounded-lg max-sm:w-full" onClick={openAgent}>
-                                    {t("pluginHub.openAgent")}
-                                </Button>
-                            </div>
-                        </Panel>
-                    </div>
+                <section className="mx-auto mt-4 grid max-w-[1370px] gap-3 sm:grid-cols-3">
+                    <MetricCard icon={<CheckCircle2 className="size-4" />} label={t("pluginHub.agentStatus")} value={statusLabel} tone={phase === "connected" ? "good" : phase === "failed" ? "bad" : "neutral"} dark={dark} />
+                    <MetricCard icon={<Puzzle className="size-4" />} label={t("pluginHub.installedCount")} value={String(installedCount)} dark={dark} />
+                    <MetricCard icon={<Download className="size-4" />} label={t("pluginHub.catalogCount")} value={String(officialCount)} dark={dark} />
                 </section>
 
-                <section className="mt-6">
+                <section className="mx-auto mt-4 max-w-[1370px]">
                     <Panel
                         title={t("pluginHub.catalogTitle")}
                         description={t("pluginHub.catalogDescription")}
@@ -198,6 +169,17 @@ function PluginHubPage() {
                         />
                     </Panel>
                 </section>
+
+                <div className={`mx-auto mt-4 flex max-w-[1370px] flex-wrap items-center justify-between gap-3 text-[11px] ${dark ? "text-white/35" : "text-stone-500"}`}>
+                    <div className="flex flex-wrap items-center gap-4">
+                        <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5" />{t("pluginHub.integrity")}</span>
+                        <span className="inline-flex items-center gap-1.5"><CircleAlert className="size-3.5" />{t("pluginHub.browserWarning")}</span>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className={`size-1.5 rounded-full ${pluginDetected ? "bg-emerald-500" : dark ? "bg-white/20" : "bg-stone-300"}`} />
+                        {pluginDetected ? t("pluginHub.pluginDetected") : t("pluginHub.pluginNotDetected")}
+                    </span>
+                </div>
             </div>
         </main>
     );
@@ -321,35 +303,35 @@ function PluginRow({ name, version, description, icon, installed, actions }: { n
     );
 }
 
-function CompatibilityCard({ icon, name, description, status, available = false }: { icon: ReactNode; name: string; description: string; status: string; available?: boolean }) {
+function HeroAppGlyph({ icon, className, raised = false }: { icon: ReactNode; className: string; raised?: boolean }) {
     return (
-        <div className="rounded-2xl border border-stone-200/80 p-3.5 dark:border-stone-800">
-            <div className="flex items-center justify-between gap-2">
-                <span className="grid size-8 place-items-center rounded-lg bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400">{icon}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] ${available ? "bg-teal-500/10 text-teal-700 dark:text-teal-400" : "bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400"}`}>{status}</span>
-            </div>
-            <div className="mt-3 text-sm font-medium text-stone-900 dark:text-stone-100">{name}</div>
-            <div className="mt-1 text-xs leading-5 text-stone-500 dark:text-stone-400">{description}</div>
-        </div>
+        <span className={`relative grid size-12 shrink-0 place-items-center overflow-hidden rounded-[15px] border-2 border-[#141414] shadow-[0_12px_28px_rgba(0,0,0,.26)] ${raised ? "shadow-[0_18px_34px_rgba(0,0,0,.35)]" : ""} ${className}`}>
+            <span className="absolute inset-0 bg-gradient-to-br from-white/18 to-transparent" />
+            <span className="relative">{icon}</span>
+        </span>
     );
 }
 
-function MetricCard({ icon, label, value, tone = "neutral" }: { icon: ReactNode; label: string; value: string; tone?: "good" | "bad" | "neutral" }) {
+function StepNumber({ value, dark }: { value: string; dark: boolean }) {
+    return <span className={`grid size-7 place-items-center rounded-full text-xs font-semibold ${dark ? "bg-white/[0.08] text-white/70" : "bg-stone-100 text-stone-600"}`}>{value}</span>;
+}
+
+function MetricCard({ icon, label, value, tone = "neutral", dark }: { icon: ReactNode; label: string; value: string; tone?: "good" | "bad" | "neutral"; dark: boolean }) {
     const valueClass = tone === "good" ? "text-teal-700 dark:text-teal-400" : tone === "bad" ? "text-rose-700 dark:text-rose-400" : "text-stone-900 dark:text-stone-100";
     return (
-        <div className="rounded-2xl border border-stone-200/80 bg-white/65 p-3.5 dark:border-stone-800 dark:bg-stone-950/55">
-            <div className="flex items-center gap-2 text-[11px] text-stone-500 dark:text-stone-400">
+        <div className={`rounded-2xl border p-3.5 ${dark ? "border-white/[0.07] bg-[#1b1b1b]" : "border-stone-200 bg-white"}`}>
+            <div className={`flex items-center gap-2 text-[11px] ${dark ? "text-white/35" : "text-stone-500"}`}>
                 {icon}
                 {label}
             </div>
-            <div className={`mt-2 truncate text-sm font-semibold ${valueClass}`}>{value}</div>
+            <div className={`mt-2 truncate text-sm font-semibold ${dark ? "text-white/85" : valueClass}`}>{value}</div>
         </div>
     );
 }
 
 function Panel({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children: ReactNode }) {
     return (
-        <section className="min-w-0 rounded-2xl border border-stone-200/80 bg-white/70 p-4 dark:border-stone-800 dark:bg-stone-950/50">
+        <section className="min-w-0 rounded-[24px] border border-stone-200 bg-white p-4 dark:border-white/[0.07] dark:bg-[#171717] sm:p-5">
             <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                     <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">{title}</h2>
@@ -363,12 +345,14 @@ function Panel({ title, description, action, children }: { title: string; descri
 }
 
 function CommandBlock({ command, onCopy, theme }: { command: string; onCopy: () => void; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
+    const { t } = useTranslation();
     return (
-        <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
+        <div className="relative mt-5 max-h-[104px] overflow-hidden rounded-[14px] border px-3.5 py-3" style={{ borderColor: theme.node.stroke, color: theme.node.text, background: theme.node.panel }}>
             <div className="flex items-start gap-2">
-                <code className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[11px] leading-5">{command}</code>
-                <Button type="text" size="small" className="!h-8 !w-8 !min-w-8" icon={<Copy className="size-3.5" />} onClick={onCopy} aria-label="copy command" />
+                <code className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[11px] leading-5 opacity-65">{command}</code>
+                <Button type="text" size="small" className="!h-8 !w-8 !min-w-8 shrink-0" icon={<Copy className="size-3.5" />} onClick={onCopy} aria-label={t("pluginHub.copyInstall")} />
             </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10" style={{ background: `linear-gradient(to top, ${theme.node.panel}, transparent)` }} />
         </div>
     );
 }
@@ -382,8 +366,4 @@ function InlineNotice({ tone, text }: { tone: "neutral" | "bad"; text: string })
             <span>{text}</span>
         </div>
     );
-}
-
-function phaseTitleKey(phase: ReturnType<typeof resolveAgentSetupPhase>) {
-    return `${phase}Title`;
 }

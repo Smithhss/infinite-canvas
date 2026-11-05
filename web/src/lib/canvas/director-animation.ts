@@ -1,5 +1,6 @@
 import {
     DIRECTOR_DEFAULT_FOV,
+    DIRECTOR_DEFAULT_ANIMATION_DURATION,
     DIRECTOR_MAX_ANIMATION_DURATION,
     DIRECTOR_MAX_CAMERA_TRACKS,
     DIRECTOR_MAX_KEYFRAMES,
@@ -24,6 +25,8 @@ export type DirectorCameraTrackSettings = {
     lookAtTarget?: string;
     followTargetId?: string;
     motionPathId?: string;
+    clipStart: number;
+    clipEnd: number;
 };
 
 export function getDirectorCameraTrack(project: DirectorProjectState): DirectorCameraTrack | null {
@@ -43,6 +46,8 @@ export function getDirectorCameraTrackSettings(project: DirectorProjectState): D
             ...(project.camera.lookAtTarget ? { lookAtTarget: project.camera.lookAtTarget } : {}),
             ...(project.camera.followTargetId ? { followTargetId: project.camera.followTargetId } : {}),
             ...(project.camera.motionPathId ? { motionPathId: project.camera.motionPathId } : {}),
+            clipStart: 0,
+            clipEnd: project.animation.duration,
         };
     }
     return {
@@ -53,6 +58,8 @@ export function getDirectorCameraTrackSettings(project: DirectorProjectState): D
         ...(track.lookAtTarget ? { lookAtTarget: track.lookAtTarget } : {}),
         ...(track.followTargetId ? { followTargetId: track.followTargetId } : {}),
         ...(track.motionPathId ? { motionPathId: track.motionPathId } : {}),
+        clipStart: track.clipStart,
+        clipEnd: track.clipEnd,
     };
 }
 
@@ -69,6 +76,8 @@ export function createDirectorCameraTrack(index: number, settings?: Partial<Dire
         lookAtTarget: settings?.lookAtTarget ?? null,
         followTargetId: settings?.followTargetId ?? null,
         motionPathId: settings?.motionPathId ?? null,
+        clipStart: settings?.clipStart ?? 0,
+        clipEnd: settings?.clipEnd ?? DIRECTOR_DEFAULT_ANIMATION_DURATION,
         keyframes: [],
     };
 }
@@ -95,7 +104,7 @@ export function setDirectorActiveCameraTrack(project: DirectorProjectState, trac
 export function updateDirectorCameraTrack(
     project: DirectorProjectState,
     trackId: string,
-    patch: Partial<Pick<DirectorCameraTrack, "name" | "position" | "target" | "fov" | "zoom" | "motionPathId">>,
+    patch: Partial<Pick<DirectorCameraTrack, "name" | "position" | "target" | "fov" | "zoom" | "motionPathId" | "clipStart" | "clipEnd">>,
 ): DirectorProjectState {
     if (!project.animation.cameraTracks.some((track) => track.id === trackId)) return project;
     return {
@@ -112,6 +121,22 @@ export function updateDirectorCameraTrack(
                 : track),
         },
     };
+}
+
+export function setDirectorCameraTrackClip(
+    project: DirectorProjectState,
+    trackId: string,
+    clipStart: number,
+    clipEnd: number,
+): DirectorProjectState {
+    const track = project.animation.cameraTracks.find((item) => item.id === trackId);
+    if (!track) return project;
+    const duration = project.animation.duration;
+    const start = roundTime(clamp(clipStart, 0, duration, track.clipStart));
+    const end = roundTime(clamp(clipEnd, 0, duration, track.clipEnd));
+    if (end - start < 0.01) return project;
+    if (start === track.clipStart && end === track.clipEnd) return project;
+    return updateDirectorCameraTrack(project, trackId, { clipStart: start, clipEnd: end });
 }
 
 export function setDirectorCameraTrackTarget(
@@ -190,6 +215,8 @@ export function upsertDirectorCameraKeyframe(project: DirectorProjectState, keyf
         lookAtTarget: project.camera.lookAtTarget ?? null,
         followTargetId: project.camera.followTargetId ?? null,
         motionPathId: project.camera.motionPathId ?? null,
+        clipStart: 0,
+        clipEnd: project.animation.duration,
         keyframes: [],
     };
     const keyframes = sortAndDedupeKeyframes([
@@ -246,13 +273,17 @@ export function setDirectorAnimationDuration(project: DirectorProjectState, valu
         animation: {
             ...project.animation,
             duration,
-            cameraTracks: project.animation.cameraTracks.map((track) => ({
-                ...track,
-                keyframes: sortAndDedupeKeyframes(track.keyframes.map((keyframe) => ({
-                    ...keyframe,
-                    time: roundTime(Math.min(keyframe.time, duration)),
-                }))),
-            })),
+            cameraTracks: project.animation.cameraTracks.map((track) => {
+                const clip = normalizeClipRange(track.clipStart, track.clipEnd, duration);
+                return {
+                    ...track,
+                    ...clip,
+                    keyframes: sortAndDedupeKeyframes(track.keyframes.map((keyframe) => ({
+                        ...keyframe,
+                        time: roundTime(Math.min(keyframe.time, duration)),
+                    }))),
+                };
+            }),
         },
     };
 }
@@ -381,6 +412,13 @@ function normalizeEasing(value: unknown): DirectorEasing {
 
 function roundTime(value: number) {
     return Math.round(value * 100) / 100;
+}
+
+function normalizeClipRange(clipStart: number, clipEnd: number, duration: number) {
+    const start = Math.min(duration, Math.max(0, clipStart));
+    const end = Math.min(duration, Math.max(0, clipEnd));
+    if (end - start < 0.01) return { clipStart: 0, clipEnd: duration };
+    return { clipStart: roundTime(start), clipEnd: roundTime(end) };
 }
 
 function lerp(left: number, right: number, progress: number) {

@@ -13,6 +13,7 @@ import {
     sampleDirectorEasingCurve,
     setDirectorActiveCameraTrack,
     setDirectorAnimationDuration,
+    setDirectorCameraTrackClip,
     setDirectorCameraTrackTarget,
     updateDirectorCameraTrack,
     updateDirectorCameraKeyframe,
@@ -162,4 +163,23 @@ test("keeps per-track camera settings and clears deleted targets", () => {
     expect(project.camera.lookAtTarget).toBeUndefined();
     expect(project.camera.followTargetId).toBeUndefined();
     expect(project.animation.cameraTracks.every((track) => track.lookAtTarget === null && track.followTargetId === null)).toBe(true);
+});
+
+test("clamps camera-track clips and follows timeline duration changes", () => {
+    const track = createDirectorCameraTrack(0, { clipStart: 2, clipEnd: 8 });
+    let project = addDirectorCameraTrack(createDirectorProject(), track);
+
+    expect(getDirectorCameraTrack(project)).toMatchObject({ clipStart: 2, clipEnd: 8 });
+    project = setDirectorCameraTrackClip(project, track.id, -2, 12);
+    expect(getDirectorCameraTrack(project)).toMatchObject({ clipStart: 0, clipEnd: 10 });
+
+    const invalid = setDirectorCameraTrackClip(project, track.id, 8, 2);
+    expect(invalid).toBe(project);
+
+    project = setDirectorCameraTrackClip(project, track.id, 2, 8);
+    project = setDirectorAnimationDuration(project, 6);
+    expect(getDirectorCameraTrack(project)).toMatchObject({ clipStart: 2, clipEnd: 6 });
+
+    project = setDirectorAnimationDuration(project, 1);
+    expect(getDirectorCameraTrack(project)).toMatchObject({ clipStart: 0, clipEnd: 1 });
 });

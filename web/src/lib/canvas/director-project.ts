@@ -113,6 +113,8 @@ export type DirectorCameraTrack = {
     lookAtTarget: string | null;
     followTargetId: string | null;
     motionPathId: string | null;
+    clipStart: number;
+    clipEnd: number;
     keyframes: DirectorCameraKeyframe[];
 };
 
@@ -376,6 +378,7 @@ function normalizeCameraTracks(
                   .sort((left, right) => left.time - right.time || left.order - right.order)
                   .map(({ order: _order, ...keyframe }) => keyframe)
             : [];
+        const clip = normalizeCameraTrackClip(source, duration);
         return [{
             id,
             name: normalizeName(source.name, `Camera ${index + 1}`),
@@ -387,6 +390,7 @@ function normalizeCameraTracks(
             lookAtTarget: normalizeCameraTrackTarget(source.lookAtTarget, camera.lookAtTarget, targetIds),
             followTargetId: normalizeCameraTrackTarget(source.followTargetId, camera.followTargetId, targetIds),
             motionPathId: normalizeCameraTrackMotionPath(source.motionPathId, camera.motionPathId, motionPathIds),
+            ...clip,
             keyframes,
         }];
     });
@@ -402,6 +406,16 @@ function normalizeCameraTrackMotionPath(value: unknown, fallback: string | undef
     const candidate = value === undefined ? fallback : value;
     const id = normalizeOptionalId(candidate);
     return id && motionPathIds.has(id) ? id : null;
+}
+
+function normalizeCameraTrackClip(value: Partial<DirectorCameraTrack>, duration: number) {
+    const clipStart = clampNumber(value.clipStart, 0, duration, 0);
+    const clipEnd = clampNumber(value.clipEnd, 0, duration, duration);
+    if (clipEnd - clipStart < 0.01) return { clipStart: 0, clipEnd: duration };
+    return {
+        clipStart: Math.round(clipStart * 100) / 100,
+        clipEnd: Math.round(clipEnd * 100) / 100,
+    };
 }
 
 function normalizeCameraKeyframe(value: unknown, index: number, duration: number): Array<DirectorCameraKeyframe & { order: number }> {

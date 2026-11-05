@@ -192,6 +192,8 @@ test("normalizes independent camera-track settings and falls back for legacy tra
                     zoom: 4,
                     lookAtTarget: "missing-object",
                     followTargetId: "group-a",
+                    clipStart: 2,
+                    clipEnd: 12,
                     keyframes: [],
                 },
             ],
@@ -206,6 +208,8 @@ test("normalizes independent camera-track settings and falls back for legacy tra
         zoom: 1,
         lookAtTarget: "hero-box",
         followTargetId: null,
+        clipStart: 0,
+        clipEnd: 10,
     });
     expect(project.animation.cameraTracks[1]).toMatchObject({
         position: { x: 4, y: 3, z: 2 },
@@ -214,6 +218,8 @@ test("normalizes independent camera-track settings and falls back for legacy tra
         zoom: 4,
         lookAtTarget: null,
         followTargetId: "group-a",
+        clipStart: 2,
+        clipEnd: 10,
     });
 });
 

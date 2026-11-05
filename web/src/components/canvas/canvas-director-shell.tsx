@@ -37,7 +37,7 @@ import {
     type DirectorSceneNode,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
-import { addDirectorCameraTrack, clearDirectorCameraTargets, createDirectorCameraTrack, DIRECTOR_DEFAULT_CUSTOM_EASING, getDirectorCameraTrack, getDirectorCameraTrackSettings, removeDirectorCameraKeyframe, removeDirectorCameraTrack, sampleDirectorCameraTrack, sampleDirectorEasingCurve, setDirectorActiveCameraTrack, setDirectorAnimationDuration, setDirectorCameraTrackTarget, updateDirectorCameraKeyframe, updateDirectorCameraTrack, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
+import { addDirectorCameraTrack, clearDirectorCameraTargets, createDirectorCameraTrack, DIRECTOR_DEFAULT_CUSTOM_EASING, getDirectorCameraTrack, getDirectorCameraTrackSettings, removeDirectorCameraKeyframe, removeDirectorCameraTrack, sampleDirectorCameraTrack, sampleDirectorEasingCurve, setDirectorActiveCameraTrack, setDirectorAnimationDuration, setDirectorCameraTrackClip, setDirectorCameraTrackTarget, updateDirectorCameraKeyframe, updateDirectorCameraTrack, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
 import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN, getAvailableDirectorPathNodeParents, interpolateDirectorMotionPathSamples, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, sampleDirectorMotionPath, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
@@ -525,6 +525,8 @@ export function CanvasDirectorShell({
 
     const activeCameraTrack = useMemo(() => getDirectorCameraTrack(project), [project]);
     const cameraSettings = useMemo(() => getDirectorCameraTrackSettings(project), [project]);
+    const clipStart = activeCameraTrack?.clipStart ?? 0;
+    const clipEnd = activeCameraTrack?.clipEnd ?? project.animation.duration;
     const selectedKeyframe = useMemo(
         () => selectedKeyframeTime === null ? null : activeCameraTrack?.keyframes.find((keyframe) => Math.abs(keyframe.time - selectedKeyframeTime) < 0.0001) || null,
         [activeCameraTrack, selectedKeyframeTime],
@@ -541,24 +543,26 @@ export function CanvasDirectorShell({
 
     useEffect(() => {
         if (!open || !playing || (!hasCameraMotionPathPreview && !activeCameraTrack?.keyframes.length)) return;
-        const duration = project.animation.duration;
-        const startedAt = performance.now() - playheadRef.current * 1000;
+        const startTime = Math.max(clipStart, Math.min(playheadRef.current, clipEnd));
+        const startedAt = performance.now() - startTime * 1000;
         let frame = 0;
         let lastUiUpdate = 0;
+        if (playheadRef.current < clipStart || playheadRef.current >= clipEnd) setPlayhead(clipStart);
         const tick = (now: number) => {
-            const time = Math.min(duration, Math.max(0, (now - startedAt) / 1000));
-            if (now - lastUiUpdate >= 33 || time >= duration) {
+            const time = Math.min(clipEnd, Math.max(clipStart, (now - startedAt) / 1000));
+            if (now - lastUiUpdate >= 33 || time >= clipEnd) {
                 lastUiUpdate = now;
                 setPlayhead(time);
             }
             if (hasCameraMotionPathPreview) {
-                const position = interpolateDirectorMotionPathSamples(cameraMotionPathSamples, time / duration);
+                const progress = (time - clipStart) / Math.max(0.01, clipEnd - clipStart);
+                const position = interpolateDirectorMotionPathSamples(cameraMotionPathSamples, progress);
                 if (position) runtimeRef.current?.previewCameraPosition(position);
             } else {
                 const sample = sampleDirectorCameraTrack(activeCameraTrack, time);
                 if (sample) runtimeRef.current?.previewCamera(sample);
             }
-            if (time >= duration) {
+            if (time >= clipEnd) {
                 setPlaying(false);
                 return;
             }
@@ -566,7 +570,7 @@ export function CanvasDirectorShell({
         };
         frame = window.requestAnimationFrame(tick);
         return () => window.cancelAnimationFrame(frame);
-    }, [activeCameraTrack, cameraMotionPathSamples, hasCameraMotionPathPreview, open, playing, project.animation.duration]);
+    }, [activeCameraTrack, cameraMotionPathSamples, clipEnd, clipStart, hasCameraMotionPathPreview, open, playing]);
 
     const selectedObject = useMemo(() => project.objects.find((item) => item.id === selectedObjectId) || null, [project.objects, selectedObjectId]);
     const selectedSceneNode = useMemo(() => project.sceneNodes.find((item) => item.id === selectedSceneNodeId) || null, [project.sceneNodes, selectedSceneNodeId]);
@@ -738,7 +742,8 @@ export function CanvasDirectorShell({
         const nextTime = Math.min(project.animation.duration, Math.max(0, time));
         setPlayhead(nextTime);
         if (hasCameraMotionPathPreview) {
-            const position = interpolateDirectorMotionPathSamples(cameraMotionPathSamples, nextTime / project.animation.duration);
+            const progress = (nextTime - clipStart) / Math.max(0.01, clipEnd - clipStart);
+            const position = interpolateDirectorMotionPathSamples(cameraMotionPathSamples, progress);
             if (position) runtimeRef.current?.previewCameraPosition(position);
             return;
         }
@@ -772,8 +777,9 @@ export function CanvasDirectorShell({
     };
 
     const selectCameraTrack = (trackId: string) => {
+        const nextTrack = project.animation.cameraTracks.find((track) => track.id === trackId);
         setPlaying(false);
-        setPlayhead(0);
+        setPlayhead(nextTrack?.clipStart ?? 0);
         setSelectedKeyframeTime(null);
         setProject((current) => setDirectorActiveCameraTrack(current, trackId));
     };
@@ -803,6 +809,21 @@ export function CanvasDirectorShell({
         if (!activeCameraTrack) return;
         const nextName = name.trim() || activeCameraTrack.name;
         setProject((current) => updateDirectorCameraTrack(current, activeCameraTrack.id, { name: nextName }));
+    };
+
+    const updateCameraClip = (patch: { clipStart?: number; clipEnd?: number }) => {
+        if (!activeCameraTrack) return;
+        setPlaying(false);
+        setProject((current) => {
+            const track = getDirectorCameraTrack(current);
+            if (!track) return current;
+            return setDirectorCameraTrackClip(
+                current,
+                track.id,
+                patch.clipStart ?? track.clipStart,
+                patch.clipEnd ?? track.clipEnd,
+            );
+        });
     };
 
     const removeCameraKeyframe = (time: number) => {
@@ -1285,6 +1306,36 @@ export function CanvasDirectorShell({
                                     </>
                                 ) : null}
                             </div>
+                            {activeCameraTrack ? (
+                                <div className="mt-3 rounded-lg border p-2.5" style={{ borderColor: canvasTheme.node.stroke }}>
+                                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                                        <span className="font-medium opacity-60">{t("canvas.director.clipRange")}</span>
+                                        <span className="tabular-nums opacity-45">
+                                            {formatDirectorTime(clipStart)} - {formatDirectorTime(clipEnd)}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 space-y-2">
+                                        <RangeField
+                                            label={t("canvas.director.clipStart")}
+                                            value={clipStart}
+                                            min={0}
+                                            max={Math.max(0, clipEnd - 0.1)}
+                                            step={0.1}
+                                            suffix="s"
+                                            onChange={(value) => updateCameraClip({ clipStart: value })}
+                                        />
+                                        <RangeField
+                                            label={t("canvas.director.clipEnd")}
+                                            value={clipEnd}
+                                            min={Math.min(project.animation.duration, clipStart + 0.1)}
+                                            max={project.animation.duration}
+                                            step={0.1}
+                                            suffix="s"
+                                            onChange={(value) => updateCameraClip({ clipEnd: value })}
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
                             <div className="mt-3">
                                 <RangeField
                                     label={t("canvas.director.animationDuration")}
@@ -1309,7 +1360,7 @@ export function CanvasDirectorShell({
                                                 setPlaying(false);
                                                 return;
                                             }
-                                            setPlayhead(0);
+                                            setPlayhead(clipStart);
                                             setPlaying(true);
                                         }}
                                     >
@@ -1323,9 +1374,27 @@ export function CanvasDirectorShell({
                                     {formatDirectorTime(playhead)} / {formatDirectorTime(project.animation.duration)}
                                 </span>
                             </div>
+                            <div className="relative mt-3 h-2 rounded-full" style={{ backgroundColor: canvasTheme.node.stroke }}>
+                                <div
+                                    className="absolute inset-y-0 rounded-full"
+                                    style={{
+                                        left: `${(clipStart / project.animation.duration) * 100}%`,
+                                        width: `${((clipEnd - clipStart) / project.animation.duration) * 100}%`,
+                                        backgroundColor: token.colorPrimary,
+                                        opacity: 0.45,
+                                    }}
+                                />
+                                <div
+                                    className="absolute -inset-y-1 w-0.5 rounded-full"
+                                    style={{
+                                        left: `${(Math.min(playhead, project.animation.duration) / project.animation.duration) * 100}%`,
+                                        backgroundColor: token.colorPrimary,
+                                    }}
+                                />
+                            </div>
                             <input
                                 type="range"
-                                className="mt-3 h-3 w-full cursor-pointer"
+                                className="mt-1 h-3 w-full cursor-pointer"
                                 style={{ accentColor: token.colorPrimary }}
                                 aria-label={t("canvas.director.playhead")}
                                 min={0}

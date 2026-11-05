@@ -158,6 +158,23 @@ test("normalizes camera FOV, zoom and quaternion boundaries", () => {
     expect(project.camera.quaternion).toEqual({ x: 0, y: 0, z: 0, w: 1 });
 });
 
+test("keeps camera targets only while the referenced scene item exists", () => {
+    const project = normalizeDirectorProject({
+        camera: { lookAtTarget: "hero-box", followTargetId: "group-a" },
+        objects: [{ id: "hero-box", kind: "box", position: { x: 0, y: 1, z: 0 } }],
+        sceneNodes: [{ id: "group-a", name: "Set", kind: "group" }],
+    });
+    expect(project.camera.lookAtTarget).toBe("hero-box");
+    expect(project.camera.followTargetId).toBe("group-a");
+
+    const missing = normalizeDirectorProject({
+        camera: { lookAtTarget: "missing-object", followTargetId: "missing-group" },
+        objects: [{ id: "hero-box", kind: "box", position: { x: 0, y: 1, z: 0 } }],
+    });
+    expect(missing.camera.lookAtTarget).toBeUndefined();
+    expect(missing.camera.followTargetId).toBeUndefined();
+});
+
 test("normalizes a local panorama environment and rejects remote sources", () => {
     const project = normalizeDirectorProject({
         environment: {

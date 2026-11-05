@@ -327,7 +327,12 @@ export function CanvasDirectorShell({
                     syncPanorama(nextProject.environment);
                     syncAssets(nextProject.sceneNodes);
                     camera.position.set(nextProject.camera.position.x, nextProject.camera.position.y, nextProject.camera.position.z);
-                    controls.target.set(nextProject.camera.target.x, nextProject.camera.target.y, nextProject.camera.target.z);
+                    const cameraTarget = resolveDirectorCameraTarget(nextProject, nextProject.camera.followTargetId || nextProject.camera.lookAtTarget);
+                    controls.target.set(
+                        cameraTarget?.x ?? nextProject.camera.target.x,
+                        cameraTarget?.y ?? nextProject.camera.target.y,
+                        cameraTarget?.z ?? nextProject.camera.target.z,
+                    );
                     camera.fov = nextProject.camera.fov;
                     camera.zoom = nextProject.camera.zoom;
                     camera.updateProjectionMatrix();
@@ -409,6 +414,13 @@ export function CanvasDirectorShell({
     const selectedSceneNode = useMemo(() => project.sceneNodes.find((item) => item.id === selectedSceneNodeId) || null, [project.sceneNodes, selectedSceneNodeId]);
     const availableSceneParents = useMemo(() => selectedSceneNode ? getAvailableDirectorSceneNodeParents(project.sceneNodes, selectedSceneNode.id) : [], [project.sceneNodes, selectedSceneNode]);
     const sceneTree = useMemo(() => buildDirectorSceneTree(project), [project]);
+    const cameraTargets = useMemo(
+        () => sceneTree.flatMap((entry) => {
+            const value = entry.objectId || entry.sceneNodeId;
+            return value ? [{ value, label: sceneTreeLabel(entry, t) }] : [];
+        }),
+        [sceneTree, t],
+    );
 
     const addObject = (kind: DirectorObjectKind) => {
         if (project.objects.length >= DIRECTOR_MAX_OBJECTS) {
@@ -453,6 +465,15 @@ export function CanvasDirectorShell({
         }));
     };
 
+    const setCameraTarget = (key: "lookAtTarget" | "followTargetId", value: string | undefined) => {
+        setProject((current) => {
+            const camera = { ...current.camera };
+            delete camera[key];
+            if (value) camera[key] = value;
+            return { ...current, camera };
+        });
+    };
+
     const updateSelectedSceneTransform = (group: keyof DirectorSceneNode["transform"], axis: keyof DirectorVector3, value: number | null) => {
         if (!selectedSceneNode || value === null) return;
         updateSelectedSceneNode({
@@ -465,7 +486,12 @@ export function CanvasDirectorShell({
 
     const removeSelectedObject = () => {
         if (!selectedObjectId) return;
-        setProject((current) => ({ ...current, objects: current.objects.filter((item) => item.id !== selectedObjectId) }));
+        const targetId = selectedObjectId;
+        setProject((current) => ({
+            ...current,
+            objects: current.objects.filter((item) => item.id !== targetId),
+            camera: withoutCameraTargets(current.camera, new Set([targetId])),
+        }));
         setSelectedObjectId(null);
     };
 
@@ -477,6 +503,7 @@ export function CanvasDirectorShell({
             ...current,
             sceneNodes: current.sceneNodes.filter((item) => item.id !== nodeId).map((item) => (item.parentId === nodeId ? { ...item, parentId } : item)),
             objects: current.objects.map((item) => (item.parentId === nodeId ? (parentId ? { ...item, parentId } : withoutParent(item)) : item)),
+            camera: withoutCameraTargets(current.camera, new Set([nodeId])),
         }));
         setSelectedSceneNodeId(null);
     };
@@ -720,6 +747,28 @@ export function CanvasDirectorShell({
                         <div className="text-xs font-medium opacity-60">{t("canvas.director.camera")}</div>
                         <RangeField label={t("canvas.director.fov")} value={project.camera.fov} min={DIRECTOR_MIN_FOV} max={DIRECTOR_MAX_FOV} step={1} suffix="°" onChange={(fov) => setProject((current) => ({ ...current, camera: { ...current.camera, fov } }))} />
                         <RangeField label={t("canvas.director.zoom")} value={project.camera.zoom} min={0.1} max={5} step={0.1} onChange={(zoom) => setProject((current) => ({ ...current, camera: { ...current.camera, zoom } }))} />
+                        <div>
+                            <div className="mb-1 text-[11px] opacity-45">{t("canvas.director.lookAt")}</div>
+                            <Select
+                                className="w-full"
+                                allowClear
+                                placeholder={t("canvas.director.cameraTargetNone")}
+                                value={project.camera.lookAtTarget}
+                                options={cameraTargets}
+                                onChange={(value: string | undefined) => setCameraTarget("lookAtTarget", value)}
+                            />
+                        </div>
+                        <div>
+                            <div className="mb-1 text-[11px] opacity-45">{t("canvas.director.follow")}</div>
+                            <Select
+                                className="w-full"
+                                allowClear
+                                placeholder={t("canvas.director.cameraTargetNone")}
+                                value={project.camera.followTargetId}
+                                options={cameraTargets}
+                                onChange={(value: string | undefined) => setCameraTarget("followTargetId", value)}
+                            />
+                        </div>
                     </div>
 
                     <div className="mb-5 space-y-3">
@@ -972,6 +1021,20 @@ function findDirectorSelection(object: Object3D) {
 function withoutParent(object: DirectorObject): DirectorObject {
     const { parentId: _parentId, ...rest } = object;
     return rest;
+}
+
+function withoutCameraTargets(camera: DirectorProjectState["camera"], ids: Set<string>): DirectorProjectState["camera"] {
+    const next = { ...camera };
+    if (next.lookAtTarget && ids.has(next.lookAtTarget)) delete next.lookAtTarget;
+    if (next.followTargetId && ids.has(next.followTargetId)) delete next.followTargetId;
+    return next;
+}
+
+function resolveDirectorCameraTarget(project: DirectorProjectState, targetId: string | undefined): DirectorVector3 | null {
+    if (!targetId) return null;
+    const object = project.objects.find((item) => item.id === targetId);
+    if (object) return object.position;
+    return project.sceneNodes.find((item) => item.id === targetId)?.transform.position ?? null;
 }
 
 function formatAssetBytes(bytes: number) {

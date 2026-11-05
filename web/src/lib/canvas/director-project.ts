@@ -208,6 +208,8 @@ export function normalizeDirectorProject(value: unknown): DirectorProjectState {
     const objects = normalizeObjects(source.objects);
     const sceneNodes = normalizeSceneNodes(source.sceneNodes);
     const sceneNodeIds = new Set(sceneNodes.map((node) => node.id));
+    const normalizedObjects = objects.map((object) => object.parentId && !sceneNodeIds.has(object.parentId) ? withoutObjectParent(object) : object);
+    const targetIds = new Set([...normalizedObjects.map((object) => object.id), ...sceneNodes.map((node) => node.id)]);
 
     return {
         version: DIRECTOR_PROJECT_VERSION,
@@ -217,10 +219,10 @@ export function normalizeDirectorProject(value: unknown): DirectorProjectState {
             fov: clampNumber(camera.fov, DIRECTOR_MIN_FOV, DIRECTOR_MAX_FOV, cameraFallback.fov),
             zoom: clampNumber(camera.zoom, 0.1, 5, 1),
             ...normalizeOptionalQuaternion(camera.quaternion),
-            ...normalizeOptionalIdField("lookAtTarget", camera.lookAtTarget),
-            ...normalizeOptionalIdField("followTargetId", camera.followTargetId),
+            ...normalizeOptionalTargetField("lookAtTarget", camera.lookAtTarget, targetIds),
+            ...normalizeOptionalTargetField("followTargetId", camera.followTargetId, targetIds),
         },
-        objects: objects.map((object) => object.parentId && !sceneNodeIds.has(object.parentId) ? withoutObjectParent(object) : object),
+        objects: normalizedObjects,
         background: backgrounds.has(source.background as DirectorBackground) ? (source.background as DirectorBackground) : fallback.background,
         sceneNodes,
         animation: normalizeAnimation(source.animation),
@@ -508,6 +510,11 @@ function normalizeOptionalQuaternion(value: unknown) {
 function normalizeOptionalIdField<Key extends "lookAtTarget" | "followTargetId">(key: Key, value: unknown): Partial<Record<Key, string>> {
     const id = normalizeOptionalId(value);
     return id ? { [key]: id } as Partial<Record<Key, string>> : {};
+}
+
+function normalizeOptionalTargetField<Key extends "lookAtTarget" | "followTargetId">(key: Key, value: unknown, targetIds: Set<string>): Partial<Record<Key, string>> {
+    const field = normalizeOptionalIdField(key, value);
+    return field[key] && targetIds.has(field[key]) ? field : {};
 }
 
 function normalizeOptionalId(value: unknown) {

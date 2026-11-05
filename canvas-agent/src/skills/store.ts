@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { TextDecoder } from "node:util";
@@ -67,7 +68,7 @@ type OpenAiDocument = { raw: string; data: Record<string, unknown>; interface?: 
 
 export class SkillStoreError extends Error {
     override name = "SkillStoreError";
-    constructor(message: string, readonly statusCode: 400 | 404 | 409 | 500) {
+    constructor(message: string, readonly statusCode: 400 | 404 | 409 | 429 | 500 | 502 | 504) {
         super(message);
     }
 }
@@ -86,7 +87,7 @@ export class SkillStore {
     /** 判断 Codex 返回的绝对路径是否属于本 Store 的标准 Skill 入口。 */
     isManagedPath(filePath: string) {
         if (!path.isAbsolute(filePath)) return false;
-        const relative = path.relative(this.skillsPath, path.resolve(filePath));
+        const relative = path.relative(realPathOrResolved(this.skillsPath), realPathOrResolved(filePath));
         const segments = relative.split(path.sep);
         return segments.length === 2 && validName(segments[0]) && segments[1].toLowerCase() === "skill.md";
     }
@@ -400,6 +401,14 @@ function validName(value: string | undefined): value is string {
     return Boolean(value && value.length <= MAX_NAME_LENGTH && NAME_PATTERN.test(value));
 }
 
+function realPathOrResolved(filePath: string) {
+    try {
+        return realpathSync(filePath);
+    } catch {
+        return path.resolve(filePath);
+    }
+}
+
 function skillName(value: unknown) {
     const name = typeof value === "string" ? value : "";
     if (!validName(name)) throw new SkillStoreError("Skill 名称只能包含小写字母、数字和连字符", 400);
@@ -479,6 +488,12 @@ function serializeSkill(frontmatter: Record<string, unknown>, instructions: stri
 
 async function readSkill(filePath: string, expectedName: string): Promise<SkillDocument> {
     const raw = await fs.readFile(filePath, "utf8");
+    const parsed = parseSkillMarkdown(raw, expectedName);
+    return { raw, frontmatter: parsed.frontmatter, description: parsed.description, instructions: parsed.instructions };
+}
+
+/** 解析并校验一份 SKILL.md，供本地编辑和远端安装共用。 */
+export function parseSkillMarkdown(raw: string, expectedName?: string) {
     let parsed: matter.GrayMatterFile<string>;
     try {
         parsed = matter(raw);
@@ -486,9 +501,10 @@ async function readSkill(filePath: string, expectedName: string): Promise<SkillD
         throw new SkillStoreError("SKILL.md frontmatter 格式无效", 409);
     }
     const frontmatter = recordValue(parsed.data);
-    if (frontmatter.name !== expectedName) throw new SkillStoreError("SKILL.md 中的名称与目录不一致", 409);
+    const name = skillName(frontmatter.name);
+    if (expectedName && name !== expectedName) throw new SkillStoreError("SKILL.md 中的名称与目录不一致", 409);
     return {
-        raw,
+        name,
         frontmatter,
         description: skillDescription(frontmatter.description),
         instructions: skillInstructions(parsed.content),

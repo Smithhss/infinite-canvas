@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Collapse, Dropdown, Form, Input, Modal, Select, Switch, Tooltip } from "antd";
 import type { MenuProps } from "antd";
-import { Check, ChevronDown, CircleAlert, FilePenLine, LoaderCircle, LockKeyhole, MessageSquareText, Plus, RefreshCw, Search, Sparkles, Trash2, Workflow } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Download, FilePenLine, LoaderCircle, LockKeyhole, MessageSquareText, Plus, RefreshCw, Search, Sparkles, Trash2, Workflow } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { activeAgentProvider } from "@/lib/agent/agent-provider";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { createCodexSkill, createCodexSkillDraft, deleteCodexSkill, fetchCodexSkill, postState, setCodexSkillEnabled, updateCodexSkill, type AgentSkillDetail, type AgentSkillDraft, type AgentSkillInterface, type AgentSkillScope, type AgentSkillSummary } from "@/services/api/canvas-agent";
+import { AgentSkillInstallModal } from "@/components/agent/agent-skill-install-modal";
 import { AgentSkillResources } from "@/components/agent/agent-skill-resources";
 import { useAgentSkillStore } from "@/stores/use-agent-skill-store";
 import { useAgentStore, type AgentChatItem } from "@/stores/use-agent-store";
@@ -54,6 +55,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
     const [createMenuOpen, setCreateMenuOpen] = useState(false);
     const [busySkill, setBusySkill] = useState("");
     const [errorsOpen, setErrorsOpen] = useState(false);
+    const [installerOpen, setInstallerOpen] = useState(false);
     const confirmRef = useRef<{ destroy: () => void } | null>(null);
     const [form] = Form.useForm<SkillFormValues>();
     const endpoint = url.trim().replace(/\/$/, "");
@@ -301,6 +303,13 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
                             <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8" aria-label={t("agent.skillManager.reloadSkill")} disabled={!connected || loading} icon={<RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />} onClick={() => void refresh()} />
                         </Tooltip>
                         {claudeSkills ? null : (
+                            <Tooltip title={t("agent.skillManager.installFromWeb")}>
+                                <Button type="text" className="!h-8 !px-2" aria-label={t("agent.skillManager.installFromWeb")} disabled={!connected || !clientId} icon={<Download className="size-4" />} onClick={() => setInstallerOpen(true)}>
+                                    <span className="hidden sm:inline">{t("agent.skillManager.installFromWeb")}</span>
+                                </Button>
+                            </Tooltip>
+                        )}
+                        {claudeSkills ? null : (
                             <Dropdown trigger={["click"]} placement="bottomRight" open={createMenuOpen} onOpenChange={setCreateMenuOpen} disabled={!connected || !clientId || Boolean(generatingSource)} menu={createMenu}>
                                 <Button type="text" className="!h-8 !px-2" aria-haspopup="menu" aria-expanded={createMenuOpen} disabled={!connected || !clientId} loading={Boolean(generatingSource)} icon={<Plus className="size-4" />}>
                                     {t("agent.skillManager.createSkill")} <ChevronDown className="size-3.5 opacity-60" />
@@ -386,6 +395,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
                     {errors.map((error, index) => <div key={`${index}:${error}`} className="break-all py-1" style={{ color: theme.node.muted }}>{error}</div>)}
                 </div>
             </Modal>
+            <AgentSkillInstallModal open={installerOpen} onClose={() => setInstallerOpen(false)} onInstalled={() => refresh()} />
 
             <Modal
                 title={editor?.mode === "edit" ? t("agent.skillManager.editNamed", { name: editor.detail.interface?.displayName || editor.detail.name }) : t("agent.skillManager.createSkill")}

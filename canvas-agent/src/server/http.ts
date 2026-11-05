@@ -16,6 +16,7 @@ import { AGENT_PROTOCOL_VERSION, CanvasSession } from "../canvas/session.js";
 import { DEFAULT_PORT, ensureSiteWorkspace, loadConfig, saveConfig, updateSiteWorkspace, type CanvasAgentConfig } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { checkVersions } from "../version-check.js";
+import { previewGithubSkill, searchGithubSkillRepositories } from "../skills/remote.js";
 import { SkillStore, SkillStoreError } from "../skills/store.js";
 
 /** 启动仅监听本机的 Canvas Agent HTTP 服务。 */
@@ -186,6 +187,25 @@ export function startHttpServer() {
         const workspace = ensureSiteWorkspace(config);
         const result = await listCodexSkills(emit, workspace.workspacePath, String(req.query.forceReload || "") === "1");
         res.json({ ok: true, data: result.skills.map((skill) => ({ ...skill, managed: skillStore.isManagedPath(skill.path) })), errors: result.errors });
+    }));
+    app.get("/agent/codex/skills/search", route(async (req, res) => {
+        res.json({ ok: true, data: await searchGithubSkillRepositories(String(req.query.q || "")) });
+    }));
+    app.post("/agent/codex/skills/preview", route(async (req, res) => {
+        res.json({ ok: true, data: await previewGithubSkill(String(req.body?.url || "")) });
+    }));
+    app.post("/agent/codex/skills/install", codexMutation(async (req, res) => {
+        const preview = await previewGithubSkill(String(req.body?.url || ""));
+        const contentHash = String(req.body?.contentHash || "");
+        if (!contentHash) throw new SkillStoreError("当前 Canvas Agent 不支持安全安装，请升级后重新预览", 409);
+        if (contentHash !== preview.contentHash) throw new SkillStoreError("Skill 内容已变化，请重新预览后再安装", 409);
+        const data = await skillStore.create({
+            name: preview.name,
+            description: preview.description,
+            instructions: preview.instructions,
+        });
+        session.emitAll("skills_changed", { forceReload: true });
+        res.status(201).json({ ok: true, data: { ...data, sourceUrl: preview.sourceUrl } });
     }));
     app.post("/agent/codex/skills/draft", codexMutation(async (req, res) => {
         const workspace = ensureSiteWorkspace(config);

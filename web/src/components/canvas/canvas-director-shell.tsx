@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, ColorPicker, Input, InputNumber, Modal, Select, Slider, Switch, theme as antdTheme } from "antd";
-import { Box, Camera, Circle, Cylinder, Diamond, EyeOff, Folder, ImagePlus, Lightbulb, Lock, MapPin, Pause, Play, Plus, RotateCcw, Route, Save, Trash2, Triangle, Upload } from "lucide-react";
+import { Box, Camera, Circle, Crosshair, Cylinder, Diamond, EyeOff, Focus, Folder, ImagePlus, Lightbulb, Lock, MapPin, Pause, Play, Plus, RotateCcw, Route, Save, Trash2, Triangle, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Group, Mesh, Object3D, Scene } from "three";
 
@@ -9,7 +9,9 @@ import {
     DIRECTOR_MAX_GLB_BYTES,
     DIRECTOR_MAX_ANIMATION_DURATION,
     DIRECTOR_MAX_KEYFRAMES,
+    DIRECTOR_MAX_MOTION_PATHS,
     DIRECTOR_MAX_OBJECTS,
+    DIRECTOR_MAX_PATH_POINTS,
     DIRECTOR_MAX_SCENE_NODES,
     DIRECTOR_MIN_ANIMATION_DURATION,
     DIRECTOR_MIN_FOV,
@@ -24,13 +26,17 @@ import {
     type DirectorBackground,
     type DirectorCameraKeyframe,
     type DirectorEnvironment,
+    type DirectorMotionPath,
     type DirectorObject,
     type DirectorObjectKind,
+    type DirectorPathNode,
+    type DirectorPathNodeKind,
     type DirectorProjectState,
     type DirectorSceneNode,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
 import { getDirectorCameraTrack, removeDirectorCameraKeyframe, sampleDirectorCameraTrack, setDirectorAnimationDuration, updateDirectorCameraKeyframe, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
+import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, getAvailableDirectorPathNodeParents, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -79,6 +85,8 @@ export function CanvasDirectorShell({
     const [unsupportedProjectVersion, setUnsupportedProjectVersion] = useState(initialProjectState.unsupportedVersion);
     const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
     const [selectedSceneNodeId, setSelectedSceneNodeId] = useState<string | null>(null);
+    const [selectedMotionPathId, setSelectedMotionPathId] = useState<string | null>(null);
+    const [selectedPathNodeId, setSelectedPathNodeId] = useState<string | null>(null);
     const [sceneError, setSceneError] = useState<string | null>(null);
     const [capturing, setCapturing] = useState(false);
     const [importingGlb, setImportingGlb] = useState(false);
@@ -102,6 +110,8 @@ export function CanvasDirectorShell({
         setUnsupportedProjectVersion(next.unsupportedVersion);
         setSelectedObjectId(null);
         setSelectedSceneNodeId(null);
+        setSelectedMotionPathId(null);
+        setSelectedPathNodeId(null);
         setSceneError(null);
         setAssetErrors({});
         setPlayhead(0);
@@ -302,6 +312,8 @@ export function CanvasDirectorShell({
                     const selection = hit ? findDirectorSelection(hit.object) : null;
                     setSelectedObjectId(selection?.objectId || null);
                     setSelectedSceneNodeId(selection?.sceneNodeId || null);
+                    setSelectedMotionPathId(null);
+                    setSelectedPathNodeId(null);
                 };
                 const rememberPointer = (event: PointerEvent) => {
                     pointerStart = { x: event.clientX, y: event.clientY };
@@ -472,6 +484,9 @@ export function CanvasDirectorShell({
     const selectedObject = useMemo(() => project.objects.find((item) => item.id === selectedObjectId) || null, [project.objects, selectedObjectId]);
     const selectedSceneNode = useMemo(() => project.sceneNodes.find((item) => item.id === selectedSceneNodeId) || null, [project.sceneNodes, selectedSceneNodeId]);
     const availableSceneParents = useMemo(() => selectedSceneNode ? getAvailableDirectorSceneNodeParents(project.sceneNodes, selectedSceneNode.id) : [], [project.sceneNodes, selectedSceneNode]);
+    const selectedMotionPath = useMemo(() => project.animation.motionPaths.find((item) => item.id === selectedMotionPathId) || null, [project.animation.motionPaths, selectedMotionPathId]);
+    const selectedPathNode = useMemo(() => selectedMotionPath?.nodes.find((item) => item.id === selectedPathNodeId) || null, [selectedMotionPath, selectedPathNodeId]);
+    const availablePathNodeParents = useMemo(() => selectedMotionPath && selectedPathNode ? getAvailableDirectorPathNodeParents(selectedMotionPath, selectedPathNode.id) : [], [selectedMotionPath, selectedPathNode]);
     const sceneTree = useMemo(() => buildDirectorSceneTree(project), [project]);
     const cameraTargets = useMemo(
         () => sceneTree.flatMap((entry) => {
@@ -490,6 +505,8 @@ export function CanvasDirectorShell({
         setProject((current) => ({ ...current, objects: [...current.objects, item] }));
         setSelectedObjectId(item.id);
         setSelectedSceneNodeId(null);
+        setSelectedMotionPathId(null);
+        setSelectedPathNodeId(null);
     };
 
     const addSceneGroup = () => {
@@ -501,6 +518,35 @@ export function CanvasDirectorShell({
         setProject((current) => ({ ...current, sceneNodes: [...current.sceneNodes, item] }));
         setSelectedObjectId(null);
         setSelectedSceneNodeId(item.id);
+        setSelectedMotionPathId(null);
+        setSelectedPathNodeId(null);
+    };
+
+    const addMotionPath = () => {
+        if (project.animation.motionPaths.length >= DIRECTOR_MAX_MOTION_PATHS) {
+            message.warning(t("canvas.director.motionPathLimit", { count: DIRECTOR_MAX_MOTION_PATHS }));
+            return;
+        }
+        const item = createDirectorMotionPath(project.animation.motionPaths.length);
+        setProject((current) => ({
+            ...current,
+            animation: { ...current.animation, motionPaths: [...current.animation.motionPaths, item] },
+        }));
+        setSelectedObjectId(null);
+        setSelectedSceneNodeId(null);
+        setSelectedMotionPathId(item.id);
+        setSelectedPathNodeId(null);
+    };
+
+    const addSelectedPathNode = (kind: DirectorPathNodeKind) => {
+        if (!selectedMotionPath) return;
+        if (selectedMotionPath.nodes.length >= DIRECTOR_MAX_PATH_POINTS) {
+            message.warning(t("canvas.director.motionPathNodeLimit", { count: DIRECTOR_MAX_PATH_POINTS }));
+            return;
+        }
+        const item = createDirectorPathNode(selectedMotionPath.id, kind, selectedMotionPath.nodes.length);
+        setProject((current) => addDirectorPathNode(current, selectedMotionPath.id, item));
+        setSelectedPathNodeId(item.id);
     };
 
     const updateSelectedObject = (patch: Partial<DirectorObject>) => {
@@ -522,6 +568,39 @@ export function CanvasDirectorShell({
             ...current,
             sceneNodes: current.sceneNodes.map((item) => (item.id === selectedSceneNodeId ? { ...item, ...patch } : item)),
         }));
+    };
+
+    const updateSelectedMotionPath = (patch: Partial<Pick<DirectorMotionPath, "name" | "closed">>) => {
+        if (!selectedMotionPath) return;
+        setProject((current) => updateDirectorMotionPath(current, selectedMotionPath.id, patch));
+    };
+
+    const updateSelectedPathNode = (patch: Partial<Pick<DirectorPathNode, "name" | "parentId" | "visible" | "locked" | "transform">>) => {
+        if (!selectedMotionPath || !selectedPathNode) return;
+        setProject((current) => updateDirectorPathNode(current, selectedMotionPath.id, selectedPathNode.id, patch));
+    };
+
+    const updateSelectedPathTransform = (group: keyof DirectorPathNode["transform"], axis: keyof DirectorVector3, value: number | null) => {
+        if (!selectedPathNode || value === null) return;
+        updateSelectedPathNode({
+            transform: {
+                ...selectedPathNode.transform,
+                [group]: { ...selectedPathNode.transform[group], [axis]: value },
+            },
+        });
+    };
+
+    const removeSelectedPathNode = () => {
+        if (!selectedMotionPath || !selectedPathNode || selectedPathNode.locked) return;
+        setProject((current) => removeDirectorPathNode(current, selectedMotionPath.id, selectedPathNode.id));
+        setSelectedPathNodeId(null);
+    };
+
+    const removeSelectedMotionPath = () => {
+        if (!selectedMotionPath) return;
+        setProject((current) => removeDirectorMotionPath(current, selectedMotionPath.id));
+        setSelectedMotionPathId(null);
+        setSelectedPathNodeId(null);
     };
 
     const setCameraTarget = (key: "lookAtTarget" | "followTargetId", value: string | undefined) => {
@@ -678,6 +757,8 @@ export function CanvasDirectorShell({
             setProject((current) => ({ ...current, sceneNodes: [...current.sceneNodes, item] }));
             setSelectedObjectId(null);
             setSelectedSceneNodeId(item.id);
+            setSelectedMotionPathId(null);
+            setSelectedPathNodeId(null);
         } catch {
             message.error(t("canvas.director.glbStoreFailed"));
         } finally {
@@ -721,6 +802,8 @@ export function CanvasDirectorShell({
         setUnsupportedProjectVersion(null);
         setSelectedObjectId(null);
         setSelectedSceneNodeId(null);
+        setSelectedMotionPathId(null);
+        setSelectedPathNodeId(null);
     };
 
     return (
@@ -791,6 +874,7 @@ export function CanvasDirectorShell({
                         <div className="mb-2 flex items-center justify-between gap-3">
                             <label className="text-xs font-medium opacity-60">{t("canvas.director.sceneTree")}</label>
                             <div className="flex min-w-0 items-center gap-1">
+                                <Button size="small" type="text" className="!h-7 !w-7 !p-0" title={t("canvas.director.addMotionPath")} aria-label={t("canvas.director.addMotionPath")} icon={<Route className="size-3.5" />} onClick={addMotionPath} />
                                 <Button size="small" type="text" className="!h-7 !px-2" loading={importingGlb} icon={<Upload className="size-3.5" />} onClick={() => glbInputRef.current?.click()}>
                                     {t("canvas.director.importGlb")}
                                 </Button>
@@ -814,24 +898,45 @@ export function CanvasDirectorShell({
                             {sceneTree.map((entry) => {
                                 const Icon = sceneTreeIcon(entry);
                                 const label = sceneTreeLabel(entry, t);
-                                const selectable = Boolean(entry.objectId || entry.sceneNodeId);
-                                const selected = entry.objectId ? entry.objectId === selectedObjectId : entry.sceneNodeId ? entry.sceneNodeId === selectedSceneNodeId : false;
+                                const selectable = Boolean(entry.objectId || entry.sceneNodeId || entry.pathId);
+                                const selected = entry.objectId
+                                    ? entry.objectId === selectedObjectId
+                                    : entry.sceneNodeId
+                                      ? entry.sceneNodeId === selectedSceneNodeId
+                                      : entry.pathId
+                                        ? entry.pathNodeId
+                                            ? entry.pathId === selectedMotionPathId && entry.pathNodeId === selectedPathNodeId
+                                            : entry.pathId === selectedMotionPathId && selectedPathNodeId === null
+                                        : false;
                                 const selectEntry = () => {
                                     if (entry.objectId) {
                                         setSelectedObjectId(entry.objectId);
                                         setSelectedSceneNodeId(null);
+                                        setSelectedMotionPathId(null);
+                                        setSelectedPathNodeId(null);
                                     } else if (entry.sceneNodeId) {
                                         setSelectedSceneNodeId(entry.sceneNodeId);
                                         setSelectedObjectId(null);
+                                        setSelectedMotionPathId(null);
+                                        setSelectedPathNodeId(null);
+                                    } else if (entry.pathId) {
+                                        setSelectedObjectId(null);
+                                        setSelectedSceneNodeId(null);
+                                        setSelectedMotionPathId(entry.pathId);
+                                        setSelectedPathNodeId(entry.pathNodeId || null);
                                     }
                                 };
                                 const sceneNode = entry.sceneNodeId ? project.sceneNodes.find((item) => item.id === entry.sceneNodeId) : null;
+                                const motionPath = entry.pathId ? project.animation.motionPaths.find((item) => item.id === entry.pathId) : null;
+                                const pathNode = motionPath && entry.pathNodeId ? motionPath.nodes.find((item) => item.id === entry.pathNodeId) : null;
                                 const content = (
                                     <>
                                         <Icon className="size-3.5 shrink-0 opacity-55" />
-                                        <span className={`min-w-0 flex-1 truncate ${sceneNode && !isDirectorSceneNodeVisible(sceneNode, project.sceneNodes) ? "opacity-40" : ""}`}>{label}</span>
+                                        <span className={`min-w-0 flex-1 truncate ${(sceneNode && !isDirectorSceneNodeVisible(sceneNode, project.sceneNodes)) || (pathNode && motionPath && !isDirectorPathNodeVisible(pathNode, motionPath)) ? "opacity-40" : ""}`}>{label}</span>
                                         {sceneNode && !sceneNode.visible ? <EyeOff className="size-3 shrink-0 opacity-35" /> : null}
                                         {sceneNode?.locked ? <Lock className="size-3 shrink-0 opacity-35" /> : null}
+                                        {pathNode && !pathNode.visible ? <EyeOff className="size-3 shrink-0 opacity-35" /> : null}
+                                        {pathNode?.locked ? <Lock className="size-3 shrink-0 opacity-35" /> : null}
                                     </>
                                 );
                                 return selectable ? (
@@ -1061,7 +1166,146 @@ export function CanvasDirectorShell({
                         />
                     </div>
 
-                    {selectedObject ? (
+                    {selectedMotionPath ? (
+                        selectedPathNode ? (
+                            <div className="space-y-5">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="text-sm font-semibold">{pathNodeKindLabel(selectedPathNode.kind, t)}</div>
+                                        <div className="mt-1 truncate text-xs opacity-45">{selectedPathNode.id}</div>
+                                    </div>
+                                    <Button danger type="text" disabled={selectedPathNode.locked} icon={<Trash2 className="size-4" />} onClick={removeSelectedPathNode}>
+                                        {t("common.delete")}
+                                    </Button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2" style={{ borderColor: canvasTheme.node.stroke }}>
+                                        <span className="text-[11px] opacity-55">{t("canvas.director.sceneNodeVisible")}</span>
+                                        <Switch size="small" disabled={selectedPathNode.locked} checked={selectedPathNode.visible} onChange={(visible) => updateSelectedPathNode({ visible })} />
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2" style={{ borderColor: canvasTheme.node.stroke }}>
+                                        <span className="text-[11px] opacity-55">{t("canvas.director.sceneNodeLocked")}</span>
+                                        <Switch size="small" checked={selectedPathNode.locked} onChange={(locked) => updateSelectedPathNode({ locked })} />
+                                    </div>
+                                </div>
+                                {selectedPathNode.locked ? <div className="text-[11px] leading-5 opacity-45">{t("canvas.director.motionPathNodeLockedHint")}</div> : null}
+                                <div>
+                                    <div className="mb-2 text-xs font-medium opacity-60">{t("canvas.director.sceneNodeName")}</div>
+                                    <Input
+                                        value={selectedPathNode.name}
+                                        maxLength={60}
+                                        disabled={selectedPathNode.locked}
+                                        onChange={(event) => updateSelectedPathNode({ name: event.target.value })}
+                                        onBlur={() => {
+                                            if (selectedPathNode.name.trim()) {
+                                                updateSelectedPathNode({ name: selectedPathNode.name.trim() });
+                                                return;
+                                            }
+                                            const index = selectedMotionPath.nodes.findIndex((item) => item.id === selectedPathNode.id) + 1;
+                                            updateSelectedPathNode({ name: defaultPathNodeName(selectedPathNode, index) });
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <div className="mb-2 text-xs font-medium opacity-60">{t("canvas.director.sceneNodeParent")}</div>
+                                    <Select
+                                        className="w-full"
+                                        value={selectedPathNode.parentId}
+                                        disabled={selectedPathNode.locked}
+                                        options={[
+                                            { value: selectedMotionPath.id, label: t("canvas.director.motionPathRoot") },
+                                            ...availablePathNodeParents.map((node) => ({ value: node.id, label: node.name })),
+                                        ]}
+                                        onChange={(parentId: string) => updateSelectedPathNode({ parentId })}
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="text-xs font-medium opacity-60">{t("canvas.director.sceneNodeTransform")}</div>
+                                    {([
+                                        ["position", "sceneNodePosition"],
+                                        ["rotation", "sceneNodeRotation"],
+                                        ["scale", "sceneNodeScale"],
+                                    ] as const).map(([group, label]) => (
+                                        <div key={group}>
+                                            <div className="mb-1 text-[11px] opacity-45">{t(`canvas.director.${label}`)}</div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {(["x", "y", "z"] as const).map((axis) => (
+                                                    <div key={axis}>
+                                                        <div className="mb-1 text-center text-[10px] uppercase opacity-35">{axis}</div>
+                                                        <InputNumber
+                                                            className="w-full"
+                                                            min={group === "scale" ? 0.01 : group === "rotation" ? -360 : -24}
+                                                            max={group === "scale" ? 100 : group === "rotation" ? 360 : 24}
+                                                            step={group === "rotation" ? 1 : 0.1}
+                                                            value={selectedPathNode.transform[group][axis]}
+                                                            disabled={selectedPathNode.locked}
+                                                            onChange={(value) => updateSelectedPathTransform(group, axis, value)}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-5">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="text-sm font-semibold">{t("canvas.director.motionPath")}</div>
+                                        <div className="mt-1 truncate text-xs opacity-45">{selectedMotionPath.id}</div>
+                                    </div>
+                                    <Button danger type="text" icon={<Trash2 className="size-4" />} onClick={removeSelectedMotionPath}>
+                                        {t("common.delete")}
+                                    </Button>
+                                </div>
+                                <div>
+                                    <div className="mb-2 text-xs font-medium opacity-60">{t("canvas.director.sceneNodeName")}</div>
+                                    <Input
+                                        value={selectedMotionPath.name}
+                                        maxLength={60}
+                                        onChange={(event) => updateSelectedMotionPath({ name: event.target.value })}
+                                        onBlur={() => {
+                                            if (selectedMotionPath.name.trim()) {
+                                                updateSelectedMotionPath({ name: selectedMotionPath.name.trim() });
+                                                return;
+                                            }
+                                            const index = project.animation.motionPaths.findIndex((item) => item.id === selectedMotionPath.id) + 1;
+                                            updateSelectedMotionPath({ name: `Path ${index}` });
+                                        }}
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2" style={{ borderColor: canvasTheme.node.stroke }}>
+                                    <span className="text-[11px] opacity-55">{t("canvas.director.motionPathClosed")}</span>
+                                    <Switch size="small" checked={selectedMotionPath.closed} onChange={(closed) => updateSelectedMotionPath({ closed })} />
+                                </div>
+                                <div className="rounded-xl border p-3" style={{ borderColor: canvasTheme.node.stroke }}>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-xs font-medium opacity-60">{t("canvas.director.motionPathNodes")}</span>
+                                        <span className="text-[10px] tabular-nums opacity-40">
+                                            {selectedMotionPath.nodes.length} / {DIRECTOR_MAX_PATH_POINTS}
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-3 gap-1">
+                                        <Button size="small" type="text" className="!h-8 !px-1" icon={<MapPin className="size-3.5" />} onClick={() => addSelectedPathNode("waypoint")}>
+                                            {t("canvas.director.pathNodeKinds.waypoint")}
+                                        </Button>
+                                        <Button size="small" type="text" className="!h-8 !px-1" icon={<Crosshair className="size-3.5" />} onClick={() => addSelectedPathNode("aim")}>
+                                            {t("canvas.director.pathNodeKinds.aim")}
+                                        </Button>
+                                        <Button size="small" type="text" className="!h-8 !px-1" icon={<Focus className="size-3.5" />} onClick={() => addSelectedPathNode("focus")}>
+                                            {t("canvas.director.pathNodeKinds.focus")}
+                                        </Button>
+                                    </div>
+                                </div>
+                                {!selectedMotionPath.nodes.length ? (
+                                    <div className="rounded-lg border border-dashed px-3 py-4 text-center text-[11px] leading-5 opacity-45" style={{ borderColor: canvasTheme.node.stroke }}>
+                                        {t("canvas.director.motionPathEmpty")}
+                                    </div>
+                                ) : null}
+                            </div>
+                        )
+                    ) : selectedObject ? (
                         <div className="space-y-5">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
@@ -1226,7 +1470,10 @@ function sceneTreeIcon(entry: DirectorSceneTreeEntry) {
     if (entry.kind === "group") return Folder;
     if (entry.kind === "light") return Lightbulb;
     if (entry.kind === "path") return Route;
-    return entry.kind === "waypoint" ? MapPin : Box;
+    if (entry.kind === "waypoint") return MapPin;
+    if (entry.kind === "aim") return Crosshair;
+    if (entry.kind === "focus") return Focus;
+    return Box;
 }
 
 function sceneTreeLabel(entry: DirectorSceneTreeEntry, t: (key: string) => string) {
@@ -1238,6 +1485,14 @@ function defaultSceneNodeName(node: DirectorSceneNode, index: number, t: (key: s
     return node.kind === "group"
         ? t("canvas.director.defaultSceneGroupName", { count: index })
         : t("canvas.director.defaultSceneNodeName", { count: index });
+}
+
+function pathNodeKindLabel(kind: DirectorPathNodeKind, t: (key: string) => string) {
+    return t(`canvas.director.pathNodeKinds.${kind}`);
+}
+
+function defaultPathNodeName(node: DirectorPathNode, index: number) {
+    return node.kind === "waypoint" ? `WP ${index}` : `${node.kind === "aim" ? "Aim" : "Focus"} ${index}`;
 }
 
 function findDirectorSelection(object: Object3D) {

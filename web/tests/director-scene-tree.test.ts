@@ -43,6 +43,8 @@ test("builds camera, grouped scene nodes, nested path nodes and objects", () => 
     expect(tree.find((entry) => entry.kind === "object")?.objectId).toBe("hero-box");
     expect(tree.find((entry) => entry.kind === "object")?.label).toBe("Hero prop");
     expect(tree.find((entry) => entry.kind === "group")?.sceneNodeId).toBe("group-a");
+    expect(tree.find((entry) => entry.kind === "path")).toMatchObject({ pathId: "path-a" });
+    expect(tree.find((entry) => entry.kind === "waypoint")).toMatchObject({ pathId: "path-a", pathNodeId: "path-wp" });
 });
 
 test("caps scene-tree display depth without dropping nested entries", () => {

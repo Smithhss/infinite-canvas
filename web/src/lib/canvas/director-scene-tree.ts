@@ -10,6 +10,8 @@ export type DirectorSceneTreeEntry = {
     depth: number;
     objectId?: string;
     sceneNodeId?: string;
+    pathId?: string;
+    pathNodeId?: string;
 };
 
 export function buildDirectorSceneTree(project: DirectorProjectState): DirectorSceneTreeEntry[] {
@@ -59,7 +61,7 @@ export function buildDirectorSceneTree(project: DirectorProjectState): DirectorS
     });
 
     project.animation.motionPaths.forEach((path) => {
-        entries.push({ id: `path:${path.id}`, label: path.name, kind: "path", depth: 0 });
+        entries.push({ id: `path:${path.id}`, label: path.name, kind: "path", depth: 0, pathId: path.id });
         const pathNodeIds = new Set(path.nodes.map((node) => node.id));
         const pathNodesByParent = new Map<string, typeof path.nodes>();
         path.nodes.forEach((node) => {
@@ -78,6 +80,8 @@ export function buildDirectorSceneTree(project: DirectorProjectState): DirectorS
                 label: node.name,
                 kind: node.kind,
                 depth: safeDepth,
+                pathId: path.id,
+                pathNodeId: node.id,
             });
             appendPathNodes(node.id, safeDepth + 1);
         };

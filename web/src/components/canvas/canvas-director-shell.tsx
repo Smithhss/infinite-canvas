@@ -37,7 +37,7 @@ import {
     type DirectorSceneNode,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
-import { addDirectorCameraTrack, createDirectorCameraTrack, DIRECTOR_DEFAULT_CUSTOM_EASING, getDirectorCameraTrack, removeDirectorCameraKeyframe, removeDirectorCameraTrack, sampleDirectorCameraTrack, sampleDirectorEasingCurve, setDirectorActiveCameraTrack, setDirectorAnimationDuration, updateDirectorCameraKeyframe, updateDirectorCameraTrack, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
+import { addDirectorCameraTrack, clearDirectorCameraTargets, createDirectorCameraTrack, DIRECTOR_DEFAULT_CUSTOM_EASING, getDirectorCameraTrack, getDirectorCameraTrackSettings, removeDirectorCameraKeyframe, removeDirectorCameraTrack, sampleDirectorCameraTrack, sampleDirectorEasingCurve, setDirectorActiveCameraTrack, setDirectorAnimationDuration, setDirectorCameraTrackTarget, updateDirectorCameraKeyframe, updateDirectorCameraTrack, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
 import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN, getAvailableDirectorPathNodeParents, interpolateDirectorMotionPathSamples, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, sampleDirectorMotionPath, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
@@ -433,14 +433,15 @@ export function CanvasDirectorShell({
                     syncPanorama(nextProject.environment);
                     syncAssets(nextProject.sceneNodes);
                     syncPaths(nextProject.animation.motionPaths, selectedPathId);
+                    const cameraSettings = getDirectorCameraTrackSettings(nextProject);
                     camera.position.set(nextProject.camera.position.x, nextProject.camera.position.y, nextProject.camera.position.z);
-                    const cameraTarget = resolveDirectorCameraTarget(nextProject, nextProject.camera.followTargetId || nextProject.camera.lookAtTarget);
+                    const cameraTarget = resolveDirectorCameraTarget(nextProject, cameraSettings.followTargetId || cameraSettings.lookAtTarget);
                     controls.target.set(
                         cameraTarget?.x ?? nextProject.camera.target.x,
                         cameraTarget?.y ?? nextProject.camera.target.y,
                         cameraTarget?.z ?? nextProject.camera.target.z,
                     );
-                    camera.fov = nextProject.camera.fov;
+                    camera.fov = cameraSettings.fov;
                     camera.zoom = nextProject.camera.zoom;
                     camera.updateProjectionMatrix();
                     controls.update();
@@ -522,6 +523,7 @@ export function CanvasDirectorShell({
     }, [project, selectedMotionPathId, selectedObjectId]);
 
     const activeCameraTrack = useMemo(() => getDirectorCameraTrack(project), [project]);
+    const cameraSettings = useMemo(() => getDirectorCameraTrackSettings(project), [project]);
     const selectedKeyframe = useMemo(
         () => selectedKeyframeTime === null ? null : activeCameraTrack?.keyframes.find((keyframe) => Math.abs(keyframe.time - selectedKeyframeTime) < 0.0001) || null,
         [activeCameraTrack, selectedKeyframeTime],
@@ -695,6 +697,8 @@ export function CanvasDirectorShell({
 
     const setCameraTarget = (key: "lookAtTarget" | "followTargetId", value: string | undefined) => {
         setProject((current) => {
+            const track = getDirectorCameraTrack(current);
+            if (track) return setDirectorCameraTrackTarget(current, track.id, key, value ?? null);
             const camera = { ...current.camera };
             delete camera[key];
             if (value) camera[key] = value;
@@ -763,7 +767,10 @@ export function CanvasDirectorShell({
         setSelectedKeyframeTime(null);
         setProject((current) => {
             if (current.animation.cameraTracks.length >= DIRECTOR_MAX_CAMERA_TRACKS) return current;
-            return addDirectorCameraTrack(current, createDirectorCameraTrack(current.animation.cameraTracks.length));
+            return addDirectorCameraTrack(
+                current,
+                createDirectorCameraTrack(current.animation.cameraTracks.length, getDirectorCameraTrackSettings(current)),
+            );
         });
     };
 
@@ -812,11 +819,10 @@ export function CanvasDirectorShell({
     const removeSelectedObject = () => {
         if (!selectedObjectId) return;
         const targetId = selectedObjectId;
-        setProject((current) => ({
-            ...current,
-            objects: current.objects.filter((item) => item.id !== targetId),
-            camera: withoutCameraTargets(current.camera, new Set([targetId])),
-        }));
+        setProject((current) => clearDirectorCameraTargets(
+            { ...current, objects: current.objects.filter((item) => item.id !== targetId) },
+            new Set([targetId]),
+        ));
         setSelectedObjectId(null);
     };
 
@@ -824,12 +830,14 @@ export function CanvasDirectorShell({
         if (!selectedSceneNode || selectedSceneNode.locked) return;
         const nodeId = selectedSceneNode.id;
         const parentId = selectedSceneNode.parentId;
-        setProject((current) => ({
-            ...current,
-            sceneNodes: current.sceneNodes.filter((item) => item.id !== nodeId).map((item) => (item.parentId === nodeId ? { ...item, parentId } : item)),
-            objects: current.objects.map((item) => (item.parentId === nodeId ? (parentId ? { ...item, parentId } : withoutParent(item)) : item)),
-            camera: withoutCameraTargets(current.camera, new Set([nodeId])),
-        }));
+        setProject((current) => clearDirectorCameraTargets(
+            {
+                ...current,
+                sceneNodes: current.sceneNodes.filter((item) => item.id !== nodeId).map((item) => (item.parentId === nodeId ? { ...item, parentId } : item)),
+                objects: current.objects.map((item) => (item.parentId === nodeId ? (parentId ? { ...item, parentId } : withoutParent(item)) : item)),
+            },
+            new Set([nodeId]),
+        ));
         setSelectedSceneNodeId(null);
     };
 
@@ -1002,7 +1010,7 @@ export function CanvasDirectorShell({
                     </div>
                 </div>
 
-                <div className="thin-scrollbar max-h-[620px] overflow-y-auto p-4">
+                <div className="thin-scrollbar max-h-[620px] overflow-x-hidden overflow-y-auto p-4">
                     {unsupportedProjectVersion !== null ? (
                         <div className="mb-4 rounded-xl border px-3 py-2 text-xs leading-5" style={{ background: token.colorWarningBg, borderColor: token.colorWarningBorder, color: token.colorWarningText }}>
                             {t("canvas.director.unsupportedVersion", { version: String(unsupportedProjectVersion) })}
@@ -1098,7 +1106,20 @@ export function CanvasDirectorShell({
 
                     <div className="mb-5 space-y-4">
                         <div className="text-xs font-medium opacity-60">{t("canvas.director.camera")}</div>
-                        <RangeField label={t("canvas.director.fov")} value={project.camera.fov} min={DIRECTOR_MIN_FOV} max={DIRECTOR_MAX_FOV} step={1} suffix="°" onChange={(fov) => setProject((current) => ({ ...current, camera: { ...current.camera, fov } }))} />
+                        <RangeField
+                            label={t("canvas.director.fov")}
+                            value={cameraSettings.fov}
+                            min={DIRECTOR_MIN_FOV}
+                            max={DIRECTOR_MAX_FOV}
+                            step={1}
+                            suffix="°"
+                            onChange={(fov) => setProject((current) => {
+                                const track = getDirectorCameraTrack(current);
+                                return track
+                                    ? updateDirectorCameraTrack(current, track.id, { fov })
+                                    : { ...current, camera: { ...current.camera, fov } };
+                            })}
+                        />
                         <RangeField label={t("canvas.director.zoom")} value={project.camera.zoom} min={0.1} max={5} step={0.1} onChange={(zoom) => setProject((current) => ({ ...current, camera: { ...current.camera, zoom } }))} />
                         <div>
                             <div className="mb-1 text-[11px] opacity-45">{t("canvas.director.lookAt")}</div>
@@ -1106,7 +1127,7 @@ export function CanvasDirectorShell({
                                 className="w-full"
                                 allowClear
                                 placeholder={t("canvas.director.cameraTargetNone")}
-                                value={project.camera.lookAtTarget}
+                                value={cameraSettings.lookAtTarget}
                                 options={cameraTargets}
                                 onChange={(value: string | undefined) => setCameraTarget("lookAtTarget", value)}
                             />
@@ -1117,7 +1138,7 @@ export function CanvasDirectorShell({
                                 className="w-full"
                                 allowClear
                                 placeholder={t("canvas.director.cameraTargetNone")}
-                                value={project.camera.followTargetId}
+                                value={cameraSettings.followTargetId}
                                 options={cameraTargets}
                                 onChange={(value: string | undefined) => setCameraTarget("followTargetId", value)}
                             />
@@ -1186,18 +1207,21 @@ export function CanvasDirectorShell({
                                     />
                                 </div>
                                 {activeCameraTrack ? (
-                                    <Input
-                                        key={activeCameraTrack.id}
-                                        size="small"
-                                        defaultValue={activeCameraTrack.name}
-                                        maxLength={60}
-                                        aria-label={t("canvas.director.cameraTrackName")}
-                                        placeholder={t("canvas.director.cameraTrackName")}
-                                        onBlur={(event) => {
-                                            renameActiveCameraTrack(event.currentTarget.value);
-                                            event.currentTarget.value = event.currentTarget.value.trim() || activeCameraTrack.name;
-                                        }}
-                                    />
+                                    <>
+                                        <Input
+                                            key={activeCameraTrack.id}
+                                            size="small"
+                                            defaultValue={activeCameraTrack.name}
+                                            maxLength={60}
+                                            aria-label={t("canvas.director.cameraTrackName")}
+                                            placeholder={t("canvas.director.cameraTrackName")}
+                                            onBlur={(event) => {
+                                                renameActiveCameraTrack(event.currentTarget.value);
+                                                event.currentTarget.value = event.currentTarget.value.trim() || activeCameraTrack.name;
+                                            }}
+                                        />
+                                        <div className="text-[10px] leading-4 opacity-40">{t("canvas.director.cameraTrackSettingsHint")}</div>
+                                    </>
                                 ) : null}
                             </div>
                             <div className="mt-3">
@@ -1777,13 +1801,6 @@ function findDirectorSelection(object: Object3D) {
 function withoutParent(object: DirectorObject): DirectorObject {
     const { parentId: _parentId, ...rest } = object;
     return rest;
-}
-
-function withoutCameraTargets(camera: DirectorProjectState["camera"], ids: Set<string>): DirectorProjectState["camera"] {
-    const next = { ...camera };
-    if (next.lookAtTarget && ids.has(next.lookAtTarget)) delete next.lookAtTarget;
-    if (next.followTargetId && ids.has(next.followTargetId)) delete next.followTargetId;
-    return next;
 }
 
 function resolveDirectorCameraTarget(project: DirectorProjectState, targetId: string | undefined): DirectorVector3 | null {

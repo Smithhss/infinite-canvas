@@ -175,6 +175,33 @@ test("keeps camera targets only while the referenced scene item exists", () => {
     expect(missing.camera.followTargetId).toBeUndefined();
 });
 
+test("normalizes independent camera-track settings and falls back for legacy tracks", () => {
+    const project = normalizeDirectorProject({
+        version: DIRECTOR_PROJECT_VERSION,
+        camera: { fov: 60, lookAtTarget: "hero-box", followTargetId: "missing-group" },
+        objects: [{ id: "hero-box", kind: "box", position: { x: 0, y: 1, z: 0 } }],
+        sceneNodes: [{ id: "group-a", name: "Set", kind: "group" }],
+        animation: {
+            cameraTracks: [
+                { id: "legacy-track", keyframes: [] },
+                { id: "custom-track", fov: 120, lookAtTarget: "missing-object", followTargetId: "group-a", keyframes: [] },
+            ],
+        },
+    });
+
+    expect(project.animation.activeCameraTrackId).toBe("legacy-track");
+    expect(project.animation.cameraTracks[0]).toMatchObject({
+        fov: 60,
+        lookAtTarget: "hero-box",
+        followTargetId: null,
+    });
+    expect(project.animation.cameraTracks[1]).toMatchObject({
+        fov: 90,
+        lookAtTarget: null,
+        followTargetId: "group-a",
+    });
+});
+
 test("keeps a camera motion path only while the path exists", () => {
     const project = normalizeDirectorProject({
         version: DIRECTOR_PROJECT_VERSION,

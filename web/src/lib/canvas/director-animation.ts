@@ -1,4 +1,5 @@
 import {
+    DIRECTOR_DEFAULT_FOV,
     DIRECTOR_MAX_ANIMATION_DURATION,
     DIRECTOR_MAX_CAMERA_TRACKS,
     DIRECTOR_MAX_KEYFRAMES,
@@ -15,18 +16,43 @@ import {
 export const DIRECTOR_MAIN_CAMERA_TRACK_ID = "camera-track-main";
 export const DIRECTOR_DEFAULT_CUSTOM_EASING: DirectorCubicBezier = { x1: 0.42, y1: 0, x2: 0.58, y2: 1 };
 
+export type DirectorCameraTrackSettings = {
+    fov: number;
+    lookAtTarget?: string;
+    followTargetId?: string;
+};
+
 export function getDirectorCameraTrack(project: DirectorProjectState): DirectorCameraTrack | null {
     return project.animation.cameraTracks.find((track) => track.id === project.animation.activeCameraTrackId)
         ?? project.animation.cameraTracks[0]
         ?? null;
 }
 
-export function createDirectorCameraTrack(index: number): DirectorCameraTrack {
+export function getDirectorCameraTrackSettings(project: DirectorProjectState): DirectorCameraTrackSettings {
+    const track = getDirectorCameraTrack(project);
+    if (!track) {
+        return {
+            fov: project.camera.fov,
+            ...(project.camera.lookAtTarget ? { lookAtTarget: project.camera.lookAtTarget } : {}),
+            ...(project.camera.followTargetId ? { followTargetId: project.camera.followTargetId } : {}),
+        };
+    }
+    return {
+        fov: track.fov,
+        ...(track.lookAtTarget ? { lookAtTarget: track.lookAtTarget } : {}),
+        ...(track.followTargetId ? { followTargetId: track.followTargetId } : {}),
+    };
+}
+
+export function createDirectorCameraTrack(index: number, settings?: DirectorCameraTrackSettings): DirectorCameraTrack {
     const safeIndex = Math.max(0, Math.floor(index));
     return {
         id: `camera-track-${Date.now().toString(36)}-${safeIndex}`,
         name: `Camera ${safeIndex + 1}`,
         cameraId: "camera-main",
+        fov: settings?.fov ?? DIRECTOR_DEFAULT_FOV,
+        lookAtTarget: settings?.lookAtTarget ?? null,
+        followTargetId: settings?.followTargetId ?? null,
         keyframes: [],
     };
 }
@@ -50,13 +76,47 @@ export function setDirectorActiveCameraTrack(project: DirectorProjectState, trac
     return { ...project, animation: { ...project.animation, activeCameraTrackId: trackId } };
 }
 
-export function updateDirectorCameraTrack(project: DirectorProjectState, trackId: string, patch: Partial<Pick<DirectorCameraTrack, "name">>): DirectorProjectState {
+export function updateDirectorCameraTrack(project: DirectorProjectState, trackId: string, patch: Partial<Pick<DirectorCameraTrack, "name" | "fov">>): DirectorProjectState {
     if (!project.animation.cameraTracks.some((track) => track.id === trackId)) return project;
     return {
         ...project,
         animation: {
             ...project.animation,
             cameraTracks: project.animation.cameraTracks.map((track) => track.id === trackId ? { ...track, ...patch } : track),
+        },
+    };
+}
+
+export function setDirectorCameraTrackTarget(
+    project: DirectorProjectState,
+    trackId: string,
+    key: "lookAtTarget" | "followTargetId",
+    value: string | null,
+): DirectorProjectState {
+    if (!project.animation.cameraTracks.some((track) => track.id === trackId)) return project;
+    return {
+        ...project,
+        animation: {
+            ...project.animation,
+            cameraTracks: project.animation.cameraTracks.map((track) => track.id === trackId ? { ...track, [key]: value } : track),
+        },
+    };
+}
+
+export function clearDirectorCameraTargets(project: DirectorProjectState, ids: Set<string>): DirectorProjectState {
+    const camera = { ...project.camera };
+    if (camera.lookAtTarget && ids.has(camera.lookAtTarget)) delete camera.lookAtTarget;
+    if (camera.followTargetId && ids.has(camera.followTargetId)) delete camera.followTargetId;
+    return {
+        ...project,
+        camera,
+        animation: {
+            ...project.animation,
+            cameraTracks: project.animation.cameraTracks.map((track) => ({
+                ...track,
+                lookAtTarget: track.lookAtTarget && ids.has(track.lookAtTarget) ? null : track.lookAtTarget,
+                followTargetId: track.followTargetId && ids.has(track.followTargetId) ? null : track.followTargetId,
+            })),
         },
     };
 }
@@ -96,6 +156,9 @@ export function upsertDirectorCameraKeyframe(project: DirectorProjectState, keyf
         id: activeTrackId,
         name: "Camera 1",
         cameraId: "camera-main",
+        fov: project.camera.fov,
+        lookAtTarget: project.camera.lookAtTarget ?? null,
+        followTargetId: project.camera.followTargetId ?? null,
         keyframes: [],
     };
     const keyframes = sortAndDedupeKeyframes([

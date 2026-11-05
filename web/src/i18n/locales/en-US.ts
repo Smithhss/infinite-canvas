@@ -495,6 +495,7 @@ export default {
             addCameraTrack: "Add camera track",
             removeCameraTrack: "Remove camera track",
             cameraTrackName: "Track name",
+            cameraTrackSettingsHint: "FOV, Look at and Follow are saved independently for the active camera track.",
             animationDuration: "Duration",
             playhead: "Playhead",
             playPreview: "Play",

@@ -495,6 +495,7 @@ export default {
             addCameraTrack: "新增相机轨道",
             removeCameraTrack: "删除相机轨道",
             cameraTrackName: "轨道名称",
+            cameraTrackSettingsHint: "FOV、看向和跟随目标按当前相机轨道独立保存。",
             animationDuration: "动画时长",
             playhead: "播放头",
             playPreview: "播放",

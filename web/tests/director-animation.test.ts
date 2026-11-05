@@ -2,15 +2,18 @@ import { expect, test } from "bun:test";
 
 import {
     addDirectorCameraTrack,
+    clearDirectorCameraTargets,
     createDirectorCameraTrack,
     getDirectorEasingProgress,
     getDirectorCameraTrack,
+    getDirectorCameraTrackSettings,
     removeDirectorCameraTrack,
     removeDirectorCameraKeyframe,
     sampleDirectorCameraTrack,
     sampleDirectorEasingCurve,
     setDirectorActiveCameraTrack,
     setDirectorAnimationDuration,
+    setDirectorCameraTrackTarget,
     updateDirectorCameraTrack,
     updateDirectorCameraKeyframe,
     upsertDirectorCameraKeyframe,
@@ -110,4 +113,27 @@ test("adds, switches, renames and removes camera tracks", () => {
     expect(project.animation.cameraTracks.map((track) => track.id)).toEqual([secondTrack.id]);
     expect(project.animation.activeCameraTrackId).toBe(secondTrack.id);
     expect(removeDirectorCameraTrack(project, secondTrack.id)).toBe(project);
+});
+
+test("keeps per-track camera settings and clears deleted targets", () => {
+    const firstTrack = createDirectorCameraTrack(0, { fov: 62, lookAtTarget: "hero-box" });
+    const secondTrack = createDirectorCameraTrack(1, { fov: 35, followTargetId: "group-a" });
+    let project = addDirectorCameraTrack(createDirectorProject(), firstTrack);
+    project = addDirectorCameraTrack(project, secondTrack);
+
+    expect(getDirectorCameraTrackSettings(project)).toEqual({ fov: 35, followTargetId: "group-a" });
+    project = setDirectorActiveCameraTrack(project, firstTrack.id);
+    expect(getDirectorCameraTrackSettings(project)).toEqual({ fov: 62, lookAtTarget: "hero-box" });
+
+    project = setDirectorCameraTrackTarget(project, firstTrack.id, "lookAtTarget", null);
+    expect(getDirectorCameraTrack(project)?.lookAtTarget).toBeNull();
+
+    project = {
+        ...project,
+        camera: { ...project.camera, lookAtTarget: "hero-box", followTargetId: "group-a" },
+    };
+    project = clearDirectorCameraTargets(project, new Set(["hero-box", "group-a"]));
+    expect(project.camera.lookAtTarget).toBeUndefined();
+    expect(project.camera.followTargetId).toBeUndefined();
+    expect(project.animation.cameraTracks.every((track) => track.lookAtTarget === null && track.followTargetId === null)).toBe(true);
 });

@@ -111,6 +111,16 @@ export type CanvasScriptAssetEntity = {
 
 export type CanvasScriptAssets = Record<CanvasScriptAssetKind, CanvasScriptAssetEntity[]>;
 
+export type CanvasScriptStoryboardGrid = {
+    scriptNodeId: string;
+    sourceSignature: string;
+    shotOrder: string[];
+    shotNodeIds: Record<string, string>;
+    columns: number;
+    showShotNumbers: boolean;
+    aspectRatio: string;
+};
+
 export type CanvasScriptFilterOperator = "contains" | "equals" | "greater" | "less";
 
 export type CanvasScriptFilter = {
@@ -190,6 +200,10 @@ export type CanvasNodeMetadata = {
     groupId?: string;
     storyboardCategory?: CanvasStoryboardCategory;
     scriptV2?: CanvasScriptV2;
+    storyboardGrid?: CanvasScriptStoryboardGrid;
+    storyboardGridId?: string;
+    storyboardShotId?: string;
+    storyboardShotNumber?: number;
     interactive?: boolean; // Plugin node interaction/move state; see CanvasNodeDefinition.interactionToggle.
 };
 

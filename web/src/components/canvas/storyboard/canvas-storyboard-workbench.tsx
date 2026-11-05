@@ -7,11 +7,13 @@ import { CanvasScriptAssetSummary } from "@/components/canvas/script/canvas-scri
 import { CanvasScriptFilterPanel } from "@/components/canvas/script/canvas-script-filter-panel";
 import { CanvasScriptPresetModal } from "@/components/canvas/script/canvas-script-preset-modal";
 import { CanvasScriptPromptEditor } from "@/components/canvas/script/canvas-script-prompt-editor";
+import { CanvasScriptStoryboardGrid } from "@/components/canvas/script/canvas-script-storyboard-grid";
 import { CanvasScriptTable } from "@/components/canvas/script/canvas-script-table";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { buildStoryboardProjection, type StoryboardItem } from "@/lib/canvas/storyboard-projection";
 import { filterStoryboardLibraryItems, groupStoryboardLibraryItems, STORYBOARD_LIBRARY_CATEGORIES, type StoryboardLibraryCategory } from "@/lib/canvas/storyboard-workbench";
 import { applyScriptPresetToScript } from "@/lib/canvas/script-preset";
+import type { CanvasStoryboardGridOptions } from "@/lib/canvas/storyboard-grid";
 import {
     addScriptAsset,
     addScriptShot,
@@ -48,6 +50,9 @@ type Props = {
     onSelectNodesInCanvas: (nodeIds: string[]) => void;
     onAddAsset: () => void;
     onUpdateScript: (nodeId: string, script: CanvasScriptV2) => void;
+    onCreateStoryboardGrid: (scriptNodeId: string, script: CanvasScriptV2, options: CanvasStoryboardGridOptions, origin?: CanvasNodeData["position"]) => void;
+    onClearStoryboardGrid: (scriptNodeId: string) => void;
+    onConvertStoryboardGrid: (scriptNodeId: string) => void;
 };
 
 type SectionKey = "script" | "text" | "image" | "video";
@@ -68,7 +73,7 @@ function itemSize(item: StoryboardItem) {
     return `${item.width} × ${item.height}`;
 }
 
-export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesInCanvas, onAddAsset, onUpdateScript }: Props) {
+export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesInCanvas, onAddAsset, onUpdateScript, onCreateStoryboardGrid, onClearStoryboardGrid, onConvertStoryboardGrid }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
@@ -223,10 +228,14 @@ export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesIn
                 <section className={cn("absolute inset-x-0 bottom-0 top-12 z-20 min-h-0 min-w-0 flex-1 lg:static lg:z-auto lg:flex", selectedItem ? "flex" : "hidden")} style={{ background: theme.canvas.background }}>
                     <StoryboardDetail
                         item={selectedItem}
+                        nodes={nodes}
                         theme={theme}
                         onClose={() => setDetailHistory((current) => ({ ...current, index: -1 }))}
                         onLocate={onLocateNode}
                         onUpdateScript={onUpdateScript}
+                        onCreateStoryboardGrid={onCreateStoryboardGrid}
+                        onClearStoryboardGrid={onClearStoryboardGrid}
+                        onConvertStoryboardGrid={onConvertStoryboardGrid}
                     />
                 </section>
             </div>
@@ -403,16 +412,24 @@ function LibraryEmpty({ theme }: { theme: CanvasTheme }) {
 
 function StoryboardDetail({
     item,
+    nodes,
     theme,
     onClose,
     onLocate,
     onUpdateScript,
+    onCreateStoryboardGrid,
+    onClearStoryboardGrid,
+    onConvertStoryboardGrid,
 }: {
     item: StoryboardItem | null;
+    nodes: CanvasNodeData[];
     theme: CanvasTheme;
     onClose: () => void;
     onLocate: (nodeId: string) => void;
     onUpdateScript: (nodeId: string, script: CanvasScriptV2) => void;
+    onCreateStoryboardGrid: (scriptNodeId: string, script: CanvasScriptV2, options: CanvasStoryboardGridOptions, origin?: CanvasNodeData["position"]) => void;
+    onClearStoryboardGrid: (scriptNodeId: string) => void;
+    onConvertStoryboardGrid: (scriptNodeId: string) => void;
 }) {
     const { t } = useTranslation();
     const src = item ? mediaUrl(item) : "";
@@ -432,7 +449,20 @@ function StoryboardDetail({
     }
 
     if (item.kind === "script") {
-        return <ScriptDetail key={item.id} item={item} theme={theme} onClose={onClose} onLocate={onLocate} onUpdateScript={onUpdateScript} />;
+        return (
+            <ScriptDetail
+                key={item.id}
+                item={item}
+                nodes={nodes}
+                theme={theme}
+                onClose={onClose}
+                onLocate={onLocate}
+                onUpdateScript={onUpdateScript}
+                onCreateStoryboardGrid={onCreateStoryboardGrid}
+                onClearStoryboardGrid={onClearStoryboardGrid}
+                onConvertStoryboardGrid={onConvertStoryboardGrid}
+            />
+        );
     }
 
     const download = () => {
@@ -506,16 +536,24 @@ function StoryboardDetail({
 
 function ScriptDetail({
     item,
+    nodes,
     theme,
     onClose,
     onLocate,
     onUpdateScript,
+    onCreateStoryboardGrid,
+    onClearStoryboardGrid,
+    onConvertStoryboardGrid,
 }: {
     item: StoryboardItem;
+    nodes: CanvasNodeData[];
     theme: CanvasTheme;
     onClose: () => void;
     onLocate: (nodeId: string) => void;
     onUpdateScript: (nodeId: string, script: CanvasScriptV2) => void;
+    onCreateStoryboardGrid: (scriptNodeId: string, script: CanvasScriptV2, options: CanvasStoryboardGridOptions, origin?: CanvasNodeData["position"]) => void;
+    onClearStoryboardGrid: (scriptNodeId: string) => void;
+    onConvertStoryboardGrid: (scriptNodeId: string) => void;
 }) {
     const { t } = useTranslation();
     const { modal } = App.useApp();
@@ -775,6 +813,18 @@ function ScriptDetail({
                                 onBindAsset={(kind, assetId, reference) => commit(bindScriptAssetReference(draftRef.current, kind, assetId, reference))}
                                 onRemoveAsset={(kind, assetId) => commit(removeScriptAsset(draftRef.current, kind, assetId))}
                                 onSyncAssets={() => commit(syncScriptAssetsFromShots(draftRef.current))}
+                            />
+                            <CanvasScriptStoryboardGrid
+                                script={draft}
+                                scriptNodeId={item.nodeId}
+                                nodes={nodes}
+                                theme={theme}
+                                onCreate={(scriptNodeId, script, options, origin) => {
+                                    commit(script);
+                                    onCreateStoryboardGrid(scriptNodeId, script, options, origin);
+                                }}
+                                onClear={onClearStoryboardGrid}
+                                onConvert={onConvertStoryboardGrid}
                             />
                         </>
                     ) : (

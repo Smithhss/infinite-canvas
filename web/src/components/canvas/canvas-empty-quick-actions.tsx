@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { FileText, Image as ImageIcon, MousePointer2, Music2, Scissors, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { CANVAS_EMPTY_QUICK_ACTION_IDS, canvasEmptyQuickActionNodeType, shouldShowCanvasEmptyQuickActions, type CanvasEmptyQuickActionId } from "@/lib/canvas/canvas-chrome";
+import { CANVAS_EMPTY_QUICK_ACTION_IDS, canvasEmptyQuickActionNodeType, isCanvasEmptyQuickActionEnabled, shouldShowCanvasEmptyQuickActions, type CanvasEmptyQuickActionId } from "@/lib/canvas/canvas-chrome";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasWorkspaceView } from "@/types/canvas";
@@ -13,9 +13,10 @@ type CanvasEmptyQuickActionsProps = {
     workspaceView: CanvasWorkspaceView;
     nodeCount: number;
     onCreate: (type: CanvasNodeType.Image | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Text) => void;
+    onSmartCut: () => void;
 };
 
-export function CanvasEmptyQuickActions({ enabled, projectLoaded, workspaceView, nodeCount, onCreate }: CanvasEmptyQuickActionsProps) {
+export function CanvasEmptyQuickActions({ enabled, projectLoaded, workspaceView, nodeCount, onCreate, onSmartCut }: CanvasEmptyQuickActionsProps) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     if (!shouldShowCanvasEmptyQuickActions({ enabled, projectLoaded, workspaceView, nodeCount })) return null;
@@ -36,7 +37,7 @@ export function CanvasEmptyQuickActions({ enabled, projectLoaded, workspaceView,
                 </div>
                 <div className="thin-scrollbar mt-7 flex justify-start gap-2 overflow-x-auto px-1 pb-1 sm:justify-center">
                     {CANVAS_EMPTY_QUICK_ACTION_IDS.map((action) => (
-                        <QuickActionCard key={action} action={action} theme={theme} onCreate={onCreate} />
+                        <QuickActionCard key={action} action={action} theme={theme} onCreate={onCreate} onSmartCut={onSmartCut} />
                     ))}
                 </div>
             </div>
@@ -48,14 +49,16 @@ function QuickActionCard({
     action,
     theme,
     onCreate,
+    onSmartCut,
 }: {
     action: CanvasEmptyQuickActionId;
     theme: CanvasTheme;
     onCreate: CanvasEmptyQuickActionsProps["onCreate"];
+    onSmartCut: () => void;
 }) {
     const { t } = useTranslation();
     const nodeType = canvasEmptyQuickActionNodeType(action);
-    const disabled = !nodeType;
+    const disabled = !isCanvasEmptyQuickActionEnabled(action);
     const meta = emptyActionMeta(action, theme);
     const labelKey = action === "smart-cut" ? "smartCut" : action;
 
@@ -71,6 +74,7 @@ function QuickActionCard({
             onDoubleClick={(event) => event.stopPropagation()}
             onClick={() => {
                 if (nodeType) onCreate(nodeType);
+                if (action === "smart-cut") onSmartCut();
             }}
         >
             <span className="grid size-7 shrink-0 place-items-center" style={{ color: action === "smart-cut" ? "#e6b24a" : theme.node.text }}>

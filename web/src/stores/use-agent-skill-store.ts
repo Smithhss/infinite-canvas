@@ -78,7 +78,7 @@ export const useAgentSkillStore = create<AgentSkillStore>((set, get) => ({
         if (nextPrompt === undefined && selectedSkill) {
             const defaultPrompt = selectedSkill.interface?.defaultPrompt?.trim() || marker;
             if (!agent.prompt.trim() || Boolean(current.autoPrompt && agent.prompt === current.autoPrompt)) {
-                nextPrompt = !agent.prompt.trim() ? defaultPrompt : `${agent.prompt}${/\s$/.test(agent.prompt) ? "" : " "}${marker}`;
+                nextPrompt = !agent.prompt.trim() ? defaultPrompt : agent.prompt.includes(marker) ? agent.prompt : `${agent.prompt}${/\s$/.test(agent.prompt) ? "" : " "}${marker}`;
                 autoPrompt = nextPrompt;
             } else {
                 nextPrompt = agent.prompt.includes(marker) ? agent.prompt : `${agent.prompt}${/\s$/.test(agent.prompt) ? "" : " "}${marker}`;

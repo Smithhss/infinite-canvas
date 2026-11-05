@@ -47,6 +47,24 @@ test("builds camera, grouped scene nodes, nested path nodes and objects", () => 
     expect(tree.find((entry) => entry.kind === "waypoint")).toMatchObject({ pathId: "path-a", pathNodeId: "path-wp" });
 });
 
+test("shows camera tracks as scene-tree camera nodes", () => {
+    const project = normalizeDirectorProject({
+        animation: {
+            activeCameraTrackId: "camera-wide",
+            cameraTracks: [
+                { id: "camera-wide", name: "Wide", fov: 40, keyframes: [] },
+                { id: "camera-close", name: "Close-up", fov: 75, keyframes: [] },
+            ],
+        },
+    });
+
+    const cameras = buildDirectorSceneTree(project).filter((entry) => entry.kind === "camera");
+    expect(cameras.map((entry) => [entry.label, entry.cameraTrackId])).toEqual([
+        ["Wide", "camera-wide"],
+        ["Close-up", "camera-close"],
+    ]);
+});
+
 test("caps scene-tree display depth without dropping nested entries", () => {
     const sceneNodes = Array.from({ length: DIRECTOR_MAX_TREE_DEPTH + 4 }, (_, index) => ({
         id: `group-${index}`,

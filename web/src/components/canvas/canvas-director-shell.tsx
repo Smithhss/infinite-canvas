@@ -1044,8 +1044,10 @@ export function CanvasDirectorShell({
                             {sceneTree.map((entry) => {
                                 const Icon = sceneTreeIcon(entry);
                                 const label = sceneTreeLabel(entry, t);
-                                const selectable = Boolean(entry.objectId || entry.sceneNodeId || entry.pathId);
-                                const selected = entry.objectId
+                                const selectable = Boolean(entry.cameraTrackId || entry.objectId || entry.sceneNodeId || entry.pathId);
+                                const selected = entry.cameraTrackId
+                                    ? entry.cameraTrackId === activeCameraTrack?.id
+                                    : entry.objectId
                                     ? entry.objectId === selectedObjectId
                                     : entry.sceneNodeId
                                       ? entry.sceneNodeId === selectedSceneNodeId
@@ -1055,7 +1057,13 @@ export function CanvasDirectorShell({
                                             : entry.pathId === selectedMotionPathId && selectedPathNodeId === null
                                         : false;
                                 const selectEntry = () => {
-                                    if (entry.objectId) {
+                                    if (entry.cameraTrackId) {
+                                        selectCameraTrack(entry.cameraTrackId);
+                                        setSelectedObjectId(null);
+                                        setSelectedSceneNodeId(null);
+                                        setSelectedMotionPathId(null);
+                                        setSelectedPathNodeId(null);
+                                    } else if (entry.objectId) {
                                         setSelectedObjectId(entry.objectId);
                                         setSelectedSceneNodeId(null);
                                         setSelectedMotionPathId(null);
@@ -1769,7 +1777,7 @@ function sceneTreeIcon(entry: DirectorSceneTreeEntry) {
 }
 
 function sceneTreeLabel(entry: DirectorSceneTreeEntry, t: (key: string) => string) {
-    if (entry.kind === "camera") return t("canvas.director.mainCamera");
+    if (entry.kind === "camera" && !entry.cameraTrackId) return t("canvas.director.mainCamera");
     return entry.label;
 }
 

@@ -12,10 +12,19 @@ export type DirectorSceneTreeEntry = {
     sceneNodeId?: string;
     pathId?: string;
     pathNodeId?: string;
+    cameraTrackId?: string;
 };
 
 export function buildDirectorSceneTree(project: DirectorProjectState): DirectorSceneTreeEntry[] {
-    const entries: DirectorSceneTreeEntry[] = [{ id: "camera:main", label: "Camera", kind: "camera", depth: 0 }];
+    const entries: DirectorSceneTreeEntry[] = project.animation.cameraTracks.length
+        ? project.animation.cameraTracks.map((track) => ({
+              id: `camera:${track.id}`,
+              label: track.name,
+              kind: "camera",
+              depth: 0,
+              cameraTrackId: track.id,
+          }))
+        : [{ id: "camera:main", label: "Camera", kind: "camera", depth: 0 }];
     const sceneNodeIds = new Set(project.sceneNodes.map((node) => node.id));
     const objectsByParent = new Map<string | null, Array<{ object: DirectorObject; index: number }>>();
     project.objects.forEach((object, index) => {

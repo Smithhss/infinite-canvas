@@ -3,7 +3,7 @@ import { Copy, GripVertical, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { CanvasTheme } from "@/lib/canvas-theme";
-import { filterScriptShots, SCRIPT_V2_COLUMNS, SCRIPT_V2_ROW_COLORS } from "@/lib/canvas/script-v2";
+import { filterScriptShots, SCRIPT_V2_COLUMNS, SCRIPT_V2_ROW_COLORS, SCRIPT_V2_SHOT_SIZES } from "@/lib/canvas/script-v2";
 import { cn } from "@/lib/utils";
 import type { CanvasScriptColumnKey, CanvasScriptShot, CanvasScriptV2 } from "@/types/canvas";
 
@@ -188,6 +188,28 @@ function ScriptTableCell({
         );
     }
 
+    if (column === "shotSize") {
+        const value = row.shotSize || "";
+        const isPreset = SCRIPT_V2_SHOT_SIZES.some((shotSize) => shotSize.value === value);
+        return (
+            <select
+                value={value}
+                aria-label={t("canvas.storyboard.workbench.fields.shotSize")}
+                className="min-h-11 border-r bg-transparent px-2 text-xs outline-none"
+                style={style}
+                onChange={(event) => onCommit({ shotSize: event.target.value })}
+            >
+                <option value="">{t("canvas.storyboard.workbench.shotSizes.none")}</option>
+                {SCRIPT_V2_SHOT_SIZES.map((shotSize) => (
+                    <option key={shotSize.value} value={shotSize.value}>
+                        {t(`canvas.storyboard.workbench.shotSizes.${shotSize.labelKey}`)}
+                    </option>
+                ))}
+                {value && !isPreset ? <option value={value}>{value}</option> : null}
+            </select>
+        );
+    }
+
     if (column === "characters" || column === "props") {
         const values = column === "characters" ? row.characters || [] : row.propTags || [];
         return (
@@ -238,7 +260,6 @@ function scriptCellValue(row: CanvasScriptShot, column: CanvasScriptColumnKey) {
     if (column === "videoPrompt") return row.videoMotionPrompt || "";
     if (column === "imageToVideoPrompt") return row.imageToVideoMotionPrompt || "";
     if (column === "videoReference") return row.videoReference || "";
-    if (column === "shotSize") return row.shotSize || "";
     if (column === "emotion") return row.emotion || "";
     if (column === "cameraMovement") return row.cameraMovement || "";
     return "";
@@ -253,7 +274,6 @@ function scriptCellPatch(column: CanvasScriptColumnKey, value: string): Partial<
     if (column === "videoPrompt") return { videoMotionPrompt: value };
     if (column === "imageToVideoPrompt") return { imageToVideoMotionPrompt: value };
     if (column === "videoReference") return { videoReference: value };
-    if (column === "shotSize") return { shotSize: value };
     if (column === "emotion") return { emotion: value };
     if (column === "cameraMovement") return { cameraMovement: value };
     return {};

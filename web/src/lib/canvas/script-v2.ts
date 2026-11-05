@@ -16,19 +16,34 @@ export const SCRIPT_V2_COLUMNS: Array<{ key: CanvasScriptColumnKey; labelKey: st
     { key: "shotNumber", labelKey: "shotNumber", defaultVisible: true, width: "64px" },
     { key: "duration", labelKey: "duration", defaultVisible: true, width: "92px" },
     { key: "plot", labelKey: "plot", defaultVisible: true, width: "280px" },
+    { key: "shotSize", labelKey: "shotSize", defaultVisible: true, width: "110px" },
+    { key: "lighting", labelKey: "lighting", defaultVisible: true, width: "170px" },
+    { key: "dialogue", labelKey: "dialogue", defaultVisible: true, width: "190px" },
+    { key: "audio", labelKey: "audio", defaultVisible: true, width: "150px" },
+    { key: "cameraMovement", labelKey: "cameraMovement", defaultVisible: true, width: "150px" },
+    { key: "imagePrompt", labelKey: "imagePrompt", defaultVisible: true, width: "240px" },
     { key: "characters", labelKey: "characters", defaultVisible: false, width: "180px" },
     { key: "videoReference", labelKey: "videoReference", defaultVisible: false, width: "180px" },
-    { key: "shotSize", labelKey: "shotSize", defaultVisible: true, width: "110px" },
     { key: "emotion", labelKey: "emotion", defaultVisible: false, width: "120px" },
     { key: "props", labelKey: "props", defaultVisible: false, width: "150px" },
-    { key: "cameraMovement", labelKey: "cameraMovement", defaultVisible: true, width: "150px" },
-    { key: "lighting", labelKey: "lighting", defaultVisible: true, width: "170px" },
-    { key: "audio", labelKey: "audio", defaultVisible: true, width: "150px" },
-    { key: "dialogue", labelKey: "dialogue", defaultVisible: true, width: "190px" },
-    { key: "imagePrompt", labelKey: "imagePrompt", defaultVisible: true, width: "240px" },
     { key: "videoPrompt", labelKey: "videoPrompt", defaultVisible: false, width: "240px" },
     { key: "imageToVideoPrompt", labelKey: "imageToVideoPrompt", defaultVisible: false, width: "240px" },
 ];
+
+export const SCRIPT_V2_SHOT_SIZES = [
+    { value: "大远景", labelKey: "extremeLong" },
+    { value: "远景", labelKey: "long" },
+    { value: "全景", labelKey: "full" },
+    { value: "中远景", labelKey: "mediumLong" },
+    { value: "中景", labelKey: "medium" },
+    { value: "中近景", labelKey: "mediumClose" },
+    { value: "近景", labelKey: "close" },
+    { value: "特写", labelKey: "closeUp" },
+    { value: "大特写", labelKey: "extremeCloseUp" },
+    { value: "头肩景", labelKey: "headShoulder" },
+    { value: "半身景", labelKey: "halfBody" },
+    { value: "全身景", labelKey: "fullBody" },
+] as const;
 
 export const SCRIPT_V2_ROW_COLORS = ["red", "orange", "green", "blue", "violet"] as const;
 export const SCRIPT_FILTER_OPERATORS: CanvasScriptFilterOperator[] = ["contains", "equals", "greater", "less"];

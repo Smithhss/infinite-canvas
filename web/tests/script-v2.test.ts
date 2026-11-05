@@ -11,6 +11,7 @@ import {
     normalizeScriptFilters,
     normalizeScriptV2,
     removeScriptShot,
+    SCRIPT_V2_SHOT_SIZES,
     scriptDurationSeconds,
     updateScriptColumnVisibility,
     updateScriptFilters,
@@ -129,4 +130,22 @@ test("normalizes and applies persisted shot filters", () => {
         { id: "f5", column: "plot", operator: "contains", value: "保留" },
         { id: "f5-2", column: "dialogue", operator: "equals", value: "去重" },
     ]);
+});
+
+test("exposes the twelve LibTV shot-size presets with stable values", () => {
+    expect(SCRIPT_V2_SHOT_SIZES.map((shotSize) => shotSize.value)).toEqual([
+        "大远景",
+        "远景",
+        "全景",
+        "中远景",
+        "中景",
+        "中近景",
+        "近景",
+        "特写",
+        "大特写",
+        "头肩景",
+        "半身景",
+        "全身景",
+    ]);
+    expect(new Set(SCRIPT_V2_SHOT_SIZES.map((shotSize) => shotSize.labelKey)).size).toBe(12);
 });

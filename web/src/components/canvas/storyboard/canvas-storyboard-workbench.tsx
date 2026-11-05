@@ -20,6 +20,7 @@ import {
     normalizeScriptV2,
     removeScriptShot,
     SCRIPT_V2_COLUMNS,
+    SCRIPT_V2_SHOT_SIZES,
     scriptDurationSeconds,
     updateScriptColumnVisibility,
     updateScriptFilters,
@@ -791,7 +792,21 @@ function ScriptDetail({
                                             />
                                             <span style={{ color: theme.node.muted }}>{t("canvas.storyboard.workbench.seconds")}</span>
                                         </label>
-                                        <input value={row.shotSize || ""} onChange={(event) => setDraft(updateScriptShot(draft, row.id, { shotSize: event.target.value }))} onBlur={() => commit()} placeholder={t("canvas.storyboard.workbench.fields.shotSize")} className="h-8 rounded-lg border px-2.5 text-xs outline-none" style={scriptInputStyle(theme)} />
+                                        <select
+                                            value={row.shotSize || ""}
+                                            aria-label={t("canvas.storyboard.workbench.fields.shotSize")}
+                                            onChange={(event) => commit(updateScriptShot(draftRef.current, row.id, { shotSize: event.target.value }))}
+                                            className="h-8 rounded-lg border px-2 text-xs outline-none"
+                                            style={scriptInputStyle(theme)}
+                                        >
+                                            <option value="">{t("canvas.storyboard.workbench.shotSizes.none")}</option>
+                                            {SCRIPT_V2_SHOT_SIZES.map((shotSize) => (
+                                                <option key={shotSize.value} value={shotSize.value}>
+                                                    {t(`canvas.storyboard.workbench.shotSizes.${shotSize.labelKey}`)}
+                                                </option>
+                                            ))}
+                                            {row.shotSize && !SCRIPT_V2_SHOT_SIZES.some((shotSize) => shotSize.value === row.shotSize) ? <option value={row.shotSize}>{row.shotSize}</option> : null}
+                                        </select>
                                         <input value={row.emotion || ""} onChange={(event) => setDraft(updateScriptShot(draft, row.id, { emotion: event.target.value }))} onBlur={() => commit()} placeholder={t("canvas.storyboard.workbench.fields.emotion")} className="h-8 rounded-lg border px-2.5 text-xs outline-none" style={scriptInputStyle(theme)} />
                                         <button
                                             type="button"

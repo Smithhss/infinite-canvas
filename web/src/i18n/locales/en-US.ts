@@ -601,6 +601,7 @@ export default {
                 types: { script: "Script", text: "Text", image: "Image", video: "Video" },
                 details: { type: "Type", status: "Status", group: "Group", model: "Model", size: "Size", node: "Node ID", prompt: "Prompt" },
                 shotCount: "{{count}} shots",
+                filteredShotCount: "{{visible}} / {{total}} shots",
                 emptyScript: "No shots yet",
                 scriptDuration: "{{seconds}}s total",
                 scriptSettings: "Script settings",
@@ -615,7 +616,8 @@ export default {
                 fieldsVisibility: "Field visibility",
                 showAllFields: "Show all",
                 hideAllFields: "Hide all",
-                table: { actions: "Actions", setColor: "Mark as {{color}}" },
+                filters: { button: "Filters", title: "Shot filters", add: "Add filter", clearAll: "Clear all", column: "Column", operator: "Condition", value: "Value", valuePlaceholder: "Enter a filter value", remove: "Remove filter", operators: { contains: "Contains", equals: "Equals", greater: "Greater than", less: "Less than" } },
+                table: { actions: "Actions", setColor: "Mark as {{color}}", insertAfter: "Insert shot below", duplicate: "Duplicate shot", dragShot: "Drag shot #{{number}} to reorder", noMatches: "No shots match the current filters" },
                 assets: {
                     title: "Asset overview",
                     characters: "Characters",

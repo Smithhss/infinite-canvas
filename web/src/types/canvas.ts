@@ -73,6 +73,15 @@ export type CanvasScriptColumnKey = "shotNumber" | "duration" | "plot" | "charac
 
 export type CanvasScriptColumnVisibility = Partial<Record<CanvasScriptColumnKey, boolean>>;
 
+export type CanvasScriptFilterOperator = "contains" | "equals" | "greater" | "less";
+
+export type CanvasScriptFilter = {
+    id: string;
+    column: CanvasScriptColumnKey;
+    operator: CanvasScriptFilterOperator;
+    value: string;
+};
+
 export type CanvasScriptPreset = {
     genre?: string;
     fusedGenre?: string;
@@ -96,6 +105,7 @@ export type CanvasScriptV2 = {
     preset?: CanvasScriptPreset;
     viewMode?: CanvasScriptViewMode;
     columnVisibility?: CanvasScriptColumnVisibility;
+    filters?: CanvasScriptFilter[];
     rows: CanvasScriptShot[];
 };
 

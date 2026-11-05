@@ -1,6 +1,23 @@
 import { expect, test } from "bun:test";
 
-import { addScriptShot, createEmptyScriptV2, normalizeScriptColumnVisibility, normalizeScriptV2, removeScriptShot, scriptDurationSeconds, updateScriptColumnVisibility, updateScriptMeta, updateScriptShot, updateScriptViewMode } from "../src/lib/canvas/script-v2";
+import {
+    addScriptShot,
+    createEmptyScriptV2,
+    duplicateScriptShot,
+    filterScriptShots,
+    insertScriptShot,
+    moveScriptShotToTarget,
+    normalizeScriptColumnVisibility,
+    normalizeScriptFilters,
+    normalizeScriptV2,
+    removeScriptShot,
+    scriptDurationSeconds,
+    updateScriptColumnVisibility,
+    updateScriptFilters,
+    updateScriptMeta,
+    updateScriptShot,
+    updateScriptViewMode,
+} from "../src/lib/canvas/script-v2";
 
 test("normalizes missing and partially persisted script data", () => {
     const script = normalizeScriptV2({
@@ -68,4 +85,48 @@ test("persists view and field visibility changes without losing defaults", () =>
 
     expect(script.viewMode).toBe("creative");
     expect(normalizeScriptColumnVisibility(script.columnVisibility)).toMatchObject({ shotNumber: true, videoReference: true, videoPrompt: false });
+});
+
+test("inserts, duplicates and reorders shots with contiguous numbering", () => {
+    let script = addScriptShot(addScriptShot(createEmptyScriptV2()));
+    script = updateScriptShot(script, script.rows[0].id, { plotDescription: "A" });
+    script = updateScriptShot(script, script.rows[1].id, { plotDescription: "C" });
+    script = insertScriptShot(script, 1);
+    script = updateScriptShot(script, script.rows[1].id, { plotDescription: "B" });
+    expect(script.rows.map((row) => row.plotDescription)).toEqual(["A", "B", "C"]);
+
+    script = duplicateScriptShot(script, script.rows[1].id);
+    expect(script.rows.map((row) => row.plotDescription)).toEqual(["A", "B", "B", "C"]);
+    expect(script.rows.map((row) => row.shotNumber)).toEqual([1, 2, 3, 4]);
+    expect(new Set(script.rows.map((row) => row.id)).size).toBe(4);
+
+    script = moveScriptShotToTarget(script, script.rows[3].id, script.rows[0].id);
+    expect(script.rows.map((row) => row.plotDescription)).toEqual(["C", "A", "B", "B"]);
+    expect(script.rows.map((row) => row.shotNumber)).toEqual([1, 2, 3, 4]);
+});
+
+test("normalizes and applies persisted shot filters", () => {
+    let script = addScriptShot(addScriptShot(createEmptyScriptV2()));
+    script = updateScriptShot(script, script.rows[0].id, { plotDescription: "雨夜车站", durationSeconds: 4, characters: ["林默"] });
+    script = updateScriptShot(script, script.rows[1].id, { plotDescription: "晴天码头", durationSeconds: 9, characters: ["顾川"] });
+    script = updateScriptFilters(script, [{ id: "f1", column: "plot", operator: "contains", value: "雨" }]);
+    expect(filterScriptShots(script).map((row) => row.plotDescription)).toEqual(["雨夜车站"]);
+
+    script = updateScriptFilters(script, [{ id: "f2", column: "duration", operator: "greater", value: "5" }]);
+    expect(filterScriptShots(script).map((row) => row.plotDescription)).toEqual(["晴天码头"]);
+
+    script = updateScriptFilters(script, [
+        { id: "f3", column: "characters", operator: "equals", value: "林默" },
+        { id: "f4", column: "duration", operator: "less", value: "5" },
+    ]);
+    expect(filterScriptShots(script).map((row) => row.plotDescription)).toEqual(["雨夜车站"]);
+
+    expect(normalizeScriptFilters([
+        { id: "bad", column: "unknown", operator: "contains", value: "x" },
+        { id: "f5", column: "plot", operator: "contains", value: "保留" },
+        { id: "f5", column: "dialogue", operator: "equals", value: "去重" },
+    ])).toEqual([
+        { id: "f5", column: "plot", operator: "contains", value: "保留" },
+        { id: "f5-2", column: "dialogue", operator: "equals", value: "去重" },
+    ]);
 });

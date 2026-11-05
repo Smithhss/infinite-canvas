@@ -601,6 +601,7 @@ export default {
                 types: { script: "脚本", text: "文本", image: "图片", video: "视频" },
                 details: { type: "类型", status: "状态", group: "分组", model: "模型", size: "尺寸", node: "节点 ID", prompt: "提示词" },
                 shotCount: "{{count}} 镜",
+                filteredShotCount: "{{visible}} / {{total}} 镜",
                 emptyScript: "暂无镜头",
                 scriptDuration: "总时长 {{seconds}} 秒",
                 scriptSettings: "脚本设置",
@@ -615,7 +616,8 @@ export default {
                 fieldsVisibility: "字段可见性",
                 showAllFields: "全部显示",
                 hideAllFields: "全部隐藏",
-                table: { actions: "操作", setColor: "标记为 {{color}}" },
+                filters: { button: "筛选", title: "镜头筛选", add: "添加条件", clearAll: "清除全部", column: "筛选字段", operator: "筛选条件", value: "筛选值", valuePlaceholder: "输入筛选值", remove: "删除筛选条件", operators: { contains: "包含", equals: "等于", greater: "大于", less: "小于" } },
+                table: { actions: "操作", setColor: "标记为 {{color}}", insertAfter: "在下方插入镜头", duplicate: "复制镜头", dragShot: "拖动镜头 #{{number}} 调整顺序", noMatches: "没有镜头符合当前筛选条件" },
                 assets: {
                     title: "资产概览",
                     characters: "角色",

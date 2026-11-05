@@ -1,15 +1,32 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Boxes, Check, ChevronDown, Columns3, Download, FileText, Image as ImageIcon, ListChecks, LocateFixed, Plus, ScrollText, Search, Sparkles, Table2, Trash2, Video, WandSparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Boxes, Check, ChevronDown, Columns3, Download, FileText, Image as ImageIcon, ListChecks, ListFilter, LocateFixed, Plus, Redo2, ScrollText, Search, Sparkles, Table2, Trash2, Undo2, Video, WandSparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { CanvasScriptAssetSummary } from "@/components/canvas/script/canvas-script-asset-summary";
+import { CanvasScriptFilterPanel } from "@/components/canvas/script/canvas-script-filter-panel";
 import { CanvasScriptPresetModal } from "@/components/canvas/script/canvas-script-preset-modal";
 import { CanvasScriptTable } from "@/components/canvas/script/canvas-script-table";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { buildStoryboardProjection, type StoryboardItem } from "@/lib/canvas/storyboard-projection";
 import { filterStoryboardLibraryItems, groupStoryboardLibraryItems, STORYBOARD_LIBRARY_CATEGORIES, type StoryboardLibraryCategory } from "@/lib/canvas/storyboard-workbench";
 import { applyScriptPresetToScript } from "@/lib/canvas/script-preset";
-import { addScriptShot, normalizeScriptColumnVisibility, normalizeScriptV2, removeScriptShot, SCRIPT_V2_COLUMNS, scriptDurationSeconds, updateScriptColumnVisibility, updateScriptMeta, updateScriptShot, updateScriptViewMode } from "@/lib/canvas/script-v2";
+import {
+    addScriptShot,
+    duplicateScriptShot,
+    filterScriptShots,
+    insertScriptShot,
+    moveScriptShotToTarget,
+    normalizeScriptColumnVisibility,
+    normalizeScriptV2,
+    removeScriptShot,
+    SCRIPT_V2_COLUMNS,
+    scriptDurationSeconds,
+    updateScriptColumnVisibility,
+    updateScriptFilters,
+    updateScriptMeta,
+    updateScriptShot,
+    updateScriptViewMode,
+} from "@/lib/canvas/script-v2";
 import { cn } from "@/lib/utils";
 import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -494,17 +511,30 @@ function ScriptDetail({
     const [draft, setDraft] = useState(() => normalizeScriptV2(item.script));
     const [presetOpen, setPresetOpen] = useState(false);
     const [fieldsOpen, setFieldsOpen] = useState(false);
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [, setHistoryRevision] = useState(0);
     const draftRef = useRef(draft);
+    const historyRef = useRef<{ past: CanvasScriptV2[]; future: CanvasScriptV2[] }>({ past: [], future: [] });
     const columnVisibility = normalizeScriptColumnVisibility(draft.columnVisibility);
     const visibleColumns = SCRIPT_V2_COLUMNS.filter((column) => columnVisibility[column.key]).map((column) => column.key);
+    const visibleRows = filterScriptShots(draft);
+    const activeFilterCount = (draft.filters || []).filter((filter) => filter.value.trim()).length;
 
     useEffect(() => {
         draftRef.current = draft;
     }, [draft]);
 
     const commit = (next = draft) => {
+        const current = draftRef.current;
+        if (JSON.stringify(current) === JSON.stringify(next)) {
+            setDraft(next);
+            return;
+        }
+        historyRef.current.past = [...historyRef.current.past.slice(-49), current];
+        historyRef.current.future = [];
         draftRef.current = next;
         setDraft(next);
+        setHistoryRevision((value) => value + 1);
         onUpdateScript(item.nodeId, next);
     };
     const commitShot = (shotId: string, patch: Parameters<typeof updateScriptShot>[2]) => {
@@ -522,12 +552,35 @@ function ScriptDetail({
             columnVisibility: Object.fromEntries(SCRIPT_V2_COLUMNS.map((column) => [column.key, visible])),
         });
     };
+    const applyHistory = (direction: "undo" | "redo") => {
+        const history = historyRef.current;
+        const target = direction === "undo" ? history.past.at(-1) : history.future[0];
+        if (!target) return;
+        const current = draftRef.current;
+        if (direction === "undo") {
+            history.past = history.past.slice(0, -1);
+            history.future = [current, ...history.future].slice(0, 50);
+        } else {
+            history.past = [...history.past.slice(-49), current];
+            history.future = history.future.slice(1);
+        }
+        draftRef.current = target;
+        setDraft(target);
+        setHistoryRevision((value) => value + 1);
+        onUpdateScript(item.nodeId, target);
+    };
 
     return (
         <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col" style={{ background: theme.canvas.background }}>
             <div className="flex h-[52px] shrink-0 items-center gap-2 px-4" style={{ borderColor: theme.toolbar.border, borderBottomWidth: 1 }}>
                 <ScrollText className="size-4 shrink-0" style={{ color: theme.node.muted }} />
                 <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium">{item.title}</h2>
+                <IconButton theme={theme} label={t("canvas.undo")} disabled={!historyRef.current.past.length} onClick={() => applyHistory("undo")}>
+                    <Undo2 className="size-4" />
+                </IconButton>
+                <IconButton theme={theme} label={t("canvas.redo")} disabled={!historyRef.current.future.length} onClick={() => applyHistory("redo")}>
+                    <Redo2 className="size-4" />
+                </IconButton>
                 <IconButton theme={theme} label={t("canvas.storyboard.workbench.locate")} onClick={() => onLocate(item.nodeId)}>
                     <LocateFixed className="size-4" />
                 </IconButton>
@@ -615,7 +668,28 @@ function ScriptDetail({
                                 ) : null}
                             </div>
                         ) : null}
+                        {(draft.viewMode || "table") === "table" ? (
+                            <button
+                                type="button"
+                                aria-expanded={filtersOpen}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-medium transition hover:bg-black/5 dark:hover:bg-white/10"
+                                style={{ color: activeFilterCount ? theme.node.text : theme.node.muted, border: `0.5px solid ${theme.toolbar.border}` }}
+                                onClick={() => setFiltersOpen((current) => !current)}
+                            >
+                                <ListFilter className="size-3.5" />
+                                {t("canvas.storyboard.workbench.filters.button")}
+                                {activeFilterCount ? <span className="tabular-nums">{activeFilterCount}</span> : null}
+                            </button>
+                        ) : null}
                     </div>
+
+                    {(draft.viewMode || "table") === "table" && filtersOpen ? (
+                        <CanvasScriptFilterPanel
+                            filters={draft.filters || []}
+                            theme={theme}
+                            onChange={(filters) => commit(updateScriptFilters(draftRef.current, filters))}
+                        />
+                    ) : null}
 
                     <div className="mt-4 rounded-xl p-4" style={{ background: theme.node.panel, border: `0.5px solid ${theme.toolbar.border}` }}>
                         <div className="flex items-center gap-3">
@@ -666,7 +740,9 @@ function ScriptDetail({
                     <div className="mt-5 flex items-center gap-3">
                         <h3 className="text-sm font-medium">{t("canvas.storyboard.workbench.shotTable")}</h3>
                         <span className="text-[10px]" style={{ color: theme.node.muted }}>
-                            {t("canvas.storyboard.workbench.shotCount", { count: draft.rows.length })}
+                            {activeFilterCount
+                                ? t("canvas.storyboard.workbench.filteredShotCount", { visible: visibleRows.length, total: draft.rows.length })
+                                : t("canvas.storyboard.workbench.shotCount", { count: draft.rows.length })}
                         </span>
                         <button
                             type="button"
@@ -684,7 +760,19 @@ function ScriptDetail({
 
                     {draft.rows.length ? (
                         (draft.viewMode || "table") === "table" ? (
-                            <CanvasScriptTable script={draft} visibleColumns={visibleColumns} theme={theme} onCommitShot={commitShot} onRemoveShot={(shotId) => commit(removeScriptShot(draftRef.current, shotId))} />
+                            <CanvasScriptTable
+                                script={draft}
+                                visibleColumns={visibleColumns}
+                                theme={theme}
+                                onCommitShot={commitShot}
+                                onInsertShot={(shotId) => {
+                                    const index = draftRef.current.rows.findIndex((row) => row.id === shotId);
+                                    commit(insertScriptShot(draftRef.current, index + 1));
+                                }}
+                                onDuplicateShot={(shotId) => commit(duplicateScriptShot(draftRef.current, shotId))}
+                                onMoveShot={(shotId, targetShotId) => commit(moveScriptShotToTarget(draftRef.current, shotId, targetShotId))}
+                                onRemoveShot={(shotId) => commit(removeScriptShot(draftRef.current, shotId))}
+                            />
                         ) : (
                         <div className="mt-2 space-y-3">
                             {draft.rows.map((row) => (

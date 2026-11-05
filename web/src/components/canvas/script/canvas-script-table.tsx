@@ -1,8 +1,9 @@
-import { Palette, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Copy, GripVertical, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { CanvasTheme } from "@/lib/canvas-theme";
-import { SCRIPT_V2_COLUMNS, SCRIPT_V2_ROW_COLORS } from "@/lib/canvas/script-v2";
+import { filterScriptShots, SCRIPT_V2_COLUMNS, SCRIPT_V2_ROW_COLORS } from "@/lib/canvas/script-v2";
 import { cn } from "@/lib/utils";
 import type { CanvasScriptColumnKey, CanvasScriptShot, CanvasScriptV2 } from "@/types/canvas";
 
@@ -11,6 +12,9 @@ type Props = {
     visibleColumns: CanvasScriptColumnKey[];
     theme: CanvasTheme;
     onCommitShot: (shotId: string, patch: Partial<Omit<CanvasScriptShot, "id" | "shotNumber">>) => void;
+    onInsertShot: (shotId: string) => void;
+    onDuplicateShot: (shotId: string) => void;
+    onMoveShot: (shotId: string, targetShotId: string) => void;
     onRemoveShot: (shotId: string) => void;
 };
 
@@ -30,15 +34,18 @@ const rowColorDots: Record<string, string> = {
     violet: "#8b5cf6",
 };
 
-export function CanvasScriptTable({ script, visibleColumns, theme, onCommitShot, onRemoveShot }: Props) {
+export function CanvasScriptTable({ script, visibleColumns, theme, onCommitShot, onInsertShot, onDuplicateShot, onMoveShot, onRemoveShot }: Props) {
     const { t } = useTranslation();
+    const [draggingShotId, setDraggingShotId] = useState<string | null>(null);
     const columns = SCRIPT_V2_COLUMNS.filter((column) => visibleColumns.includes(column.key));
-    const gridTemplateColumns = `${columns.map((column) => column.width).join(" ")} 132px`;
+    const rows = filterScriptShots(script);
+    const gridTemplateColumns = `28px ${columns.map((column) => column.width).join(" ")} 196px`;
 
     return (
         <div className="thin-scrollbar mt-2 overflow-auto rounded-xl" style={{ border: `0.5px solid ${theme.toolbar.border}` }}>
             <div className="min-w-max">
                 <div className="sticky top-0 z-10 grid h-9 items-center" style={{ gridTemplateColumns, background: theme.toolbar.panel, borderBottom: `0.5px solid ${theme.toolbar.border}` }}>
+                    <div />
                     {columns.map((column) => (
                         <div key={column.key} className="truncate px-2.5 text-[10px] font-medium" style={{ color: theme.node.muted }}>
                             {t(`canvas.storyboard.workbench.fields.${column.labelKey}`)}
@@ -49,8 +56,39 @@ export function CanvasScriptTable({ script, visibleColumns, theme, onCommitShot,
                     </div>
                 </div>
                 <div className="divide-y" style={{ borderColor: theme.toolbar.border }}>
-                    {script.rows.map((row) => (
-                        <div key={row.id} className="grid items-stretch" style={{ gridTemplateColumns, background: row.color ? rowBackgrounds[row.color] : "transparent" }}>
+                    {rows.map((row) => (
+                        <div
+                            key={row.id}
+                            data-script-shot-id={row.id}
+                            className={cn("grid items-stretch transition-opacity", draggingShotId === row.id && "opacity-45")}
+                            style={{ gridTemplateColumns, background: row.color ? rowBackgrounds[row.color] : "transparent" }}
+                            onDragOver={(event) => {
+                                if (draggingShotId && draggingShotId !== row.id) event.preventDefault();
+                            }}
+                            onDrop={(event) => {
+                                event.preventDefault();
+                                if (draggingShotId && draggingShotId !== row.id) onMoveShot(draggingShotId, row.id);
+                                setDraggingShotId(null);
+                            }}
+                        >
+                            <div className="grid place-items-center border-r" style={{ borderColor: theme.toolbar.border }}>
+                                <button
+                                    type="button"
+                                    draggable
+                                    className="grid size-6 cursor-grab place-items-center rounded-md active:cursor-grabbing"
+                                    style={{ color: theme.node.muted }}
+                                    aria-label={t("canvas.storyboard.workbench.table.dragShot", { number: row.shotNumber })}
+                                    title={t("canvas.storyboard.workbench.table.dragShot", { number: row.shotNumber })}
+                                    onDragStart={(event) => {
+                                        event.dataTransfer.effectAllowed = "move";
+                                        event.dataTransfer.setData("text/plain", row.id);
+                                        setDraggingShotId(row.id);
+                                    }}
+                                    onDragEnd={() => setDraggingShotId(null)}
+                                >
+                                    <GripVertical className="size-3.5" />
+                                </button>
+                            </div>
                             {columns.map((column) => (
                                 <ScriptTableCell key={column.key} column={column.key} row={row} theme={theme} onCommit={(patch) => onCommitShot(row.id, patch)} />
                             ))}
@@ -66,6 +104,27 @@ export function CanvasScriptTable({ script, visibleColumns, theme, onCommitShot,
                                         onClick={() => onCommitShot(row.id, { color: row.color === color ? undefined : color })}
                                     />
                                 ))}
+                                <span className="mx-0.5 h-4 w-px" style={{ background: theme.toolbar.border }} />
+                                <button
+                                    type="button"
+                                    className="grid size-7 place-items-center rounded-md transition hover:bg-black/5 dark:hover:bg-white/10"
+                                    style={{ color: theme.node.muted }}
+                                    aria-label={t("canvas.storyboard.workbench.table.insertAfter")}
+                                    title={t("canvas.storyboard.workbench.table.insertAfter")}
+                                    onClick={() => onInsertShot(row.id)}
+                                >
+                                    <Plus className="size-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    className="grid size-7 place-items-center rounded-md transition hover:bg-black/5 dark:hover:bg-white/10"
+                                    style={{ color: theme.node.muted }}
+                                    aria-label={t("canvas.storyboard.workbench.table.duplicate")}
+                                    title={t("canvas.storyboard.workbench.table.duplicate")}
+                                    onClick={() => onDuplicateShot(row.id)}
+                                >
+                                    <Copy className="size-3.5" />
+                                </button>
                                 <button
                                     type="button"
                                     className="ml-auto grid size-7 place-items-center rounded-md transition hover:bg-red-500/10"
@@ -79,6 +138,11 @@ export function CanvasScriptTable({ script, visibleColumns, theme, onCommitShot,
                             </div>
                         </div>
                     ))}
+                    {!rows.length ? (
+                        <div className="px-4 py-8 text-center text-xs" style={{ color: theme.node.muted }}>
+                            {t("canvas.storyboard.workbench.table.noMatches")}
+                        </div>
+                    ) : null}
                 </div>
             </div>
         </div>

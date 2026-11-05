@@ -1,12 +1,17 @@
 import { expect, test } from "bun:test";
 
 import {
+    addDirectorCameraTrack,
+    createDirectorCameraTrack,
     getDirectorEasingProgress,
     getDirectorCameraTrack,
+    removeDirectorCameraTrack,
     removeDirectorCameraKeyframe,
     sampleDirectorCameraTrack,
     sampleDirectorEasingCurve,
+    setDirectorActiveCameraTrack,
     setDirectorAnimationDuration,
+    updateDirectorCameraTrack,
     updateDirectorCameraKeyframe,
     upsertDirectorCameraKeyframe,
 } from "../src/lib/canvas/director-animation";
@@ -86,4 +91,23 @@ test("uses custom cubic-bezier easing for camera interpolation", () => {
     expect(curve[0]).toEqual({ x: 0, y: 0 });
     expect(curve[curve.length - 1]).toEqual({ x: 1, y: 1 });
     expect(curve.every((point) => point.y >= 0 && point.y <= 1)).toBe(true);
+});
+
+test("adds, switches, renames and removes camera tracks", () => {
+    const firstTrack = createDirectorCameraTrack(0);
+    const secondTrack = createDirectorCameraTrack(1);
+    let project = addDirectorCameraTrack(createDirectorProject(), firstTrack);
+    project = addDirectorCameraTrack(project, secondTrack);
+
+    expect(project.animation.cameraTracks.map((track) => track.name)).toEqual(["Camera 1", "Camera 2"]);
+    expect(project.animation.activeCameraTrackId).toBe(secondTrack.id);
+
+    project = setDirectorActiveCameraTrack(project, firstTrack.id);
+    project = updateDirectorCameraTrack(project, firstTrack.id, { name: "Wide shot" });
+    expect(getDirectorCameraTrack(project)?.name).toBe("Wide shot");
+
+    project = removeDirectorCameraTrack(project, firstTrack.id);
+    expect(project.animation.cameraTracks.map((track) => track.id)).toEqual([secondTrack.id]);
+    expect(project.animation.activeCameraTrackId).toBe(secondTrack.id);
+    expect(removeDirectorCameraTrack(project, secondTrack.id)).toBe(project);
 });

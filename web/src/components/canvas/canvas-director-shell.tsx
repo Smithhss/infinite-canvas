@@ -8,6 +8,7 @@ import {
     DIRECTOR_MAX_FOV,
     DIRECTOR_MAX_GLB_BYTES,
     DIRECTOR_MAX_ANIMATION_DURATION,
+    DIRECTOR_MAX_CAMERA_TRACKS,
     DIRECTOR_MAX_KEYFRAMES,
     DIRECTOR_MAX_MOTION_PATHS,
     DIRECTOR_MAX_OBJECTS,
@@ -36,7 +37,7 @@ import {
     type DirectorSceneNode,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
-import { DIRECTOR_DEFAULT_CUSTOM_EASING, getDirectorCameraTrack, removeDirectorCameraKeyframe, sampleDirectorCameraTrack, sampleDirectorEasingCurve, setDirectorAnimationDuration, updateDirectorCameraKeyframe, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
+import { addDirectorCameraTrack, createDirectorCameraTrack, DIRECTOR_DEFAULT_CUSTOM_EASING, getDirectorCameraTrack, removeDirectorCameraKeyframe, removeDirectorCameraTrack, sampleDirectorCameraTrack, sampleDirectorEasingCurve, setDirectorActiveCameraTrack, setDirectorAnimationDuration, updateDirectorCameraKeyframe, updateDirectorCameraTrack, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
 import { addDirectorPathNode, createDirectorMotionPath, createDirectorPathNode, DIRECTOR_MOTION_PATH_SAMPLES_PER_SPAN, getAvailableDirectorPathNodeParents, interpolateDirectorMotionPathSamples, isDirectorPathNodeVisible, removeDirectorMotionPath, removeDirectorPathNode, sampleDirectorMotionPath, updateDirectorMotionPath, updateDirectorPathNode } from "@/lib/canvas/director-motion-path";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
@@ -749,6 +750,37 @@ export function CanvasDirectorShell({
         setProject((current) => setDirectorAnimationDuration(current, duration));
     };
 
+    const selectCameraTrack = (trackId: string) => {
+        setPlaying(false);
+        setPlayhead(0);
+        setSelectedKeyframeTime(null);
+        setProject((current) => setDirectorActiveCameraTrack(current, trackId));
+    };
+
+    const addCameraTrack = () => {
+        setPlaying(false);
+        setPlayhead(0);
+        setSelectedKeyframeTime(null);
+        setProject((current) => {
+            if (current.animation.cameraTracks.length >= DIRECTOR_MAX_CAMERA_TRACKS) return current;
+            return addDirectorCameraTrack(current, createDirectorCameraTrack(current.animation.cameraTracks.length));
+        });
+    };
+
+    const removeActiveCameraTrack = () => {
+        if (!activeCameraTrack || project.animation.cameraTracks.length <= 1) return;
+        setPlaying(false);
+        setPlayhead(0);
+        setSelectedKeyframeTime(null);
+        setProject((current) => removeDirectorCameraTrack(current, activeCameraTrack.id));
+    };
+
+    const renameActiveCameraTrack = (name: string) => {
+        if (!activeCameraTrack) return;
+        const nextName = name.trim() || activeCameraTrack.name;
+        setProject((current) => updateDirectorCameraTrack(current, activeCameraTrack.id, { name: nextName }));
+    };
+
     const removeCameraKeyframe = (time: number) => {
         setPlaying(false);
         setProject((current) => removeDirectorCameraKeyframe(current, time));
@@ -1114,6 +1146,59 @@ export function CanvasDirectorShell({
                                 <span className="text-[10px] tabular-nums opacity-40">
                                     {activeCameraTrack?.keyframes.length || 0} / {DIRECTOR_MAX_KEYFRAMES}
                                 </span>
+                            </div>
+                            <div className="mt-3 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[11px] opacity-45">{t("canvas.director.cameraTrack")}</span>
+                                    <span className="text-[10px] tabular-nums opacity-30">
+                                        {project.animation.cameraTracks.length} / {DIRECTOR_MAX_CAMERA_TRACKS}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <Select
+                                        size="small"
+                                        className="min-w-0 flex-1"
+                                        placeholder={t("canvas.director.cameraTrackEmpty")}
+                                        value={activeCameraTrack?.id}
+                                        options={project.animation.cameraTracks.map((track) => ({ value: track.id, label: track.name }))}
+                                        onChange={(trackId: string) => selectCameraTrack(trackId)}
+                                    />
+                                    <Button
+                                        size="small"
+                                        type="text"
+                                        className="!h-7 !w-7 !p-0"
+                                        icon={<Plus className="size-3.5" />}
+                                        aria-label={t("canvas.director.addCameraTrack")}
+                                        title={t("canvas.director.addCameraTrack")}
+                                        disabled={project.animation.cameraTracks.length >= DIRECTOR_MAX_CAMERA_TRACKS}
+                                        onClick={addCameraTrack}
+                                    />
+                                    <Button
+                                        size="small"
+                                        type="text"
+                                        danger
+                                        className="!h-7 !w-7 !p-0"
+                                        icon={<Trash2 className="size-3" />}
+                                        aria-label={t("canvas.director.removeCameraTrack")}
+                                        title={t("canvas.director.removeCameraTrack")}
+                                        disabled={project.animation.cameraTracks.length <= 1}
+                                        onClick={removeActiveCameraTrack}
+                                    />
+                                </div>
+                                {activeCameraTrack ? (
+                                    <Input
+                                        key={activeCameraTrack.id}
+                                        size="small"
+                                        defaultValue={activeCameraTrack.name}
+                                        maxLength={60}
+                                        aria-label={t("canvas.director.cameraTrackName")}
+                                        placeholder={t("canvas.director.cameraTrackName")}
+                                        onBlur={(event) => {
+                                            renameActiveCameraTrack(event.currentTarget.value);
+                                            event.currentTarget.value = event.currentTarget.value.trim() || activeCameraTrack.name;
+                                        }}
+                                    />
+                                ) : null}
                             </div>
                             <div className="mt-3">
                                 <RangeField

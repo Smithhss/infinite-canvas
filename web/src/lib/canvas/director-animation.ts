@@ -1,5 +1,6 @@
 import {
     DIRECTOR_MAX_ANIMATION_DURATION,
+    DIRECTOR_MAX_CAMERA_TRACKS,
     DIRECTOR_MAX_KEYFRAMES,
     DIRECTOR_MIN_ANIMATION_DURATION,
     type DirectorCameraKeyframe,
@@ -18,6 +19,63 @@ export function getDirectorCameraTrack(project: DirectorProjectState): DirectorC
     return project.animation.cameraTracks.find((track) => track.id === project.animation.activeCameraTrackId)
         ?? project.animation.cameraTracks[0]
         ?? null;
+}
+
+export function createDirectorCameraTrack(index: number): DirectorCameraTrack {
+    const safeIndex = Math.max(0, Math.floor(index));
+    return {
+        id: `camera-track-${Date.now().toString(36)}-${safeIndex}`,
+        name: `Camera ${safeIndex + 1}`,
+        cameraId: "camera-main",
+        keyframes: [],
+    };
+}
+
+export function addDirectorCameraTrack(project: DirectorProjectState, track: DirectorCameraTrack): DirectorProjectState {
+    if (project.animation.cameraTracks.length >= DIRECTOR_MAX_CAMERA_TRACKS || project.animation.cameraTracks.some((item) => item.id === track.id)) {
+        return project;
+    }
+    return {
+        ...project,
+        animation: {
+            ...project.animation,
+            activeCameraTrackId: track.id,
+            cameraTracks: [...project.animation.cameraTracks, { ...track, keyframes: [...track.keyframes] }],
+        },
+    };
+}
+
+export function setDirectorActiveCameraTrack(project: DirectorProjectState, trackId: string): DirectorProjectState {
+    if (!project.animation.cameraTracks.some((track) => track.id === trackId) || project.animation.activeCameraTrackId === trackId) return project;
+    return { ...project, animation: { ...project.animation, activeCameraTrackId: trackId } };
+}
+
+export function updateDirectorCameraTrack(project: DirectorProjectState, trackId: string, patch: Partial<Pick<DirectorCameraTrack, "name">>): DirectorProjectState {
+    if (!project.animation.cameraTracks.some((track) => track.id === trackId)) return project;
+    return {
+        ...project,
+        animation: {
+            ...project.animation,
+            cameraTracks: project.animation.cameraTracks.map((track) => track.id === trackId ? { ...track, ...patch } : track),
+        },
+    };
+}
+
+export function removeDirectorCameraTrack(project: DirectorProjectState, trackId: string): DirectorProjectState {
+    const index = project.animation.cameraTracks.findIndex((track) => track.id === trackId);
+    if (index < 0 || project.animation.cameraTracks.length <= 1) return project;
+    const cameraTracks = project.animation.cameraTracks.filter((track) => track.id !== trackId);
+    const activeCameraTrackId = project.animation.activeCameraTrackId === trackId
+        ? cameraTracks[Math.min(index, cameraTracks.length - 1)].id
+        : project.animation.activeCameraTrackId;
+    return {
+        ...project,
+        animation: {
+            ...project.animation,
+            ...(activeCameraTrackId ? { activeCameraTrackId } : {}),
+            cameraTracks,
+        },
+    };
 }
 
 export function upsertDirectorCameraKeyframe(project: DirectorProjectState, keyframe: DirectorCameraKeyframe): DirectorProjectState {

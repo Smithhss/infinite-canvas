@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, ColorPicker, Input, InputNumber, Modal, Select, Slider, Switch, theme as antdTheme } from "antd";
-import { Box, Camera, Circle, Cylinder, EyeOff, Folder, ImagePlus, Lightbulb, Lock, MapPin, Plus, RotateCcw, Route, Save, Trash2, Triangle, Upload } from "lucide-react";
+import { Box, Camera, Circle, Cylinder, Diamond, EyeOff, Folder, ImagePlus, Lightbulb, Lock, MapPin, Pause, Play, Plus, RotateCcw, Route, Save, Trash2, Triangle, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Group, Mesh, Object3D, Scene } from "three";
 
 import {
     DIRECTOR_MAX_FOV,
     DIRECTOR_MAX_GLB_BYTES,
+    DIRECTOR_MAX_ANIMATION_DURATION,
+    DIRECTOR_MAX_KEYFRAMES,
     DIRECTOR_MAX_OBJECTS,
     DIRECTOR_MAX_SCENE_NODES,
+    DIRECTOR_MIN_ANIMATION_DURATION,
     DIRECTOR_MIN_FOV,
     createDirectorObject,
     createDirectorProject,
@@ -19,6 +22,7 @@ import {
     normalizeDirectorProject,
     UnsupportedDirectorProjectVersionError,
     type DirectorBackground,
+    type DirectorCameraKeyframe,
     type DirectorEnvironment,
     type DirectorObject,
     type DirectorObjectKind,
@@ -26,6 +30,7 @@ import {
     type DirectorSceneNode,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
+import { getDirectorCameraTrack, removeDirectorCameraKeyframe, sampleDirectorCameraTrack, setDirectorAnimationDuration, upsertDirectorCameraKeyframe } from "@/lib/canvas/director-animation";
 import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -34,6 +39,8 @@ import { useThemeStore } from "@/stores/use-theme-store";
 
 type DirectorSceneRuntime = {
     capture: () => string | null;
+    captureCameraPose: () => { position: DirectorVector3; target: DirectorVector3; fov: number } | null;
+    previewCamera: (keyframe: DirectorCameraKeyframe) => void;
     sync: (project: DirectorProjectState, selectedObjectId: string | null) => void;
     dispose: () => void;
 };
@@ -77,11 +84,15 @@ export function CanvasDirectorShell({
     const [importingGlb, setImportingGlb] = useState(false);
     const [assetErrors, setAssetErrors] = useState<Record<string, boolean>>({});
     const [sceneRevision, setSceneRevision] = useState(0);
+    const [playhead, setPlayhead] = useState(0);
+    const [playing, setPlaying] = useState(false);
     const projectRef = useRef(project);
     const selectedObjectIdRef = useRef(selectedObjectId);
+    const playheadRef = useRef(playhead);
 
     projectRef.current = project;
     selectedObjectIdRef.current = selectedObjectId;
+    playheadRef.current = playhead;
 
     useEffect(() => {
         if (!open) return;
@@ -92,6 +103,8 @@ export function CanvasDirectorShell({
         setSelectedSceneNodeId(null);
         setSceneError(null);
         setAssetErrors({});
+        setPlayhead(0);
+        setPlaying(false);
     }, [initialProject, open]);
 
     useEffect(() => {
@@ -301,6 +314,18 @@ export function CanvasDirectorShell({
                         },
                     }));
                 };
+                const captureCameraPose = () => ({
+                    position: vectorState(camera.position),
+                    target: vectorState(controls.target),
+                    fov: camera.fov,
+                });
+                const previewCamera = (keyframe: DirectorCameraKeyframe) => {
+                    camera.position.set(keyframe.position.x, keyframe.position.y, keyframe.position.z);
+                    if (keyframe.lookAt) controls.target.set(keyframe.lookAt.x, keyframe.lookAt.y, keyframe.lookAt.z);
+                    if (keyframe.fov !== undefined) camera.fov = keyframe.fov;
+                    camera.updateProjectionMatrix();
+                    controls.update();
+                };
                 const contextLost = (event: Event) => {
                     event.preventDefault();
                     setSceneError(t("canvas.director.webglLost"));
@@ -366,6 +391,8 @@ export function CanvasDirectorShell({
 
                 runtime = {
                     capture,
+                    captureCameraPose,
+                    previewCamera,
                     sync,
                     dispose: () => {
                         window.cancelAnimationFrame(frame);
@@ -409,6 +436,32 @@ export function CanvasDirectorShell({
     useEffect(() => {
         runtimeRef.current?.sync(project, selectedObjectId);
     }, [project, selectedObjectId]);
+
+    const activeCameraTrack = useMemo(() => getDirectorCameraTrack(project), [project]);
+
+    useEffect(() => {
+        if (!open || !playing || !activeCameraTrack?.keyframes.length) return;
+        const duration = project.animation.duration;
+        const startedAt = performance.now() - playheadRef.current * 1000;
+        let frame = 0;
+        let lastUiUpdate = 0;
+        const tick = (now: number) => {
+            const time = Math.min(duration, Math.max(0, (now - startedAt) / 1000));
+            if (now - lastUiUpdate >= 33 || time >= duration) {
+                lastUiUpdate = now;
+                setPlayhead(time);
+            }
+            const sample = sampleDirectorCameraTrack(activeCameraTrack, time);
+            if (sample) runtimeRef.current?.previewCamera(sample);
+            if (time >= duration) {
+                setPlaying(false);
+                return;
+            }
+            frame = window.requestAnimationFrame(tick);
+        };
+        frame = window.requestAnimationFrame(tick);
+        return () => window.cancelAnimationFrame(frame);
+    }, [activeCameraTrack, open, playing, project.animation.duration]);
 
     const selectedObject = useMemo(() => project.objects.find((item) => item.id === selectedObjectId) || null, [project.objects, selectedObjectId]);
     const selectedSceneNode = useMemo(() => project.sceneNodes.find((item) => item.id === selectedSceneNodeId) || null, [project.sceneNodes, selectedSceneNodeId]);
@@ -472,6 +525,37 @@ export function CanvasDirectorShell({
             if (value) camera[key] = value;
             return { ...current, camera };
         });
+    };
+
+    const previewCameraTime = (time: number) => {
+        setPlaying(false);
+        const nextTime = Math.min(project.animation.duration, Math.max(0, time));
+        setPlayhead(nextTime);
+        const sample = sampleDirectorCameraTrack(activeCameraTrack, nextTime);
+        if (sample) runtimeRef.current?.previewCamera(sample);
+    };
+
+    const addCameraKeyframe = () => {
+        const pose = runtimeRef.current?.captureCameraPose();
+        if (!pose) {
+            message.warning(t("canvas.director.keyframeUnavailable"));
+            return;
+        }
+        setPlaying(false);
+        const time = Math.min(project.animation.duration, Math.max(0, playhead));
+        setProject((current) => upsertDirectorCameraKeyframe(current, {
+            time,
+            position: pose.position,
+            lookAt: pose.target,
+            fov: pose.fov,
+            easing: "smooth",
+        }));
+    };
+
+    const updateAnimationDuration = (duration: number) => {
+        setPlaying(false);
+        setPlayhead((current) => Math.min(current, duration));
+        setProject((current) => setDirectorAnimationDuration(current, duration));
     };
 
     const updateSelectedSceneTransform = (group: keyof DirectorSceneNode["transform"], axis: keyof DirectorVector3, value: number | null) => {
@@ -769,6 +853,91 @@ export function CanvasDirectorShell({
                                 onChange={(value: string | undefined) => setCameraTarget("followTargetId", value)}
                             />
                         </div>
+                        <div className="rounded-xl border p-3" style={{ borderColor: canvasTheme.node.stroke }}>
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="text-xs font-medium opacity-60">{t("canvas.director.animation")}</div>
+                                <span className="text-[10px] tabular-nums opacity-40">
+                                    {activeCameraTrack?.keyframes.length || 0} / {DIRECTOR_MAX_KEYFRAMES}
+                                </span>
+                            </div>
+                            <div className="mt-3">
+                                <RangeField
+                                    label={t("canvas.director.animationDuration")}
+                                    value={project.animation.duration}
+                                    min={DIRECTOR_MIN_ANIMATION_DURATION}
+                                    max={DIRECTOR_MAX_ANIMATION_DURATION}
+                                    step={1}
+                                    suffix="s"
+                                    onChange={updateAnimationDuration}
+                                />
+                            </div>
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1">
+                                    <Button
+                                        size="small"
+                                        type="text"
+                                        className="!h-7 !px-2"
+                                        icon={playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+                                        disabled={!activeCameraTrack?.keyframes.length}
+                                        onClick={() => {
+                                            if (playing) {
+                                                setPlaying(false);
+                                                return;
+                                            }
+                                            setPlayhead(0);
+                                            setPlaying(true);
+                                        }}
+                                    >
+                                        {playing ? t("canvas.director.pausePreview") : t("canvas.director.playPreview")}
+                                    </Button>
+                                    <Button size="small" type="text" className="!h-7 !px-2" icon={<Plus className="size-3.5" />} onClick={addCameraKeyframe}>
+                                        {t("canvas.director.addKeyframe")}
+                                    </Button>
+                                </div>
+                                <span className="shrink-0 text-[10px] tabular-nums opacity-45">
+                                    {formatDirectorTime(playhead)} / {formatDirectorTime(project.animation.duration)}
+                                </span>
+                            </div>
+                            <input
+                                type="range"
+                                className="mt-3 h-3 w-full cursor-pointer"
+                                style={{ accentColor: token.colorPrimary }}
+                                aria-label={t("canvas.director.playhead")}
+                                min={0}
+                                max={project.animation.duration}
+                                step={0.01}
+                                value={Math.min(playhead, project.animation.duration)}
+                                onChange={(event) => previewCameraTime(Number(event.currentTarget.value))}
+                            />
+                            <div className="max-h-32 space-y-1 overflow-y-auto">
+                                {activeCameraTrack?.keyframes.length ? activeCameraTrack.keyframes.map((keyframe) => (
+                                    <div key={keyframe.time} className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left text-[10px] transition hover:bg-black/[0.035] dark:hover:bg-white/[0.05]"
+                                            onClick={() => previewCameraTime(keyframe.time)}
+                                        >
+                                            <Diamond className="size-3 shrink-0 opacity-45" />
+                                            <span className="tabular-nums">{formatDirectorTime(keyframe.time)}</span>
+                                            {keyframe.fov !== undefined ? <span className="opacity-40">FOV {Math.round(keyframe.fov)}°</span> : null}
+                                        </button>
+                                        <Button
+                                            size="small"
+                                            type="text"
+                                            danger
+                                            className="!h-7 !w-7 !p-0"
+                                            icon={<Trash2 className="size-3" />}
+                                            aria-label={t("canvas.director.removeKeyframe")}
+                                            onClick={() => setProject((current) => removeDirectorCameraKeyframe(current, keyframe.time))}
+                                        />
+                                    </div>
+                                )) : (
+                                    <div className="rounded-lg border border-dashed px-2 py-3 text-center text-[10px] leading-4 opacity-40" style={{ borderColor: canvasTheme.node.stroke }}>
+                                        {t("canvas.director.keyframeEmpty")}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     <div className="mb-5 space-y-3">
@@ -1039,6 +1208,11 @@ function resolveDirectorCameraTarget(project: DirectorProjectState, targetId: st
 
 function formatAssetBytes(bytes: number) {
     return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(2)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function formatDirectorTime(seconds: number) {
+    const value = Math.max(0, seconds);
+    return `${String(Math.floor(value / 60)).padStart(2, "0")}:${(value % 60).toFixed(1).padStart(4, "0")}`;
 }
 
 function addStudioGeometry(THREE: typeof import("three"), scene: Scene) {

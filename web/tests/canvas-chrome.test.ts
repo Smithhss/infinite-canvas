@@ -16,7 +16,7 @@ test("empty canvas quick actions map built-ins and expose local smart cut", () =
     expect(canvasEmptyQuickActionNodeType("image")).toBe(CanvasNodeType.Image);
     expect(canvasEmptyQuickActionNodeType("video")).toBe(CanvasNodeType.Video);
     expect(canvasEmptyQuickActionNodeType("audio")).toBe(CanvasNodeType.Audio);
-    expect(canvasEmptyQuickActionNodeType("script")).toBe(CanvasNodeType.Text);
+    expect(canvasEmptyQuickActionNodeType("script")).toBe(CanvasNodeType.Script);
     expect(canvasEmptyQuickActionNodeType("smart-cut")).toBeNull();
     expect(CANVAS_EMPTY_QUICK_ACTION_IDS.every(isCanvasEmptyQuickActionEnabled)).toBe(true);
 });

@@ -12,7 +12,7 @@ type CanvasEmptyQuickActionsProps = {
     projectLoaded: boolean;
     workspaceView: CanvasWorkspaceView;
     nodeCount: number;
-    onCreate: (type: CanvasNodeType.Image | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Text) => void;
+    onCreate: (type: CanvasNodeType.Image | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Text | CanvasNodeType.Script) => void;
     onSmartCut: () => void;
 };
 

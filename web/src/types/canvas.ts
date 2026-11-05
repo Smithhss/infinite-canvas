@@ -15,6 +15,7 @@ export enum CanvasNodeType {
     Config = "config",
     Video = "video",
     Audio = "audio",
+    Script = "script",
     Group = "group",
 }
 
@@ -25,6 +26,7 @@ export type CanvasNodeStatus = "idle" | "success" | "loading" | "error";
 export type CanvasGenerationMode = "text" | "image" | "video" | "audio";
 export type CanvasImageGenerationType = "generation" | "edit";
 export type CanvasWorkspaceView = "workflow" | "storyboard";
+export type CanvasStoryboardCategory = "character" | "scene" | "prop" | "other";
 
 export type CanvasNodeImage = {
     id: string;
@@ -43,6 +45,58 @@ export type CanvasNodeText = {
     status: CanvasNodeStatus;
     errorDetails?: string;
     content: string;
+};
+
+export type CanvasScriptShot = {
+    id: string;
+    shotNumber: number;
+    durationSeconds: number;
+    plotDescription: string;
+    characters?: string[];
+    videoReference?: string;
+    shotSize?: string;
+    emotion?: string;
+    propTags?: string[];
+    cameraMovement?: string;
+    dialogue?: string;
+    lightingAndAtmosphere?: string;
+    audioEffects?: string;
+    imageGenerationPrompt?: string;
+    videoMotionPrompt?: string;
+    imageToVideoMotionPrompt?: string;
+    color?: string;
+};
+
+export type CanvasScriptViewMode = "table" | "creative" | "asset";
+
+export type CanvasScriptColumnKey = "shotNumber" | "duration" | "plot" | "characters" | "videoReference" | "shotSize" | "emotion" | "props" | "cameraMovement" | "lighting" | "audio" | "dialogue" | "imagePrompt" | "videoPrompt" | "imageToVideoPrompt";
+
+export type CanvasScriptColumnVisibility = Partial<Record<CanvasScriptColumnKey, boolean>>;
+
+export type CanvasScriptPreset = {
+    genre?: string;
+    fusedGenre?: string;
+    customGenre?: string;
+    audience: string[];
+    characters: string[];
+    eras: string[];
+    hooks: string[];
+    artStyle?: string;
+    customArtStyle?: string;
+    episodes: number;
+    structure?: string;
+};
+
+export type CanvasScriptV2 = {
+    version: 1;
+    theme?: string;
+    aspectRatio?: string;
+    styleDescription?: string;
+    originalStoryText?: string;
+    preset?: CanvasScriptPreset;
+    viewMode?: CanvasScriptViewMode;
+    columnVisibility?: CanvasScriptColumnVisibility;
+    rows: CanvasScriptShot[];
 };
 
 export type CanvasNodeMetadata = {
@@ -85,6 +139,8 @@ export type CanvasNodeMetadata = {
     videoTaskId?: string;
     videoTaskProvider?: "openai" | "gemini";
     groupId?: string;
+    storyboardCategory?: CanvasStoryboardCategory;
+    scriptV2?: CanvasScriptV2;
     interactive?: boolean; // Plugin node interaction/move state; see CanvasNodeDefinition.interactionToggle.
 };
 

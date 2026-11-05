@@ -13,7 +13,7 @@ export function canvasEmptyQuickActionNodeType(action: CanvasEmptyQuickActionId)
     if (action === "image") return CanvasNodeType.Image;
     if (action === "video") return CanvasNodeType.Video;
     if (action === "audio") return CanvasNodeType.Audio;
-    if (action === "script") return CanvasNodeType.Text;
+    if (action === "script") return CanvasNodeType.Script;
     return null;
 }
 

@@ -47,6 +47,31 @@ test("projects text, image alternatives and video from the same node ids", () =>
     expect(projection.video[0]).toMatchObject({ nodeId: "video-1", durationMs: 15_000, kind: "video" });
 });
 
+test("projects script V2 nodes into the storyboard library", () => {
+    const projection = buildStoryboardProjection([
+        {
+            ...base,
+            id: "script-1",
+            type: CanvasNodeType.Script,
+            title: "雨夜短片",
+            metadata: {
+                status: "success",
+                storyboardCategory: "scene",
+                scriptV2: {
+                    version: 1,
+                    theme: "悬疑",
+                    rows: [{ id: "shot-1", shotNumber: 1, durationSeconds: 5, plotDescription: "主角走进空车站", dialogue: "有人吗？" }],
+                },
+            },
+        },
+    ]);
+
+    expect(projection.script).toHaveLength(1);
+    expect(projection.script[0]).toMatchObject({ nodeId: "script-1", kind: "script", title: "雨夜短片", category: "scene" });
+    expect(projection.script[0].content).toContain("主角走进空车站");
+    expect(projection.script[0].script?.rows[0].dialogue).toBe("有人吗？");
+});
+
 test("skips empty idle nodes but keeps loading and failed media", () => {
     const projection = buildStoryboardProjection([
         { ...base, id: "empty-image", type: CanvasNodeType.Image, title: "空图", metadata: { status: "idle" } },

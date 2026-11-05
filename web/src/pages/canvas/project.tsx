@@ -45,6 +45,7 @@ import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasStoryboard } from "@/components/canvas/canvas-storyboard";
+import { CanvasStoryboardWorkbench } from "@/components/canvas/storyboard/canvas-storyboard-workbench";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { CanvasCommandDock } from "@/components/canvas/canvas-command-dock";
 import { CanvasEmptyQuickActions } from "@/components/canvas/canvas-empty-quick-actions";
@@ -112,6 +113,7 @@ import {
     type CanvasNodeText,
     type CanvasNodeMetadata,
     type CanvasNodeTypeId,
+    type CanvasScriptV2,
     type ConnectionHandle,
     type ContextMenuState,
     type Position,
@@ -979,6 +981,7 @@ function InfiniteCanvasPage() {
     const builtinAgentEnabled = isFeatureEnabled("builtinCanvasAgent");
     const directorEnabled = isFeatureEnabled("director3d");
     const panoramaEnabled = isFeatureEnabled("panorama");
+    const storyboardWorkbenchEnabled = isFeatureEnabled("storyboardWorkbench");
 
     useEffect(() => {
         if (projectLoaded && directorEnabled && searchParams.get("openDirector") === "1") setDirectorOpen(true);
@@ -1024,7 +1027,7 @@ function InfiniteCanvasPage() {
                   ? Boolean(definition.autoOpenPanel)
                   : definition?.useBuiltinPanel
                     ? true
-                    : isBuiltinType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
+                    : isBuiltinType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Script && type !== CanvasNodeType.Group;
             if (wantsPanel) setDialogNodeId(newNode.id);
             return newNode;
         },
@@ -1032,7 +1035,7 @@ function InfiniteCanvasPage() {
     );
 
     const createNodeFromEmptyAction = useCallback(
-        (type: CanvasNodeType.Image | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Text) => {
+        (type: CanvasNodeType.Image | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Text | CanvasNodeType.Script) => {
             const node = createNode(type);
             if (type === CanvasNodeType.Text || type === CanvasNodeType.Audio) setDialogNodeId(node.id);
         },
@@ -1431,6 +1434,10 @@ function InfiniteCanvasPage() {
         setWorkspaceView("workflow");
     }, []);
 
+    const updateStoryboardScript = useCallback((nodeId: string, scriptV2: CanvasScriptV2) => {
+        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, scriptV2 } } : node)));
+    }, []);
+
     useEffect(() => {
         if (workspaceView !== "workflow" || !pendingWorkspaceFocusNodeId) return;
         const frame = requestAnimationFrame(() => {
@@ -1520,10 +1527,19 @@ function InfiniteCanvasPage() {
     }, [createProject, navigate, t]);
 
     const deleteCurrentProject = useCallback(() => {
-        deleteProjects([projectId]);
-        cleanupAssetImages();
-        navigate(projectLibraryPath);
-    }, [cleanupAssetImages, deleteProjects, navigate, projectId, projectLibraryPath]);
+        modal.confirm({
+            title: t("canvas.deleteCurrent"),
+            content: t("canvas.project.deleteCurrentDescription"),
+            okText: t("canvas.project.delete"),
+            cancelText: t("common.cancel"),
+            okButtonProps: { danger: true },
+            onOk: () => {
+                deleteProjects([projectId]);
+                cleanupAssetImages();
+                navigate(projectLibraryPath);
+            },
+        });
+    }, [cleanupAssetImages, deleteProjects, modal, navigate, projectId, projectLibraryPath, t]);
 
     const exportCurrentProject = useCallback(async () => {
         const project = useCanvasStore.getState().projects.find((item) => item.id === projectId);
@@ -3656,7 +3672,18 @@ function InfiniteCanvasPage() {
                 />
 
                 {workspaceView === "storyboard" ? (
-                    <CanvasStoryboard key={projectId} projectId={projectId} nodes={nodes} onLocateNode={locateStoryboardNode} onSelectNodesInCanvas={selectStoryboardNodesInCanvas} />
+                    storyboardWorkbenchEnabled ? (
+                        <CanvasStoryboardWorkbench
+                            key={projectId}
+                            nodes={nodes}
+                            onLocateNode={locateStoryboardNode}
+                            onSelectNodesInCanvas={selectStoryboardNodesInCanvas}
+                            onAddAsset={() => setAssetPickerOpen(true)}
+                            onUpdateScript={updateStoryboardScript}
+                        />
+                    ) : (
+                        <CanvasStoryboard key={projectId} projectId={projectId} nodes={nodes} onLocateNode={locateStoryboardNode} onSelectNodesInCanvas={selectStoryboardNodesInCanvas} />
+                    )
                 ) : (
                     <>
                         <InfiniteCanvas

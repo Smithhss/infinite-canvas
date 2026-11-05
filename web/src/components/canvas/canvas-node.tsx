@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Copy, Download, Group, Image as ImageIcon, ImageUp, Lock, Music2, Plus, Puzzle, RefreshCw, Scan, Star, Trash2, Video } from "lucide-react";
+import { ChevronRight, Copy, Download, Group, Image as ImageIcon, ImageUp, Lock, Music2, Plus, Puzzle, RefreshCw, Scan, ScrollText, Star, Trash2, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -527,8 +527,46 @@ const nodeContentRenderers = {
     [CanvasNodeType.Config]: EmptyImageContent,
     [CanvasNodeType.Video]: VideoNodeContent,
     [CanvasNodeType.Audio]: AudioNodeContent,
+    [CanvasNodeType.Script]: ScriptContent,
     [CanvasNodeType.Group]: GroupNodeContent,
 } satisfies Record<CanvasNodeType, (props: NodeContentRendererProps) => ReactNode>;
+
+function ScriptContent({ node, theme }: NodeContentRendererProps) {
+    const { t } = useTranslation();
+    const script = node.metadata?.scriptV2;
+    const rows = script?.rows || [];
+    return (
+        <div className="flex h-full min-h-0 flex-col p-3" data-canvas-shortcuts-ignore>
+            <div className="flex items-center gap-2">
+                <ScrollText className="size-4 shrink-0" style={{ color: theme.node.muted }} />
+                <span className="min-w-0 flex-1 truncate text-xs font-medium">{node.title || t("canvas.nodeTypes.script")}</span>
+                <span className="shrink-0 text-[10px] tabular-nums" style={{ color: theme.node.muted }}>
+                    {t("canvas.storyboard.workbench.shotCount", { count: rows.length })}
+                </span>
+            </div>
+            <div className="thin-scrollbar mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border" style={{ borderColor: theme.node.stroke }}>
+                {rows.length ? (
+                    rows.slice(0, 6).map((row) => (
+                        <div key={row.id} className="flex gap-2 border-b px-2.5 py-2 text-[10px] last:border-b-0" style={{ borderColor: theme.node.stroke }}>
+                            <span className="w-5 shrink-0 tabular-nums" style={{ color: theme.node.muted }}>
+                                {String(row.shotNumber).padStart(2, "0")}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate">{row.plotDescription || row.dialogue || t("canvas.storyboard.workbench.emptyScript")}</span>
+                            <span className="shrink-0 tabular-nums" style={{ color: theme.node.muted }}>
+                                {row.durationSeconds}
+                                {t("canvas.storyboard.workbench.seconds")}
+                            </span>
+                        </div>
+                    ))
+                ) : (
+                    <div className="grid h-full min-h-24 place-items-center px-4 text-center text-[10px]" style={{ color: theme.node.muted }}>
+                        {t("canvas.storyboard.workbench.emptyShots")}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 
 function GroupNodeContent({ node, theme, groupChildCount }: NodeContentRendererProps) {
     const { t } = useTranslation();

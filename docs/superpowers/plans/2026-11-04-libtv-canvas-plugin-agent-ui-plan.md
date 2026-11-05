@@ -149,7 +149,7 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 
 ### P1-B：独立插件 Hub
 
-状态：已合并 `dev`，等待人工验收。
+状态：主体已合并 `dev`；Claude Code MCP 接入已完成，等待人工验收。
 
 目标：
 
@@ -187,6 +187,15 @@ REA 证据 ID：`ev_bd04aaa5e1e48e6786afb8279d62381b12dda5cd3ec65027d70ac110cec1
 4. 安装命令按当前执行环境生成，并显式区分 Plugin 与 CLI，不伪造尚未实现的安装方式。
 5. 连接状态只读取真实 Agent 状态；未连接时展示可操作步骤，不显示虚假的“已授权”。
 6. 所有复制按钮统一使用现有复制反馈 hook 或同等全局交互。
+7. Agent 选择区分 Codex 与 Claude Code；Codex 保留 Plugin / CLI，Claude Code 只展示用户级 MCP 注册命令，不伪造已安装或已连接状态。
+
+已完成补充：
+
+- 插件安装面板增加 Codex / Claude Code 选择。
+- Claude Code 使用 `claude mcp add --scope user --transport stdio infinite-canvas -- npx -y @smithhsiiiii/canvas-agent@latest mcp`，复用本机已有登录态。
+- 中英文文案、`CHANGELOG.md` 和待验收文档已同步。
+- 自动化验证：Web 157 项测试通过，typecheck、build 和 `git diff --check` 通过。
+- 浏览器验证：1440px 中文浅色、390px 中文浅色、深色英文和 390px 深色英文均通过；Claude Code 选项、MCP 命令、`aria-pressed` 和复制反馈正常，无横向溢出。
 
 验收：
 

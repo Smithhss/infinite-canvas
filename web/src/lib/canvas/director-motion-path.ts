@@ -120,4 +120,3 @@ function mapMotionPath(project: DirectorProjectState, pathId: string, update: (p
 function isAvailableParent(path: DirectorMotionPath, nodeId: string, parentId: string) {
     return parentId === path.id || getAvailableDirectorPathNodeParents(path, nodeId).some((node) => node.id === parentId);
 }
-

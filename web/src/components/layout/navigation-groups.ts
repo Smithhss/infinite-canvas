@@ -27,7 +27,7 @@ export function getShellCreateNavigation(): ShellNavigationItem[] {
     return [
         { key: "new-canvas", labelKey: "topNav.infiniteCanvas", icon: PanelsTopLeft, to: "/canvas?mode=new" },
         { key: "agent", labelKey: "topNav.creativeAgent", icon: Sparkles, action: "agent", badgeKey: "topNav.beta" },
-        ...(isFeatureEnabled("director3d") ? [{ key: "director-3d", labelKey: "topNav.threeDBox", icon: Box, to: "/canvas?mode=new&ff_director3d=1&openDirector=1" }] : []),
+        ...(isFeatureEnabled("director3d") ? [{ key: "director-3d", labelKey: "topNav.threeDBox", icon: Box, to: "/3d-box?ff_director3d=1" }] : []),
     ];
 }
 

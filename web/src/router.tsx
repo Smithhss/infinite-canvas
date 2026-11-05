@@ -12,6 +12,7 @@ import ImagePage from "@/pages/image";
 import NotFound from "@/pages/not-found";
 import PluginsPage from "@/pages/plugins";
 import PromptsPage from "@/pages/prompts";
+import ThreeDBoxPage from "@/pages/three-d-box";
 import VideoPage from "@/pages/video";
 import WorkflowsPage from "@/pages/workflows";
 
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
             { path: "/workflows", element: <WorkflowsPage /> },
             { path: "/plugins", element: <PluginsPage /> },
             { path: "/agent", element: <AgentPage /> },
+            { path: "/3d-box", element: <ThreeDBoxPage /> },
             { path: "/canvas", element: <CanvasPage /> },
             { path: "/canvas/:id", element: <CanvasProjectPage /> },
             { path: "/config", element: <ConfigPage /> },

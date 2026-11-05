@@ -97,6 +97,7 @@ import { CanvasRefreshShell } from "@/components/canvas/canvas-refresh-shell";
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
 import { BuiltinAgentPanel } from "@/components/canvas/builtin-agent-panel";
 import { ConnectionCreateMenu, NodeCreateMenu, type PendingConnectionCreate } from "@/components/canvas/canvas-create-menus";
+import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import {
     CanvasNodeType,
@@ -213,6 +214,7 @@ function InfiniteCanvasPage() {
     const params = useParams<{ id: string }>();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    const projectLibraryPath = withShellFeatureFlags(searchParams.get("returnTo") === "3d-box" ? "/3d-box" : "/canvas", `?${searchParams.toString()}`);
     const projectId = params.id || "";
     const localAgentConnected = useAgentStore((state) => state.connected);
     const localAgentActivity = useAgentStore((state) => state.activity);
@@ -518,7 +520,7 @@ function InfiniteCanvasPage() {
         setProjectLoaded(false);
         const project = openProject(projectId);
         if (!project) {
-            navigate("/canvas", { replace: true });
+            navigate(projectLibraryPath, { replace: true });
             return;
         }
 
@@ -551,7 +553,7 @@ function InfiniteCanvasPage() {
             useCanvasSaveStatusStore.getState().markSaved();
         };
         void restore();
-    }, [hydrated, navigate, openProject, projectId]);
+    }, [hydrated, navigate, openProject, projectId, projectLibraryPath]);
 
     useEffect(() => {
         if (!projectLoaded) return;
@@ -1475,8 +1477,8 @@ function InfiniteCanvasPage() {
     const deleteCurrentProject = useCallback(() => {
         deleteProjects([projectId]);
         cleanupAssetImages();
-        navigate("/canvas");
-    }, [cleanupAssetImages, deleteProjects, navigate, projectId]);
+        navigate(projectLibraryPath);
+    }, [cleanupAssetImages, deleteProjects, navigate, projectId, projectLibraryPath]);
 
     const exportCurrentProject = useCallback(async () => {
         const project = useCanvasStore.getState().projects.find((item) => item.id === projectId);
@@ -3581,7 +3583,7 @@ function InfiniteCanvasPage() {
                     canUndo={historyState.canUndo}
                     canRedo={historyState.canRedo}
                     onHome={() => navigate("/")}
-                    onProjects={() => navigate("/canvas")}
+                    onProjects={() => navigate(projectLibraryPath)}
                     onCreateProject={createAndOpenProject}
                     onDeleteProject={deleteCurrentProject}
                     onExportProject={exportCurrentProject}

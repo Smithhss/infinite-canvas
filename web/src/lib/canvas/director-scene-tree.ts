@@ -109,6 +109,18 @@ export function getAvailableDirectorSceneNodeParents(sceneNodes: DirectorSceneNo
     return sceneNodes.filter((node) => !blocked.has(node.id));
 }
 
+export function isDirectorSceneNodeVisible(node: DirectorSceneNode, sceneNodes: DirectorSceneNode[]) {
+    const nodes = new Map(sceneNodes.map((item) => [item.id, item]));
+    const visited = new Set<string>();
+    let current: DirectorSceneNode | undefined = node;
+    while (current) {
+        if (!current.visible || visited.has(current.id)) return false;
+        visited.add(current.id);
+        current = current.parentId ? nodes.get(current.parentId) : undefined;
+    }
+    return true;
+}
+
 function objectName(object: DirectorObject, index: number) {
     if (object.name) return object.name;
     return object.kind === "box" ? `Cube ${index + 1}` : `${object.kind[0].toUpperCase()}${object.kind.slice(1)} ${index + 1}`;

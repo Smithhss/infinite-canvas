@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { createDirectorProject, normalizeDirectorProject } from "../src/lib/canvas/director-project";
-import { DIRECTOR_MAX_TREE_DEPTH, buildDirectorSceneTree, getAvailableDirectorSceneNodeParents } from "../src/lib/canvas/director-scene-tree";
+import { DIRECTOR_MAX_TREE_DEPTH, buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible } from "../src/lib/canvas/director-scene-tree";
 
 test("builds camera, grouped scene nodes, nested path nodes and objects", () => {
     const project = normalizeDirectorProject({
@@ -84,4 +84,22 @@ test("excludes a scene node and its descendants from parent choices", () => {
     });
 
     expect(getAvailableDirectorSceneNodeParents(project.sceneNodes, "child").map((node) => node.id)).toEqual(["root", "sibling"]);
+});
+
+test("scene-node visibility inherits from every parent", () => {
+    const nodes = normalizeDirectorProject({
+        sceneNodes: [
+            { id: "group-a", name: "A", kind: "group", visible: true },
+            { id: "group-b", name: "B", kind: "group", parentId: "group-a", visible: true },
+            { id: "asset", name: "Asset", kind: "asset", parentId: "group-b", asset: { fileName: "model.glb", byteSize: 1024 } },
+        ],
+    }).sceneNodes;
+    const asset = nodes[2];
+
+    expect(isDirectorSceneNodeVisible(asset, nodes)).toBe(true);
+    nodes[0].visible = false;
+    expect(isDirectorSceneNodeVisible(asset, nodes)).toBe(false);
+    nodes[0].visible = true;
+    nodes[2].visible = false;
+    expect(isDirectorSceneNodeVisible(asset, nodes)).toBe(false);
 });

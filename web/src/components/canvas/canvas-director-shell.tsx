@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, ColorPicker, Input, InputNumber, Modal, Select, Slider, Switch, theme as antdTheme } from "antd";
-import { Box, Camera, Circle, Cylinder, Folder, ImagePlus, Lightbulb, MapPin, Plus, RotateCcw, Route, Save, Trash2, Triangle, Upload } from "lucide-react";
+import { Box, Camera, Circle, Cylinder, EyeOff, Folder, ImagePlus, Lightbulb, Lock, MapPin, Plus, RotateCcw, Route, Save, Trash2, Triangle, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Group, Mesh, Object3D, Scene } from "three";
 
@@ -26,7 +26,7 @@ import {
     type DirectorSceneNode,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
-import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
+import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, isDirectorSceneNodeVisible, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { MAX_PANORAMA_SOURCE_BYTES, normalizePanoramaSource } from "@/lib/canvas/panorama-source";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { getMediaBlob, uploadMediaFile } from "@/services/file-storage";
@@ -194,7 +194,7 @@ export function CanvasDirectorShell({
                         THREE.MathUtils.degToRad(node.transform.rotation.z),
                     );
                     object.scale.set(node.transform.scale.x, node.transform.scale.y, node.transform.scale.z);
-                    object.visible = isSceneNodeVisible(node, latestSceneNodes);
+                    object.visible = isDirectorSceneNodeVisible(node, latestSceneNodes);
                 };
                 const removeLoadedAsset = (nodeId: string) => {
                     const loaded = loadedAssets.get(nodeId);
@@ -446,7 +446,7 @@ export function CanvasDirectorShell({
     };
 
     const updateSelectedSceneNode = (patch: Partial<DirectorSceneNode>) => {
-        if (!selectedSceneNodeId) return;
+        if (!selectedSceneNode || (selectedSceneNode.locked && patch.locked !== false)) return;
         setProject((current) => ({
             ...current,
             sceneNodes: current.sceneNodes.map((item) => (item.id === selectedSceneNodeId ? { ...item, ...patch } : item)),
@@ -470,7 +470,7 @@ export function CanvasDirectorShell({
     };
 
     const removeSelectedSceneNode = () => {
-        if (!selectedSceneNode) return;
+        if (!selectedSceneNode || selectedSceneNode.locked) return;
         const nodeId = selectedSceneNode.id;
         const parentId = selectedSceneNode.parentId;
         setProject((current) => ({
@@ -688,10 +688,13 @@ export function CanvasDirectorShell({
                                         setSelectedObjectId(null);
                                     }
                                 };
+                                const sceneNode = entry.sceneNodeId ? project.sceneNodes.find((item) => item.id === entry.sceneNodeId) : null;
                                 const content = (
                                     <>
                                         <Icon className="size-3.5 shrink-0 opacity-55" />
-                                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                                        <span className={`min-w-0 flex-1 truncate ${sceneNode && !isDirectorSceneNodeVisible(sceneNode, project.sceneNodes) ? "opacity-40" : ""}`}>{label}</span>
+                                        {sceneNode && !sceneNode.visible ? <EyeOff className="size-3 shrink-0 opacity-35" /> : null}
+                                        {sceneNode?.locked ? <Lock className="size-3 shrink-0 opacity-35" /> : null}
                                     </>
                                 );
                                 return selectable ? (
@@ -829,7 +832,7 @@ export function CanvasDirectorShell({
                                     </div>
                                     <div className="mt-1 truncate text-xs opacity-45">{selectedSceneNode.asset?.fileName || selectedSceneNode.id}</div>
                                 </div>
-                                <Button danger type="text" icon={<Trash2 className="size-4" />} onClick={removeSelectedSceneNode}>
+                                <Button danger type="text" disabled={selectedSceneNode.locked} icon={<Trash2 className="size-4" />} onClick={removeSelectedSceneNode}>
                                     {t("common.delete")}
                                 </Button>
                             </div>
@@ -840,11 +843,23 @@ export function CanvasDirectorShell({
                                     {assetErrors[selectedSceneNode.id] ? <div className="mt-1 text-red-500 opacity-100">{t("canvas.director.glbLoadFailed")}</div> : null}
                                 </div>
                             ) : null}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2" style={{ borderColor: canvasTheme.node.stroke }}>
+                                    <span className="text-[11px] opacity-55">{t("canvas.director.sceneNodeVisible")}</span>
+                                    <Switch size="small" disabled={selectedSceneNode.locked} checked={selectedSceneNode.visible} onChange={(visible) => updateSelectedSceneNode({ visible })} />
+                                </div>
+                                <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2" style={{ borderColor: canvasTheme.node.stroke }}>
+                                    <span className="text-[11px] opacity-55">{t("canvas.director.sceneNodeLocked")}</span>
+                                    <Switch size="small" checked={selectedSceneNode.locked} onChange={(locked) => updateSelectedSceneNode({ locked })} />
+                                </div>
+                            </div>
+                            {selectedSceneNode.locked ? <div className="text-[11px] leading-5 opacity-45">{t("canvas.director.sceneNodeLockedHint")}</div> : null}
                             <div>
                                 <div className="mb-2 text-xs font-medium opacity-60">{t("canvas.director.sceneNodeName")}</div>
                                 <Input
                                     value={selectedSceneNode.name}
                                     maxLength={60}
+                                    disabled={selectedSceneNode.locked}
                                     onChange={(event) => updateSelectedSceneNode({ name: event.target.value })}
                                     onBlur={() => {
                                         if (selectedSceneNode.name.trim()) {
@@ -861,6 +876,7 @@ export function CanvasDirectorShell({
                                 <Select
                                     className="w-full"
                                     value={selectedSceneNode.parentId ?? ""}
+                                    disabled={selectedSceneNode.locked}
                                     options={[
                                         { value: "", label: t("canvas.director.sceneNodeRoot") },
                                         ...availableSceneParents.map((node) => ({ value: node.id, label: node.name })),
@@ -887,6 +903,7 @@ export function CanvasDirectorShell({
                                                         max={group === "scale" ? 100 : group === "rotation" ? 360 : axis === "y" ? 16 : 24}
                                                         step={group === "rotation" ? 1 : 0.1}
                                                         value={selectedSceneNode.transform[group][axis]}
+                                                        disabled={selectedSceneNode.locked}
                                                         onChange={(value) => updateSelectedSceneTransform(group, axis, value)}
                                                     />
                                                 </div>
@@ -939,18 +956,6 @@ function defaultSceneNodeName(node: DirectorSceneNode, index: number, t: (key: s
     return node.kind === "group"
         ? t("canvas.director.defaultSceneGroupName", { count: index })
         : t("canvas.director.defaultSceneNodeName", { count: index });
-}
-
-function isSceneNodeVisible(node: DirectorSceneNode, sceneNodes: DirectorSceneNode[]) {
-    const nodes = new Map(sceneNodes.map((item) => [item.id, item]));
-    const visited = new Set<string>();
-    let current: DirectorSceneNode | undefined = node;
-    while (current) {
-        if (!current.visible || visited.has(current.id)) return false;
-        visited.add(current.id);
-        current = current.parentId ? nodes.get(current.parentId) : undefined;
-    }
-    return true;
 }
 
 function findDirectorSelection(object: Object3D) {

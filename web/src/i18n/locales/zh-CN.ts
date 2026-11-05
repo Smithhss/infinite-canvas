@@ -866,6 +866,11 @@ export default {
         localStorage: {
             title: "IndexedDB 存储使用情况",
             description: "查看 Infinite Canvas 在浏览器中保存的数据量，并按对象仓库统计内容体积。",
+            namespaceStatus: "存储命名空间：{{namespace}} · {{database}}",
+            namespaceCurrent: "新版",
+            namespaceLegacy: "旧版",
+            legacyFallback: "新命名空间迁移未完成，当前继续使用旧数据；旧库未被删除。",
+            legacyOverride: "当前通过手动覆盖使用旧版数据。",
             indexedDbUsage: "IndexedDB 占用",
             siteUsage: "站点总占用",
             quota: "可用配额",
@@ -878,7 +883,7 @@ export default {
             records: "{{count}} 条",
             refresh: "刷新统计",
             readFailed: "读取本地存储失败",
-            stores: { appState: "应用状态", images: "图片文件", imagePreviews: "图片缩略图", media: "音视频文件", imageLogs: "生图记录", videoLogs: "视频记录", agentMessages: "Agent 消息", promptCache: "提示词缓存" },
+            stores: { appState: "应用状态", images: "图片文件", imagePreviews: "图片缩略图", media: "音视频文件", imageLogs: "生图记录", videoLogs: "视频记录", agentMessages: "Agent 消息", agentMemory: "Agent 记忆", agentSkillFavorites: "Skill 收藏", promptCache: "提示词缓存", migrationMeta: "迁移校验" },
         },
         promptSources: {
             add: "新增来源",

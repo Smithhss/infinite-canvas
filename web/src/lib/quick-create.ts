@@ -1,3 +1,5 @@
+import { appSessionStorageKey } from "@/lib/storage-namespace";
+
 export type QuickCreateMode = "image" | "video";
 
 export type QuickCreateDraft = {
@@ -8,7 +10,7 @@ export type QuickCreateDraft = {
 
 type QuickCreateStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-const QUICK_CREATE_STORAGE_KEY = "infinite-canvas:quick-create";
+const QUICK_CREATE_STORAGE_KEY = appSessionStorageKey("quick-create");
 const MAX_PROMPT_LENGTH = 600;
 const MAX_MODEL_LENGTH = 160;
 const INVALID_TEXT_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;

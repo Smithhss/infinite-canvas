@@ -8,6 +8,7 @@ import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { getShellCreateNavigation, getShellToolNavigation, isShellNavigationActive, shellPrimaryNavigation, withShellFeatureFlags, type ShellNavigationAction, type ShellNavigationItem } from "@/components/layout/navigation-groups";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
 import { isFeatureEnabled } from "@/constant/feature-flags";
+import { readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 import { cn } from "@/lib/utils";
 import { useAgentStore } from "@/stores/use-agent-store";
 
@@ -22,11 +23,11 @@ export function AppSidebar({ onOpenPlugins }: AppSidebarProps) {
     const panelOpen = useAgentStore((state) => state.panelOpen);
     const togglePanel = useAgentStore((state) => state.togglePanel);
     const agentSkillHubEnabled = isFeatureEnabled("agentSkillHub");
-    const [collapsed, setCollapsed] = useState(() => localStorage.getItem("libtv-sidebar-collapsed") === "1");
+    const [collapsed, setCollapsed] = useState(() => readAppStorageItem("libtv-sidebar-collapsed") === "1");
     const immersiveRoute = /^\/canvas\/[^/]+/.test(pathname);
 
     useEffect(() => {
-        localStorage.setItem("libtv-sidebar-collapsed", collapsed ? "1" : "0");
+        writeAppStorageItem("libtv-sidebar-collapsed", collapsed ? "1" : "0");
     }, [collapsed]);
 
     if (immersiveRoute) return null;

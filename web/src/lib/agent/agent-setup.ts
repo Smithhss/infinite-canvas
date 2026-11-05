@@ -1,4 +1,5 @@
 import type { AgentConversationState } from "@/stores/use-agent-store";
+import { readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 
 export const AGENT_PLUGIN_DETECTED_STORAGE_KEY = "canvas-agent-plugin-detected";
 
@@ -18,11 +19,11 @@ type AgentSetupInput = {
 
 export function readAgentPluginDetected() {
     if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(AGENT_PLUGIN_DETECTED_STORAGE_KEY) === "1";
+    return readAppStorageItem(AGENT_PLUGIN_DETECTED_STORAGE_KEY) === "1";
 }
 
 export function rememberAgentPluginDetected() {
-    if (typeof window !== "undefined") window.localStorage.setItem(AGENT_PLUGIN_DETECTED_STORAGE_KEY, "1");
+    if (typeof window !== "undefined") writeAppStorageItem(AGENT_PLUGIN_DETECTED_STORAGE_KEY, "1");
 }
 
 export function resolveAgentSetupPhase({ connected, enabled, connectError, conversationStatus, mcpStatuses, pluginDetected }: AgentSetupInput): AgentSetupPhase {

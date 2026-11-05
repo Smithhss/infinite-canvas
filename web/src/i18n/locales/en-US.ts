@@ -866,6 +866,11 @@ export default {
         localStorage: {
             title: "IndexedDB storage usage",
             description: "View browser data saved by Infinite Canvas, grouped by object store.",
+            namespaceStatus: "Storage namespace: {{namespace}} · {{database}}",
+            namespaceCurrent: "current",
+            namespaceLegacy: "legacy",
+            legacyFallback: "The new namespace migration did not complete, so the legacy data remains active. The old database was not deleted.",
+            legacyOverride: "The legacy namespace is active through the manual override.",
             indexedDbUsage: "IndexedDB usage",
             siteUsage: "Total site usage",
             quota: "Available quota",
@@ -878,7 +883,7 @@ export default {
             records: "{{count}} records",
             refresh: "Refresh usage",
             readFailed: "Failed to read local storage",
-            stores: { appState: "App state", images: "Image files", imagePreviews: "Image thumbnails", media: "Audio and video files", imageLogs: "Image history", videoLogs: "Video history", agentMessages: "Agent messages", promptCache: "Prompt cache" },
+            stores: { appState: "App state", images: "Image files", imagePreviews: "Image thumbnails", media: "Audio and video files", imageLogs: "Image history", videoLogs: "Video history", agentMessages: "Agent messages", agentMemory: "Agent memory", agentSkillFavorites: "Skill favorites", promptCache: "Prompt cache", migrationMeta: "Migration verification" },
         },
         promptSources: {
             add: "Add source",

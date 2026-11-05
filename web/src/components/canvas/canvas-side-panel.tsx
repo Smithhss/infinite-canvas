@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { exportCanvasNodes } from "@/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { writeAppStorageItem } from "@/lib/storage-namespace";
 import { cn } from "@/lib/utils";
 import { PromptDetailDialog } from "@/pages/prompts/components/prompt-detail-dialog";
 import { fetchSourcePrompts, type Prompt } from "@/services/api/prompts";
@@ -72,7 +73,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
             setWidth(nextWidth);
         };
         const onUp = () => {
-            localStorage.setItem("canvas-side-panel-width", String(nextWidth));
+            writeAppStorageItem("canvas-side-panel-width", String(nextWidth));
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
             setResizing(false);

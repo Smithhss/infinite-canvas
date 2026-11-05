@@ -1,13 +1,13 @@
-import localforage from "localforage";
 import { create } from "zustand";
 
 import { agentSkillFavoriteSnapshotsEqual, agentSkillKey, mergeAgentSkillFavoriteSnapshots, parseAgentSkillFavoriteSnapshot, type AgentSkillFavoriteSnapshot } from "@/lib/agent/agent-skill-catalog";
+import { createAppStorageInstance } from "@/lib/localforage-storage";
 import type { AgentSkillSummary } from "@/services/api/canvas-agent";
 
 const STORAGE_KEY = "favorites";
 const CHANNEL_NAME = "infinite-canvas-agent-skill-favorites";
 const WRITE_LOCK_NAME = "infinite-canvas-agent-skill-favorites-write";
-const storage = localforage.createInstance({ name: "infinite-canvas", storeName: "agent_skill_favorites" });
+const storage = createAppStorageInstance("agent_skill_favorites");
 
 type FavoriteStore = AgentSkillFavoriteSnapshot & {
     loaded: boolean;

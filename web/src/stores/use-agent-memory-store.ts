@@ -1,4 +1,3 @@
-import localforage from "localforage";
 import { create } from "zustand";
 
 import {
@@ -8,10 +7,11 @@ import {
     type AgentMemoryEntry,
     type AgentMemorySnapshot,
 } from "@/lib/agent/agent-memory";
+import { createAppStorageInstance } from "@/lib/localforage-storage";
 
 const STORAGE_PREFIX = "workspace:";
 const CHANNEL_NAME = "infinite-canvas-agent-memory";
-const storage = localforage.createInstance({ name: "infinite-canvas", storeName: "agent_memory" });
+const storage = createAppStorageInstance("agent_memory");
 const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(CHANNEL_NAME);
 
 type AgentMemoryStore = AgentMemorySnapshot & {

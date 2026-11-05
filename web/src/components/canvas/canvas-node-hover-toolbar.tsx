@@ -7,6 +7,7 @@ import { isFeatureEnabled } from "@/constant/feature-flags";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
+import { readAppStorageItem, removeAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
@@ -95,14 +96,14 @@ export function CanvasNodeHoverToolbar({
 
     useEffect(() => {
         try {
-            const stored = window.localStorage.getItem(IMAGE_QUICK_TOOLS_STORAGE_KEY);
+            const stored = readAppStorageItem(IMAGE_QUICK_TOOLS_STORAGE_KEY);
             if (!stored) return;
             const parsed = JSON.parse(stored) as unknown;
             const config = readImageQuickToolsConfig(parsed);
             setQuickImageToolIds(config.ids);
             setShowImageToolLabels(config.showLabels);
         } catch {
-            window.localStorage.removeItem(IMAGE_QUICK_TOOLS_STORAGE_KEY);
+            removeAppStorageItem(IMAGE_QUICK_TOOLS_STORAGE_KEY);
         }
     }, []);
 
@@ -228,7 +229,7 @@ export function CanvasNodeHoverToolbar({
         const config = { ids: draftImageToolIds, showLabels: draftShowImageToolLabels };
         setQuickImageToolIds(config.ids);
         setShowImageToolLabels(config.showLabels);
-        window.localStorage.setItem(IMAGE_QUICK_TOOLS_STORAGE_KEY, JSON.stringify(config));
+        writeAppStorageItem(IMAGE_QUICK_TOOLS_STORAGE_KEY, JSON.stringify(config));
         closeImageToolSettings();
     };
 

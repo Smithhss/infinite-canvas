@@ -6,6 +6,7 @@ import { useLocation } from "react-router-dom";
 import { LocalAgentPanel } from "./local-agent-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { shouldOverlayAgentPanel } from "@/lib/canvas/canvas-chrome";
+import { writeAppStorageItem } from "@/lib/storage-namespace";
 import { cn } from "@/lib/utils";
 import { CANVAS_AGENT_PANEL_MOTION_MS, useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasSidePanelStore } from "@/stores/use-canvas-side-panel-store";
@@ -49,7 +50,7 @@ export function AgentPanel() {
             setAgentState({ width: nextWidth });
         };
         const onUp = () => {
-            localStorage.setItem("canvas-agent-panel-width", String(nextWidth));
+            writeAppStorageItem("canvas-agent-panel-width", String(nextWidth));
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
             setResizing(false);

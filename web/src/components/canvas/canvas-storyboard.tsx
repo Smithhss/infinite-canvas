@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { buildStoryboardProjection, filterStoryboardItems, type StoryboardItem } from "@/lib/canvas/storyboard-projection";
+import { readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 import { cn } from "@/lib/utils";
 import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -24,7 +25,7 @@ const COLLAPSED_KEY_PREFIX = "canvas-storyboard-collapsed:";
 
 function readCollapsed(projectId: string): Record<ModuleKey, boolean> {
     try {
-        const saved = JSON.parse(localStorage.getItem(`${COLLAPSED_KEY_PREFIX}${projectId}`) || "{}") as Partial<Record<ModuleKey, boolean>>;
+        const saved = JSON.parse(readAppStorageItem(`${COLLAPSED_KEY_PREFIX}${projectId}`) || "{}") as Partial<Record<ModuleKey, boolean>>;
         return { text: Boolean(saved.text), image: Boolean(saved.image), video: Boolean(saved.video) };
     } catch {
         return { text: false, image: false, video: false };
@@ -60,7 +61,7 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
     const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
-        localStorage.setItem(`${COLLAPSED_KEY_PREFIX}${projectId}`, JSON.stringify(collapsed));
+        writeAppStorageItem(`${COLLAPSED_KEY_PREFIX}${projectId}`, JSON.stringify(collapsed));
     }, [collapsed, projectId]);
 
     const items = useMemo(

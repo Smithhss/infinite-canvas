@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 
-import { isShellNavigationActive, shellCreateNavigation, shellPrimaryNavigation, withShellFeatureFlags } from "../src/components/layout/navigation-groups";
+import { getShellCreateNavigation, isShellNavigationActive, shellPrimaryNavigation, withShellFeatureFlags } from "../src/components/layout/navigation-groups";
 
 test("shell navigation keeps home and projects distinct", () => {
     const home = shellPrimaryNavigation.find((item) => item.key === "home")!;
     const projects = shellPrimaryNavigation.find((item) => item.key === "projects")!;
-    const newCanvas = shellCreateNavigation.find((item) => item.key === "new-canvas")!;
+    const newCanvas = getShellCreateNavigation().find((item) => item.key === "new-canvas")!;
 
     expect(isShellNavigationActive(home, "/", "")).toBe(true);
     expect(isShellNavigationActive(home, "/canvas", "")).toBe(false);
@@ -30,7 +30,7 @@ test("plugin hub is active only on its standalone route", () => {
 });
 
 test("agent hub is active only on its standalone route", () => {
-    const agent = shellCreateNavigation.find((item) => item.key === "agent")!;
+    const agent = getShellCreateNavigation().find((item) => item.key === "agent")!;
     expect(isShellNavigationActive(agent, "/agent", "?ff_agentSkillHub=1")).toBe(true);
     expect(isShellNavigationActive(agent, "/agent/archive", "?ff_agentSkillHub=1")).toBe(false);
     expect(isShellNavigationActive(agent, "/", "?ff_agentSkillHub=1")).toBe(false);

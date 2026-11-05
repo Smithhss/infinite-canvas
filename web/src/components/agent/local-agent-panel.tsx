@@ -727,7 +727,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
         const text = prompt.trim();
         const files = attachments;
         const skillState = useAgentSkillStore.getState();
-        const selectedSkill = skillState.selectedSkill;
+        const selectedSkills = skillState.selectedSkills;
         const selectedSkillRevision = skillState.selectionRevision;
         const currentState = useAgentStore.getState();
         const claudeMode = effectiveAgentProvider === "claude";
@@ -773,23 +773,23 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             const image = referenceImages.find((item) => item.id === `canvas:${nodeId}`);
             return { nodeId, label, title, kind, previewUrl: image ? (await createMessageAttachmentMetadata(image)).url : previewUrl, text };
         }));
-        const messageSkill = selectedSkill ? { name: selectedSkill.name, path: selectedSkill.path, displayName: selectedSkill.interface?.displayName || undefined } : undefined;
+        const messageSkills = selectedSkills.map((skill) => ({ name: skill.name, path: skill.path, displayName: skill.interface?.displayName || undefined }));
         loadThreadsSequenceRef.current += 1;
         const currentBeforeSend = useAgentStore.getState();
         const requestThreadId = currentBeforeSend.activeThreadId;
         setAgentState({ prompt: "", attachments: [], canvasReferences: [], activity: rt("sending"), sending: true, loadingThreads: false, activeTurnId: "", messages: currentBeforeSend.messages });
-        addMessage({ id: messageId, itemId: "synthetic:user", clientMessageId: messageId, threadId: requestThreadId, turnId: "", role: "user", text: userText, attachments: files, canvasReferences: messageReferences, skill: messageSkill });
+        addMessage({ id: messageId, itemId: "synthetic:user", clientMessageId: messageId, threadId: requestThreadId, turnId: "", role: "user", text: userText, attachments: files, canvasReferences: messageReferences, skill: messageSkills[0], skills: messageSkills });
         let threadId = requestThreadId;
         try {
             const messageAttachments = await Promise.all(files.map(createMessageAttachmentMetadata));
             const messageMetadata = {
                 ...(messageAttachments.length ? { attachments: messageAttachments } : {}),
                 ...(messageReferences.length ? { canvasReferences: messageReferences } : {}),
-                ...(messageSkill ? { skill: messageSkill } : {}),
+                ...(messageSkills.length ? { skill: messageSkills[0], skills: messageSkills } : {}),
             };
             const modelName = models.find((item) => item.model === model)?.displayName || model || rt("defaultModel");
             const effortName = claudeMode ? "" : reasoningEffort ? i18n.t(`agent.composer.effort.${reasoningEffort}`) : rt("defaultEffort");
-            addEventLog(rt("sendTask"), `${modelName}${effortName ? ` · ${effortName}` : ""}${selectedSkill ? ` · Skill ${selectedSkill.name}` : ""}${files.length ? ` · ${rt("attachmentCount", { count: files.length })}` : ""}${canvasReferences.length ? ` · ${rt("canvasReferenceCount", { count: canvasReferences.length })}` : ""} · ${compactText(text) || rt(canvasReferences.length ? "canvasReferencesOnly" : "attachmentsOnly")}`);
+            addEventLog(rt("sendTask"), `${modelName}${effortName ? ` · ${effortName}` : ""}${messageSkills.length ? ` · Skill ${messageSkills.map((skill) => skill.name).join(", ")}` : ""}${files.length ? ` · ${rt("attachmentCount", { count: files.length })}` : ""}${canvasReferences.length ? ` · ${rt("canvasReferenceCount", { count: canvasReferences.length })}` : ""} · ${compactText(text) || rt(canvasReferences.length ? "canvasReferencesOnly" : "attachmentsOnly")}`);
             if (claudeMode) {
                 const accepted = await fetchAgentJson<AgentClaudeTurnResponse>(endpoint, token, "/agent/claude/turn", {
                     method: "POST",
@@ -802,7 +802,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         messageId,
                         permissionMode: effectivePermissionMode,
                         model: model || undefined,
-                        skill: selectedSkill ? { name: selectedSkill.name, path: selectedSkill.path } : undefined,
+                        skill: messageSkills[0],
+                        skills: messageSkills,
                         attachments: requestFiles.map(({ id, name, type, size, width, height, dataUrl }) => ({ id, name, type, size, width, height, dataUrl })),
                         messageMetadata,
                     }),
@@ -833,7 +834,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         permissionMode,
                         model,
                         effort: reasoningEffort,
-                        skill: selectedSkill ? { name: selectedSkill.name, path: selectedSkill.path } : undefined,
+                        skill: messageSkills[0],
+                        skills: messageSkills,
                         attachments: requestFiles.map(({ id, name, type, size, width, height, dataUrl }) => ({ id, name, type, size, width, height, dataUrl })),
                         messageMetadata,
                     }),
@@ -841,7 +843,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 threadId = accepted.threadId || threadId;
             }
             if (!threadId) throw new Error(rt("startConversationFailed"));
-            if (selectedSkill) clearSkillSelection(selectedSkillRevision);
+            if (messageSkills.length) clearSkillSelection(selectedSkillRevision);
             files.forEach((item) => {
                 URL.revokeObjectURL(item.url);
                 attachmentUrlsRef.current.delete(item.url);

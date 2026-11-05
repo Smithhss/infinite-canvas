@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Lock, Music2, Puzzle, RefreshCw, Star, Trash2, Video } from "lucide-react";
+import { ChevronRight, Copy, Download, Group, Image as ImageIcon, ImageUp, Lock, Music2, Plus, Puzzle, RefreshCw, Scan, Star, Trash2, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -748,11 +748,17 @@ function ImageNodeContent(props: NodeContentRendererProps) {
 function EmptyImageContent({ theme }: NodeContentRendererProps) {
     const { t } = useTranslation();
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.placeholder }}>
-            <div className="flex size-14 items-center justify-center rounded-2xl" style={{ background: theme.toolbar.activeBg }}>
-                <ImageIcon className="size-6 opacity-30" />
+        <div className="relative flex h-full w-full flex-col px-5 py-5" style={{ color: theme.node.placeholder }}>
+            <div className="flex flex-1 items-center justify-center">
+                <ImageIcon className="size-12 opacity-20" strokeWidth={1.7} />
             </div>
-            <span className="text-[10px] tracking-[0.18em] opacity-50">{t("canvas.node.emptyImage")}</span>
+            <div className="space-y-2 pb-1">
+                <span className="block text-[11px] opacity-55">{t("canvas.node.try")}</span>
+                <div className="flex items-center gap-5 text-xs opacity-75">
+                    <span className="inline-flex items-center gap-2"><ImageUp className="size-4" />{t("canvas.node.imageToImage")}</span>
+                    <span className="inline-flex items-center gap-2"><Scan className="size-4" />{t("canvas.node.imageHd")}</span>
+                </div>
+            </div>
         </div>
     );
 }
@@ -1120,7 +1126,9 @@ function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "r
             } ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
             onMouseDown={onMouseDown}
         >
-            <div className="size-3 rounded-full border-2 transition-all hover:scale-125" style={{ background: theme.node.panel, borderColor: theme.node.muted }} />
+            <div className="grid size-9 place-items-center rounded-full border transition-transform hover:scale-105" style={{ background: theme.node.panel, borderColor: theme.node.muted, color: theme.node.text, boxShadow: "0 6px 18px rgba(0,0,0,.18)" }}>
+                <Plus className="size-4" />
+            </div>
         </div>
     );
 }

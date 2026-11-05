@@ -38,7 +38,7 @@ function AgentSkillHubPage() {
     const provider = activeAgentProvider(useAgentStore((state) => state.agentProvider));
     const connectError = useAgentStore((state) => state.connectError);
     const skills = useAgentSkillStore((state) => state.skills);
-    const selectedSkill = useAgentSkillStore((state) => state.selectedSkill);
+    const selectedSkills = useAgentSkillStore((state) => state.selectedSkills);
     const loading = useAgentSkillStore((state) => state.loading);
     const loaded = useAgentSkillStore((state) => state.loaded);
     const errors = useAgentSkillStore((state) => state.errors);
@@ -77,7 +77,10 @@ function AgentSkillHubPage() {
             message.warning(t("agentHub.skillUnavailable"));
             return;
         }
-        useAgentSkillStore.getState().selectSkill(current);
+        const skillState = useAgentSkillStore.getState();
+        const selected = skillState.selectedSkills.some((item) => agentSkillKey(item) === agentSkillKey(current));
+        if (selected) skillState.removeSkill(current);
+        else skillState.selectSkill(current);
         useAgentStore.getState().setAgentState({ activeTab: "chat" });
         useAgentStore.getState().openPanel();
     };
@@ -256,7 +259,7 @@ function AgentSkillHubPage() {
                                         key={agentSkillKey(skill)}
                                         skill={skill}
                                         provider={provider}
-                                        selected={Boolean(selectedSkill && agentSkillKey(selectedSkill) === agentSkillKey(skill))}
+                                        selected={selectedSkills.some((item) => agentSkillKey(item) === agentSkillKey(skill))}
                                         favorite={favoriteKeys.includes(agentSkillKey(skill))}
                                         favoriteReady={favoritesLoaded}
                                         onToggleFavorite={() => toggleFavorite(skill)}

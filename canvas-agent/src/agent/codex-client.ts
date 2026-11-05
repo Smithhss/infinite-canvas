@@ -218,7 +218,7 @@ export class CodexAppClient {
     }
 
     /** 启动一个 Codex turn 并等待完成通知。 */
-    async startTurn(threadId: string, prompt: string, images: string[], permissionMode: AgentPermissionMode, model?: string, effort?: CodexReasoningEffort, onTurn?: (turnId: string) => void, skill?: CodexSkillSelector, messageText?: string, outputSchema?: JsonRecord) {
+    async startTurn(threadId: string, prompt: string, images: string[], permissionMode: AgentPermissionMode, model?: string, effort?: CodexReasoningEffort, onTurn?: (turnId: string) => void, skill?: CodexSkillSelector | CodexSkillSelector[], messageText?: string, outputSchema?: JsonRecord) {
         this.preheatingThreadIds.delete(threadId);
         this.currentThreadId = threadId;
         this.currentTurnId = "";
@@ -814,13 +814,25 @@ function skillDraftTurnSettings() {
 }
 
 /** 将文本、本地图片和显式 Skill 转换为 Codex turn 输入。 */
-function codexInput(prompt: string, images: string[], skill?: CodexSkillSelector): CodexTurnInput[] {
-    const text = skill && !mentionsSkill(prompt, skill.name) ? `$${skill.name} ${prompt}` : prompt;
+function codexInput(prompt: string, images: string[], skill?: CodexSkillSelector | CodexSkillSelector[]): CodexTurnInput[] {
+    const skills = uniqueSkills(Array.isArray(skill) ? skill : skill ? [skill] : []);
+    const missing = skills.filter((item) => !mentionsSkill(prompt, item.name));
+    const text = missing.length ? `${missing.map((item) => `$${item.name}`).join(" ")} ${prompt}` : prompt;
     return [
         { type: "text", text, text_elements: [] },
         ...images.map<CodexTurnInput>((file) => ({ type: "localImage", path: file })),
-        ...(skill ? [{ type: "skill", ...skill } as CodexTurnInput] : []),
+        ...skills.map<CodexTurnInput>((item) => ({ type: "skill", ...item })),
     ];
+}
+
+function uniqueSkills(skills: CodexSkillSelector[]) {
+    const seen = new Set<string>();
+    return skills.filter((skill) => {
+        const key = `${skill.name}\u0000${skill.path}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 function mentionsSkill(prompt: string, name: string) {

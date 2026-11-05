@@ -98,6 +98,7 @@ export type AgentChatMessageItem = {
     attachments?: AgentChatAttachment[];
     canvasReferences?: AgentCanvasReference[];
     skill?: AgentSkillReference;
+    skills?: AgentSkillReference[];
     /** Present while the message is actively streaming; cleared on completion. */
     streamId?: string;
 };
@@ -127,7 +128,7 @@ export function AgentChatMessage({ item, theme, onRejectTool, onApproveTool }: {
                 style={{ color }}
             >
                 {isUser ? (
-                    <AgentUserMessageContent text={item.text} references={item.canvasReferences || []} skill={item.skill} theme={theme} />
+                    <AgentUserMessageContent text={item.text} references={item.canvasReferences || []} skills={item.skills?.length ? item.skills : item.skill ? [item.skill] : []} theme={theme} />
                 ) : (
                     <Streamdown {...streamdownProps()} animated={streamdownAnimation} isAnimating={!!item.streamId}>{item.text}</Streamdown>
                 )}
@@ -138,9 +139,9 @@ export function AgentChatMessage({ item, theme, onRejectTool, onApproveTool }: {
     );
 }
 
-function AgentUserMessageContent({ text, references, skill, theme }: { text: string; references: AgentCanvasReference[]; skill?: AgentSkillReference; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
-    const provider = skill?.path.startsWith("claude:") ? "claude" : "codex";
-    const tokens = parseAgentInlineTokens(text, references, skill, provider);
+function AgentUserMessageContent({ text, references, skills, theme }: { text: string; references: AgentCanvasReference[]; skills: AgentSkillReference[]; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
+    const provider = skills.some((skill) => skill.path.startsWith("claude:")) ? "claude" : "codex";
+    const tokens = parseAgentInlineTokens(text, references, skills, provider);
     return (
         <div className="whitespace-pre-wrap break-words">
             {tokens.map((token, index) => token.type === "text"

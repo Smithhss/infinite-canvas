@@ -27,7 +27,7 @@ type RunOptions = {
     sessionId?: string;
     model?: string;
     permissionMode?: AgentPermissionMode;
-    skill?: string;
+    skill?: string | string[];
     effort?: "low" | "medium" | "high" | "xhigh" | "max";
     messageId?: string;
     isClientActive?: () => boolean;
@@ -223,7 +223,11 @@ export class ClaudeSdkAdapter {
             if (!prompt.trim()) throw new Error("请输入任务内容");
             if (activeReservation.cancelled || !this.starting.has(activeReservation.token)) throw new Error("Claude 任务已停止");
             this.assertClientActive(options);
-            if (options.skill && !(await listProjectClaudeSkillNames(options.cwd)).includes(options.skill)) throw new Error("Claude Skill 不存在或不可用");
+            const skills = uniqueSkillNames(options.skill);
+            if (skills.length) {
+                const available = new Set(await listProjectClaudeSkillNames(options.cwd));
+                if (skills.some((name) => !available.has(name))) throw new Error("Claude Skill 不存在或不可用");
+            }
             if (activeReservation.cancelled || !this.starting.has(activeReservation.token)) throw new Error("Claude 任务已停止");
             this.assertClientActive(options);
             let activeQuery: ClaudeSdkQuery;
@@ -289,8 +293,8 @@ export class ClaudeSdkAdapter {
 
     private queryOptions(abort: AbortController, options: RunOptions, runId: string, emit: AgentEmit) {
         const permissionMode = options.permissionMode || "request";
-        const skill = options.skill?.trim();
-        const projectSkill = Boolean(skill);
+        const skills = uniqueSkillNames(options.skill);
+        const projectSkill = Boolean(skills.length);
         const mcpServer = this.mcpServer(permissionMode);
         const sdkPermissionMode = claudePermissionMode(permissionMode);
         const usePermissionCallback = sdkPermissionMode === "default" || sdkPermissionMode === "auto";
@@ -308,7 +312,7 @@ export class ClaudeSdkAdapter {
             mcpServers: { "infinite-canvas": mcpServer },
             allowedTools: sdkPermissionMode === "bypassPermissions" ? ["mcp__infinite-canvas__*", ...(projectSkill ? ["Skill"] : [])] : [],
             tools: projectSkill ? ["Skill"] : [],
-            skills: skill ? [skill] : [],
+            skills,
             ...(options.sessionId ? { resume: options.sessionId } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...(options.effort ? { effort: options.effort } : {}),
@@ -398,6 +402,11 @@ export class ClaudeSdkAdapter {
             run.options.onFinish?.();
         }
     }
+}
+
+function uniqueSkillNames(value?: string | string[]) {
+    const values = Array.isArray(value) ? value : value ? [value] : [];
+    return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
 }
 
 /** 创建只暴露画布工具的进程内 MCP Server。 */

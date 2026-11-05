@@ -213,10 +213,17 @@ function normalizeMetadata(value: unknown, allowAsset: boolean): AgentMessageMet
     const source = value as Record<string, unknown>;
     const attachments = normalizeList(source.attachments, 6, (item) => normalizeAttachment(item, allowAsset), "attachments");
     const canvasReferences = normalizeList(source.canvasReferences, 50, (item) => normalizeCanvasReference(item, allowAsset), "canvas references");
-    const skill = normalizeSkill(source.skill);
-    if (source.skill !== undefined && !skill) throw new Error("Message skill metadata is invalid.");
-    if (!attachments.length && !canvasReferences.length && !skill) return undefined;
-    return { ...(attachments.length ? { attachments } : {}), ...(canvasReferences.length ? { canvasReferences } : {}), ...(skill ? { skill } : {}) };
+    const legacySkill = normalizeSkill(source.skill);
+    if (source.skill !== undefined && !legacySkill) throw new Error("Message skill metadata is invalid.");
+    const skills = normalizeList(source.skills, 50, normalizeSkill, "skills");
+    if (legacySkill) skills.unshift(legacySkill);
+    const uniqueSkills = uniqueSkillList(skills);
+    if (!attachments.length && !canvasReferences.length && !uniqueSkills.length) return undefined;
+    return {
+        ...(attachments.length ? { attachments } : {}),
+        ...(canvasReferences.length ? { canvasReferences } : {}),
+        ...(uniqueSkills.length ? { skill: uniqueSkills[0], skills: uniqueSkills } : {}),
+    };
 }
 
 function normalizeList<T>(value: unknown, limit: number, normalize: (item: unknown) => T | undefined, label: string) {
@@ -261,6 +268,16 @@ function normalizeSkill(value: unknown): AgentSkillReference | undefined {
     return name && skillPath ? { name, path: skillPath, ...(displayName ? { displayName } : {}) } : undefined;
 }
 
+function uniqueSkillList(skills: AgentSkillReference[]) {
+    const seen = new Set<string>();
+    return skills.filter((skill) => {
+        const key = `${skill.name}\u0000${skill.path}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
 function numberFields(item: Record<string, unknown>) {
     const fields: Partial<Pick<AgentAttachmentDisplay, "type" | "size" | "width" | "height">> = {};
     const type = text(item.type, 200);
@@ -300,10 +317,11 @@ async function persistMetadataPreviews(directory: string, clientMessageId: strin
         ...item,
         ...(item.kind === "image" && item.previewUrl ? { previewUrl: await persistImagePreview(directory, clientMessageId, `reference:${item.nodeId}`, item.previewUrl) } : {}),
     })));
+    const skills = uniqueSkillList([...(metadata.skills || []), ...(metadata.skill ? [metadata.skill] : [])]);
     return {
         ...(attachments.length ? { attachments } : {}),
         ...(canvasReferences.length ? { canvasReferences } : {}),
-        ...(metadata.skill ? { skill: metadata.skill } : {}),
+        ...(skills.length ? { skill: skills[0], skills } : {}),
     };
 }
 

@@ -1,5 +1,6 @@
-import { Bot, GalleryVerticalEnd, Home, Images, Plus, Puzzle, type LucideIcon } from "lucide-react";
+import { Box, GalleryVerticalEnd, Home, Images, PanelsTopLeft, Puzzle, Sparkles, type LucideIcon } from "lucide-react";
 
+import { isFeatureEnabled } from "@/constant/feature-flags";
 import { isNavigationToolEnabled, navigationTools } from "@/constant/navigation-tools";
 
 export type ShellNavigationAction = "agent" | "plugins";
@@ -10,21 +11,25 @@ export type ShellNavigationItem = {
     icon: LucideIcon;
     to?: string;
     action?: ShellNavigationAction;
+    badgeKey?: string;
     exactPath?: boolean;
     exactSearch?: boolean;
 };
 
 export const shellPrimaryNavigation: ShellNavigationItem[] = [
-    { key: "home", labelKey: "canvas.home", icon: Home, to: "/", exactPath: true },
-    { key: "projects", labelKey: "navigation.canvas", icon: GalleryVerticalEnd, to: "/canvas", exactSearch: true },
-    { key: "assets", labelKey: "navigation.assets", icon: Images, to: "/assets" },
+    { key: "home", labelKey: "topNav.home", icon: Home, to: "/", exactPath: true },
+    { key: "projects", labelKey: "topNav.projects", icon: GalleryVerticalEnd, to: "/canvas", exactSearch: true },
+    { key: "assets", labelKey: "topNav.assets", icon: Images, to: "/assets" },
     { key: "plugins", labelKey: "topNav.plugins", icon: Puzzle, action: "plugins" },
 ];
 
-export const shellCreateNavigation: ShellNavigationItem[] = [
-    { key: "new-canvas", labelKey: "canvas.create", icon: Plus, to: "/canvas?mode=new" },
-    { key: "agent", labelKey: "topNav.creativeAgent", icon: Bot, action: "agent" },
-];
+export function getShellCreateNavigation(): ShellNavigationItem[] {
+    return [
+        { key: "new-canvas", labelKey: "topNav.infiniteCanvas", icon: PanelsTopLeft, to: "/canvas?mode=new" },
+        { key: "agent", labelKey: "topNav.creativeAgent", icon: Sparkles, action: "agent", badgeKey: "topNav.beta" },
+        ...(isFeatureEnabled("director3d") ? [{ key: "director-3d", labelKey: "topNav.threeDBox", icon: Box, to: "/canvas?mode=new&ff_director3d=1&openDirector=1" }] : []),
+    ];
+}
 
 const shellToolSlugs = ["image", "video", "prompts", "workflows", "config"] as const;
 

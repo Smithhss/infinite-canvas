@@ -35,7 +35,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
     const waiting = useAgentStore((state) => state.waiting);
     const setAgentState = useAgentStore((state) => state.setAgentState);
     const skills = useAgentSkillStore((state) => state.skills);
-    const selectedSkill = useAgentSkillStore((state) => state.selectedSkill);
+    const selectedSkills = useAgentSkillStore((state) => state.selectedSkills);
     const loading = useAgentSkillStore((state) => state.loading);
     const loaded = useAgentSkillStore((state) => state.loaded);
     const errors = useAgentSkillStore((state) => state.errors);
@@ -43,7 +43,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
     const generatingSource = useAgentSkillStore((state) => state.generatingSource);
     const loadSkills = useAgentSkillStore((state) => state.loadSkills);
     const selectSkill = useAgentSkillStore((state) => state.selectSkill);
-    const clearSelection = useAgentSkillStore((state) => state.clearSelection);
+    const removeSkill = useAgentSkillStore((state) => state.removeSkill);
     const setDraft = useAgentSkillStore((state) => state.setDraft);
     const setGeneratingSource = useAgentSkillStore((state) => state.setGeneratingSource);
     const [query, setQuery] = useState("");
@@ -103,7 +103,9 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
         form.resetFields();
     }, [connected, form]);
     const useSkill = (skill: AgentSkillSummary) => {
-        selectSkill(skill);
+        const selected = selectedSkills.some((item) => item.name === skill.name && item.path === skill.path);
+        if (selected) removeSkill(skill);
+        else selectSkill(skill);
         setAgentState({ activeTab: "chat" });
     };
     const generateDraft = async (source: SkillDraftSource) => {
@@ -208,7 +210,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
                     if (!response.data) throw new Error(t("agent.skillManager.contentMissing"));
                     await deleteCodexSkill(endpoint, token, skill.name, response.data.revision);
                     if (!connectionIsCurrent(connectionRevision)) return;
-                    if (selectedSkill?.name === skill.name && selectedSkill.path === skill.path) clearSelection();
+                    if (selectedSkills.some((item) => item.name === skill.name && item.path === skill.path)) removeSkill(skill);
                     await refresh();
                     if (!connectionIsCurrent(connectionRevision)) return;
                     message.success(t("agent.skillManager.deleted"));
@@ -232,7 +234,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
         try {
             await setCodexSkillEnabled(endpoint, token, skill, enabled);
             if (!connectionIsCurrent(connectionRevision)) return;
-            if (!enabled && selectedSkill?.name === skill.name && selectedSkill.path === skill.path) clearSelection();
+            if (!enabled && selectedSkills.some((item) => item.name === skill.name && item.path === skill.path)) removeSkill(skill);
             await refresh();
         } catch (error) {
             if (connectionIsCurrent(connectionRevision)) message.error(error instanceof Error ? error.message : t("agent.skillManager.statusFailed"));
@@ -330,7 +332,7 @@ export function AgentSkillsView({ clientId }: { clientId: string }) {
                 ) : filteredSkills.length ? (
                     <div className="divide-y" style={{ borderColor: theme.node.stroke }}>
                         {filteredSkills.map((skill) => {
-                            const selected = selectedSkill?.name === skill.name && selectedSkill.path === skill.path;
+                            const selected = selectedSkills.some((item) => item.name === skill.name && item.path === skill.path);
                             const busy = busySkill === skill.path;
                             return (
                                 <div key={`${skill.name}:${skill.path}`} className={`py-3 transition-opacity ${skill.enabled ? "" : "opacity-55"}`} style={{ borderColor: theme.node.stroke }}>

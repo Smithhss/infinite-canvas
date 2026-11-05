@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 
 import {
+    addScriptAsset,
     addScriptShot,
+    bindScriptAssetReference,
     buildScriptShotPrompt,
     composeAllScriptPrompts,
     createEmptyScriptV2,
@@ -10,14 +12,18 @@ import {
     insertScriptShot,
     moveScriptShotToTarget,
     normalizeScriptColumnVisibility,
+    normalizeScriptAssets,
     normalizeScriptFilters,
     normalizeScriptV2,
+    removeScriptAsset,
     removeScriptShot,
     restoreScriptPrompt,
+    scriptAssetAvailability,
     SCRIPT_PROMPT_MAX_LENGTH,
     SCRIPT_V2_SHOT_SIZES,
     scriptShotPromptStatus,
     scriptDurationSeconds,
+    syncScriptAssetsFromShots,
     updateScriptColumnVisibility,
     updateScriptFilters,
     updateScriptMeta,
@@ -196,4 +202,156 @@ test("composes local prompts and keeps restorable shot history", () => {
     expect(shot.promptHistory?.map((entry) => entry.version)).toEqual([2, 1]);
     expect(validateScriptPrompt("   ")).toEqual(["empty"]);
     expect(validateScriptPrompt("x".repeat(SCRIPT_PROMPT_MAX_LENGTH + 1))).toEqual(["tooLong"]);
+});
+
+test("normalizes local script assets and keeps names and ids stable", () => {
+    const assets = normalizeScriptAssets({
+        characters: [
+            { id: "same", name: " 林默 ", description: " 主角 ", referenceAssetId: " image-1 ", referenceTitle: " 林默立绘 ", status: "draft" },
+            { id: "same", name: "顾川" },
+            { id: "duplicate-name", name: "林默" },
+            { id: "", name: "阿九" },
+        ],
+        scenes: [{ id: "scene-1", name: "雨夜车站" }],
+        props: "invalid",
+    });
+
+    expect(assets.characters.map((asset) => asset.id)).toEqual(["same", "same-2", "asset-characters-4"]);
+    expect(assets.characters.map((asset) => asset.name)).toEqual(["林默", "顾川", "阿九"]);
+    expect(assets.characters[0]).toMatchObject({
+        description: "主角",
+        status: "ready",
+        referenceAssetId: "image-1",
+        referenceTitle: "林默立绘",
+    });
+    expect(assets.scenes).toHaveLength(1);
+    expect(assets.props).toEqual([]);
+
+    const script = normalizeScriptV2({
+        assets,
+        rows: [{ id: "shot-a", shotNumber: 1, durationSeconds: 4, plotDescription: "", characterAssetIds: ["same", "same", ""], sceneAssetIds: ["scene-1"] }],
+    });
+    expect(script.rows[0].characterAssetIds).toEqual(["same"]);
+    expect(script.rows[0].sceneAssetIds).toEqual(["scene-1"]);
+});
+
+test("syncs character and prop entities from shot tags without duplicating ids", () => {
+    let script = addScriptShot(createEmptyScriptV2());
+    const shotId = script.rows[0].id;
+    script = addScriptAsset(script, "scenes", "雨夜车站");
+    const sceneAssetId = script.assets?.scenes[0].id || "";
+    script = updateScriptShot(script, shotId, {
+        characters: ["林默", "顾川"],
+        propTags: ["旧伞"],
+        sceneAssetIds: [sceneAssetId, "missing-scene"],
+    });
+
+    script = syncScriptAssetsFromShots(script);
+    expect(script.assets?.characters.map((asset) => asset.name)).toEqual(["林默", "顾川"]);
+    expect(script.assets?.props.map((asset) => asset.name)).toEqual(["旧伞"]);
+    expect(script.rows[0].characterAssetIds).toHaveLength(2);
+    expect(script.rows[0].propAssetIds).toEqual([script.assets?.props[0].id as string]);
+    expect(script.rows[0].sceneAssetIds).toEqual([sceneAssetId]);
+
+    const firstCharacterId = script.assets?.characters[0].id;
+    script = updateScriptShot(script, shotId, { sceneAssetIds: [sceneAssetId, firstCharacterId || ""] });
+    script = syncScriptAssetsFromShots(script);
+    expect(script.rows[0].sceneAssetIds).toEqual([sceneAssetId]);
+    script = syncScriptAssetsFromShots(script);
+    expect(script.assets?.characters).toHaveLength(2);
+    expect(script.assets?.characters[0].id).toBe(firstCharacterId);
+});
+
+test("adds, binds, unbinds and removes shot-linked assets", () => {
+    let script = addScriptShot(createEmptyScriptV2());
+    const shotId = script.rows[0].id;
+    script = updateScriptShot(script, shotId, { characters: ["林默"], propTags: ["旧伞"] });
+
+    script = addScriptAsset(script, "characters", "林默");
+    const character = script.assets?.characters[0];
+    expect(character).toBeDefined();
+    expect(script.rows[0].characterAssetIds).toEqual([character?.id]);
+    expect(addScriptAsset(script, "characters", " 林默 ")).toBe(script);
+
+    script = bindScriptAssetReference(script, "characters", character?.id || "", {
+        referenceAssetId: "image-1",
+        referenceTitle: "林默立绘",
+        referenceStorageKey: "image:key",
+    });
+    expect(script.assets?.characters[0]).toMatchObject({
+        status: "ready",
+        referenceAssetId: "image-1",
+        referenceTitle: "林默立绘",
+        referenceStorageKey: "image:key",
+    });
+
+    script = bindScriptAssetReference(script, "characters", character?.id || "", null);
+    expect(script.assets?.characters[0].status).toBe("draft");
+    expect(script.assets?.characters[0].referenceAssetId).toBeUndefined();
+
+    script = addScriptAsset(script, "props", "旧伞");
+    const propId = script.assets?.props[0].id;
+    expect(script.rows[0].propAssetIds).toEqual([propId]);
+    script = removeScriptAsset(script, "characters", character?.id || "");
+    expect(script.assets?.characters).toEqual([]);
+    expect(script.rows[0].characters).toEqual([]);
+    expect(script.rows[0].characterAssetIds).toEqual([]);
+    expect(syncScriptAssetsFromShots(script).assets?.characters).toEqual([]);
+    script = removeScriptAsset(script, "props", propId || "");
+    expect(script.assets?.props).toEqual([]);
+    expect(script.rows[0].propTags).toEqual([]);
+    expect(script.rows[0].propAssetIds).toEqual([]);
+    expect(syncScriptAssetsFromShots(script).assets?.props).toEqual([]);
+});
+
+test("clears stale asset ids when shot tags are edited", () => {
+    let script = addScriptShot(createEmptyScriptV2());
+    const shotId = script.rows[0].id;
+    script = updateScriptShot(script, shotId, { characters: ["林默", "顾川"], propTags: ["旧伞", "录音笔"] });
+    script = syncScriptAssetsFromShots(script);
+    const linMoId = script.assets?.characters.find((asset) => asset.name === "林默")?.id;
+    const umbrellaId = script.assets?.props.find((asset) => asset.name === "旧伞")?.id;
+    expect(script.rows[0].characterAssetIds).toHaveLength(2);
+    expect(script.rows[0].propAssetIds).toHaveLength(2);
+
+    script = updateScriptShot(script, shotId, { characters: ["顾川"], propTags: ["录音笔"] });
+    expect(script.rows[0].characterAssetIds).not.toContain(linMoId);
+    expect(script.rows[0].propAssetIds).not.toContain(umbrellaId);
+    expect(script.rows[0].characterAssetIds).toHaveLength(1);
+    expect(script.rows[0].propAssetIds).toHaveLength(1);
+});
+
+test("marks an externally deleted reference as missing without changing the saved status", () => {
+    const draft = { id: "character-1", name: "林默", status: "draft" as const };
+    const bound = { ...draft, status: "ready" as const, referenceAssetId: "image-1" };
+
+    expect(scriptAssetAvailability(draft, new Set())).toBe("draft");
+    expect(scriptAssetAvailability(bound, null)).toBe("ready");
+    expect(scriptAssetAvailability(bound, new Set(["image-1"]))).toBe("ready");
+    expect(scriptAssetAvailability(bound, new Set())).toBe("missing");
+    expect(bound.status).toBe("ready");
+});
+
+test("removes shared tags from every shot and unlinks deleted scenes", () => {
+    let script = addScriptShot(createEmptyScriptV2());
+    script = addScriptShot(script);
+    const [firstShot, secondShot] = script.rows;
+    script = updateScriptShot(script, firstShot.id, { propTags: ["旧伞"], characters: ["林默"] });
+    script = updateScriptShot(script, secondShot.id, { propTags: ["旧伞"], characters: ["林默"] });
+    script = syncScriptAssetsFromShots(script);
+
+    const propId = script.assets?.props[0].id || "";
+    const characterId = script.assets?.characters[0].id || "";
+    script = removeScriptAsset(script, "props", propId);
+    script = removeScriptAsset(script, "characters", characterId);
+    expect(script.rows.every((row) => row.propTags?.length === 0 && row.characterAssetIds?.length === 0)).toBe(true);
+    expect(script.rows.every((row) => row.characters?.length === 0)).toBe(true);
+    expect(syncScriptAssetsFromShots(script).assets).toMatchObject({ characters: [], props: [] });
+
+    script = addScriptAsset(script, "scenes", "雨夜车站");
+    const sceneId = script.assets?.scenes[0].id || "";
+    script = updateScriptShot(script, firstShot.id, { sceneAssetIds: [sceneId] });
+    script = updateScriptShot(script, secondShot.id, { sceneAssetIds: [sceneId] });
+    script = removeScriptAsset(script, "scenes", sceneId);
+    expect(script.rows.every((row) => row.sceneAssetIds?.length === 0)).toBe(true);
 });

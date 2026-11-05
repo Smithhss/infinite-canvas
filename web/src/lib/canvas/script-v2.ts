@@ -1,4 +1,8 @@
 import type {
+    CanvasScriptAssetEntity,
+    CanvasScriptAssetKind,
+    CanvasScriptAssets,
+    CanvasScriptAssetReference,
     CanvasScriptColumnKey,
     CanvasScriptColumnVisibility,
     CanvasScriptFilter,
@@ -15,6 +19,8 @@ import { normalizeScriptPreset } from "./script-preset";
 const DEFAULT_SHOT_DURATION_SECONDS = 4;
 export const SCRIPT_PROMPT_HISTORY_LIMIT = 20;
 export const SCRIPT_PROMPT_MAX_LENGTH = 8000;
+const SCRIPT_ASSET_LIMIT = 200;
+const SCRIPT_ASSET_KINDS: CanvasScriptAssetKind[] = ["characters", "scenes", "props"];
 
 export const SCRIPT_V2_COLUMNS: Array<{ key: CanvasScriptColumnKey; labelKey: string; defaultVisible: boolean; width: string }> = [
     { key: "shotNumber", labelKey: "shotNumber", defaultVisible: true, width: "64px" },
@@ -58,6 +64,10 @@ function createShotId() {
 
 function createFilterId() {
     return `filter-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function createAssetId(kind: CanvasScriptAssetKind) {
+    return `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 export function createEmptyScriptV2(): CanvasScriptV2 {
@@ -151,6 +161,50 @@ function normalizePromptHistory(value: unknown): CanvasScriptPromptVersion[] {
         .slice(0, SCRIPT_PROMPT_HISTORY_LIMIT);
 }
 
+function normalizeScriptAssetList(value: unknown, kind: CanvasScriptAssetKind): CanvasScriptAssetEntity[] {
+    if (!Array.isArray(value)) return [];
+    const ids = new Set<string>();
+    const names = new Set<string>();
+    return value
+        .slice(0, SCRIPT_ASSET_LIMIT)
+        .flatMap((item, index) => {
+            if (!item || typeof item !== "object") return [];
+            const candidate = item as Partial<CanvasScriptAssetEntity>;
+            const name = typeof candidate.name === "string" ? candidate.name.trim().slice(0, 120) : "";
+            const normalizedName = name.toLocaleLowerCase();
+            if (!name || names.has(normalizedName)) return [];
+            let id = typeof candidate.id === "string" ? candidate.id.trim().slice(0, 160) : "";
+            if (!id) id = `asset-${kind}-${index + 1}`;
+            if (ids.has(id)) {
+                const base = id;
+                let suffix = 2;
+                while (ids.has(`${base}-${suffix}`)) suffix += 1;
+                id = `${base}-${suffix}`;
+            }
+            ids.add(id);
+            names.add(normalizedName);
+            const referenceAssetId = typeof candidate.referenceAssetId === "string" ? candidate.referenceAssetId.trim().slice(0, 160) : "";
+            return [{
+                id,
+                name,
+                description: typeof candidate.description === "string" ? candidate.description.trim().slice(0, 500) : undefined,
+                status: referenceAssetId ? "ready" : "draft",
+                referenceAssetId: referenceAssetId || undefined,
+                referenceTitle: typeof candidate.referenceTitle === "string" ? candidate.referenceTitle.trim().slice(0, 160) : undefined,
+                referenceStorageKey: typeof candidate.referenceStorageKey === "string" ? candidate.referenceStorageKey.trim().slice(0, 240) : undefined,
+            }];
+        });
+}
+
+export function normalizeScriptAssets(value: unknown): CanvasScriptAssets {
+    const candidate = value && typeof value === "object" ? value as Partial<Record<CanvasScriptAssetKind, unknown>> : {};
+    return {
+        characters: normalizeScriptAssetList(candidate.characters, "characters"),
+        scenes: normalizeScriptAssetList(candidate.scenes, "scenes"),
+        props: normalizeScriptAssetList(candidate.props, "props"),
+    };
+}
+
 function renumberShots(rows: CanvasScriptShot[]) {
     return rows.map((row, index) => ({ ...row, shotNumber: index + 1 }));
 }
@@ -163,10 +217,13 @@ export function normalizeScriptV2(script?: Partial<CanvasScriptV2> | null): Canv
               durationSeconds: Number.isFinite(row?.durationSeconds) && Number(row.durationSeconds) > 0 ? Number(row.durationSeconds) : DEFAULT_SHOT_DURATION_SECONDS,
               plotDescription: row?.plotDescription || "",
               characters: normalizeStringList(row?.characters),
+              characterAssetIds: normalizeStringList(row?.characterAssetIds),
+              sceneAssetIds: normalizeStringList(row?.sceneAssetIds),
               videoReference: row?.videoReference || "",
               shotSize: row?.shotSize || "",
               emotion: row?.emotion || "",
               propTags: normalizeStringList(row?.propTags),
+              propAssetIds: normalizeStringList(row?.propAssetIds),
               cameraMovement: row?.cameraMovement || "",
               dialogue: row?.dialogue || "",
               lightingAndAtmosphere: row?.lightingAndAtmosphere || "",
@@ -192,6 +249,7 @@ export function normalizeScriptV2(script?: Partial<CanvasScriptV2> | null): Canv
         viewMode: script?.viewMode === "creative" || script?.viewMode === "asset" ? script.viewMode : "table",
         columnVisibility: normalizeScriptColumnVisibility(script?.columnVisibility),
         filters: normalizeScriptFilters(script?.filters),
+        assets: normalizeScriptAssets(script?.assets),
         rows,
     };
 }
@@ -210,6 +268,121 @@ export function updateScriptColumnVisibility(script: CanvasScriptV2, column: Can
 
 export function updateScriptFilters(script: CanvasScriptV2, filters: CanvasScriptFilter[]): CanvasScriptV2 {
     return { ...script, filters: normalizeScriptFilters(filters) };
+}
+
+function normalizedAssetName(value: string) {
+    return value.trim().toLocaleLowerCase();
+}
+
+function mergeScriptAssets(assets: CanvasScriptAssetEntity[], kind: CanvasScriptAssetKind, names: string[]) {
+    const next = [...assets];
+    const known = new Set(next.map((asset) => normalizedAssetName(asset.name)));
+    for (const rawName of names) {
+        const name = rawName.trim().slice(0, 120);
+        const key = normalizedAssetName(name);
+        if (!name || known.has(key) || next.length >= SCRIPT_ASSET_LIMIT) continue;
+        known.add(key);
+        next.push({ id: createAssetId(kind), name, status: "draft" });
+    }
+    return next;
+}
+
+function assetIdsForNames(names: string[] | undefined, assets: CanvasScriptAssetEntity[]) {
+    const byName = new Map(assets.map((asset) => [normalizedAssetName(asset.name), asset.id]));
+    return [...new Set((names || []).map((name) => byName.get(normalizedAssetName(name))).filter((id): id is string => Boolean(id)))];
+}
+
+export function syncScriptAssetsFromShots(script: CanvasScriptV2) {
+    const current = normalizeScriptAssets(script.assets);
+    const assets: CanvasScriptAssets = {
+        characters: mergeScriptAssets(current.characters, "characters", script.rows.flatMap((row) => row.characters || [])),
+        scenes: current.scenes,
+        props: mergeScriptAssets(current.props, "props", script.rows.flatMap((row) => row.propTags || [])),
+    };
+    const validIds = Object.fromEntries(
+        SCRIPT_ASSET_KINDS.map((kind) => [kind, new Set(assets[kind].map((asset) => asset.id))]),
+    ) as Record<CanvasScriptAssetKind, Set<string>>;
+    return {
+        ...script,
+        assets,
+        rows: script.rows.map((row) => ({
+            ...row,
+            characterAssetIds: assetIdsForNames(row.characters, assets.characters),
+            sceneAssetIds: (row.sceneAssetIds || []).filter((id) => validIds.scenes.has(id)),
+            propAssetIds: assetIdsForNames(row.propTags, assets.props),
+        })),
+    };
+}
+
+export function scriptAssetAvailability(asset: CanvasScriptAssetEntity, availableReferenceIds: ReadonlySet<string> | null) {
+    if (!availableReferenceIds) return asset.status;
+    if (asset.referenceAssetId && !availableReferenceIds.has(asset.referenceAssetId)) return "missing" as const;
+    return asset.status;
+}
+
+export function addScriptAsset(script: CanvasScriptV2, kind: CanvasScriptAssetKind, rawName: string) {
+    const name = rawName.trim().slice(0, 120);
+    if (!name) return script;
+    const assets = normalizeScriptAssets(script.assets);
+    if (assets[kind].length >= SCRIPT_ASSET_LIMIT || assets[kind].some((asset) => normalizedAssetName(asset.name) === normalizedAssetName(name))) return script;
+    const asset: CanvasScriptAssetEntity = { id: createAssetId(kind), name, status: "draft" };
+    const nextAssets = { ...assets, [kind]: [...assets[kind], asset] };
+    const rows = script.rows.map((row) => {
+        if (kind === "characters" && (row.characters || []).some((value) => normalizedAssetName(value) === normalizedAssetName(name))) {
+            return { ...row, characterAssetIds: [...new Set([...(row.characterAssetIds || []), asset.id])] };
+        }
+        if (kind === "props" && (row.propTags || []).some((value) => normalizedAssetName(value) === normalizedAssetName(name))) {
+            return { ...row, propAssetIds: [...new Set([...(row.propAssetIds || []), asset.id])] };
+        }
+        return row;
+    });
+    return { ...script, assets: nextAssets, rows };
+}
+
+export function bindScriptAssetReference(
+    script: CanvasScriptV2,
+    kind: CanvasScriptAssetKind,
+    assetId: string,
+    reference?: CanvasScriptAssetReference | null,
+) {
+    const assets = normalizeScriptAssets(script.assets);
+    return {
+        ...script,
+        assets: {
+            ...assets,
+            [kind]: assets[kind].map((asset) => asset.id === assetId ? {
+                ...asset,
+                status: reference ? "ready" : "draft",
+                referenceAssetId: reference?.referenceAssetId,
+                referenceTitle: reference?.referenceTitle,
+                referenceStorageKey: reference?.referenceStorageKey,
+            } : asset),
+        },
+    };
+}
+
+export function removeScriptAsset(script: CanvasScriptV2, kind: CanvasScriptAssetKind, assetId: string) {
+    const assets = normalizeScriptAssets(script.assets);
+    const assetName = assets[kind].find((asset) => asset.id === assetId)?.name;
+    return {
+        ...script,
+        assets: { ...assets, [kind]: assets[kind].filter((asset) => asset.id !== assetId) },
+        rows: script.rows.map((row) => {
+            if (kind === "characters") {
+                return {
+                    ...row,
+                    characters: assetName ? (row.characters || []).filter((name) => normalizedAssetName(name) !== normalizedAssetName(assetName)) : row.characters,
+                    characterAssetIds: (row.characterAssetIds || []).filter((id) => id !== assetId),
+                };
+            }
+            if (kind === "scenes") return { ...row, sceneAssetIds: (row.sceneAssetIds || []).filter((id) => id !== assetId) };
+            return {
+                ...row,
+                propTags: assetName ? (row.propTags || []).filter((name) => normalizedAssetName(name) !== normalizedAssetName(assetName)) : row.propTags,
+                propAssetIds: (row.propAssetIds || []).filter((id) => id !== assetId),
+            };
+        }),
+    };
 }
 
 export function addScriptShot(script: CanvasScriptV2): CanvasScriptV2 {
@@ -248,7 +421,21 @@ export function moveScriptShotToTarget(script: CanvasScriptV2, shotId: string, t
 }
 
 export function updateScriptShot(script: CanvasScriptV2, shotId: string, patch: Partial<Omit<CanvasScriptShot, "id" | "shotNumber">>): CanvasScriptV2 {
-    return { ...script, rows: script.rows.map((row) => (row.id === shotId ? { ...row, ...patch } : row)) };
+    const assets = normalizeScriptAssets(script.assets);
+    return {
+        ...script,
+        rows: script.rows.map((row) => {
+            if (row.id !== shotId) return row;
+            const next = { ...row, ...patch };
+            if (Object.prototype.hasOwnProperty.call(patch, "characters") && !Object.prototype.hasOwnProperty.call(patch, "characterAssetIds")) {
+                next.characterAssetIds = assetIdsForNames(next.characters, assets.characters);
+            }
+            if (Object.prototype.hasOwnProperty.call(patch, "propTags") && !Object.prototype.hasOwnProperty.call(patch, "propAssetIds")) {
+                next.propAssetIds = assetIdsForNames(next.propTags, assets.props);
+            }
+            return next;
+        }),
+    };
 }
 
 export function removeScriptShot(script: CanvasScriptV2, shotId: string): CanvasScriptV2 {

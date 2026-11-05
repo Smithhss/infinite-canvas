@@ -53,10 +53,13 @@ export type CanvasScriptShot = {
     durationSeconds: number;
     plotDescription: string;
     characters?: string[];
+    characterAssetIds?: string[];
+    sceneAssetIds?: string[];
     videoReference?: string;
     shotSize?: string;
     emotion?: string;
     propTags?: string[];
+    propAssetIds?: string[];
     cameraMovement?: string;
     dialogue?: string;
     lightingAndAtmosphere?: string;
@@ -86,6 +89,27 @@ export type CanvasScriptPromptVersion = {
     source: CanvasScriptPromptSource;
     createdAt: number;
 };
+
+export type CanvasScriptAssetKind = "characters" | "scenes" | "props";
+export type CanvasScriptAssetStatus = "draft" | "ready";
+
+export type CanvasScriptAssetReference = {
+    referenceAssetId: string;
+    referenceTitle: string;
+    referenceStorageKey?: string;
+};
+
+export type CanvasScriptAssetEntity = {
+    id: string;
+    name: string;
+    description?: string;
+    status: CanvasScriptAssetStatus;
+    referenceAssetId?: string;
+    referenceTitle?: string;
+    referenceStorageKey?: string;
+};
+
+export type CanvasScriptAssets = Record<CanvasScriptAssetKind, CanvasScriptAssetEntity[]>;
 
 export type CanvasScriptFilterOperator = "contains" | "equals" | "greater" | "less";
 
@@ -120,6 +144,7 @@ export type CanvasScriptV2 = {
     viewMode?: CanvasScriptViewMode;
     columnVisibility?: CanvasScriptColumnVisibility;
     filters?: CanvasScriptFilter[];
+    assets?: CanvasScriptAssets;
     rows: CanvasScriptShot[];
 };
 

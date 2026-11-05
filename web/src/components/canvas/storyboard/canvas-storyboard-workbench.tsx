@@ -13,7 +13,9 @@ import { buildStoryboardProjection, type StoryboardItem } from "@/lib/canvas/sto
 import { filterStoryboardLibraryItems, groupStoryboardLibraryItems, STORYBOARD_LIBRARY_CATEGORIES, type StoryboardLibraryCategory } from "@/lib/canvas/storyboard-workbench";
 import { applyScriptPresetToScript } from "@/lib/canvas/script-preset";
 import {
+    addScriptAsset,
     addScriptShot,
+    bindScriptAssetReference,
     composeAllScriptPrompts,
     duplicateScriptShot,
     filterScriptShots,
@@ -21,11 +23,13 @@ import {
     moveScriptShotToTarget,
     normalizeScriptColumnVisibility,
     normalizeScriptV2,
+    removeScriptAsset,
     removeScriptShot,
     restoreScriptPrompt,
     SCRIPT_V2_COLUMNS,
     SCRIPT_V2_SHOT_SIZES,
     scriptDurationSeconds,
+    syncScriptAssetsFromShots,
     updateScriptColumnVisibility,
     updateScriptFilters,
     updateScriptMeta,
@@ -571,7 +575,8 @@ function ScriptDetail({
         });
     };
     const setViewMode = (viewMode: CanvasScriptViewMode) => {
-        commit(updateScriptViewMode(draft, viewMode));
+        const next = updateScriptViewMode(draftRef.current, viewMode);
+        commit(viewMode === "asset" ? syncScriptAssetsFromShots(next) : next);
     };
     const toggleColumn = (column: CanvasScriptColumnKey, visible: boolean) => {
         commit(updateScriptColumnVisibility(draft, column, visible));
@@ -763,7 +768,14 @@ function ScriptDetail({
                                     {t("canvas.storyboard.workbench.shotCount", { count: draft.rows.length })}
                                 </span>
                             </div>
-                            <CanvasScriptAssetSummary script={draft} theme={theme} />
+                            <CanvasScriptAssetSummary
+                                script={draft}
+                                theme={theme}
+                                onAddAsset={(kind, name) => commit(addScriptAsset(draftRef.current, kind, name))}
+                                onBindAsset={(kind, assetId, reference) => commit(bindScriptAssetReference(draftRef.current, kind, assetId, reference))}
+                                onRemoveAsset={(kind, assetId) => commit(removeScriptAsset(draftRef.current, kind, assetId))}
+                                onSyncAssets={() => commit(syncScriptAssetsFromShots(draftRef.current))}
+                            />
                         </>
                     ) : (
                         <>

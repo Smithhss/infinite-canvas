@@ -55,6 +55,13 @@ export function usePluginCatalog({ active }: { active: boolean }) {
     const installFromUrl = useCallback(async () => {
         const target = url.trim();
         if (!target) return;
+        try {
+            const parsed = new URL(target);
+            if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
+        } catch {
+            message.error(t("canvas.plugins.invalidUrl"));
+            return;
+        }
         setInstalling(true);
         try {
             const plugin = await installPluginFromUrl(target);

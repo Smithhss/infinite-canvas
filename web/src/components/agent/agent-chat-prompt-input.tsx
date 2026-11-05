@@ -34,7 +34,7 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
     const previousSkillKeyRef = useRef("");
     const skills = useAgentSkillStore((state) => state.skills);
     const skillsLoading = useAgentSkillStore((state) => state.loading);
-    const selectedSkill = useAgentSkillStore((state) => state.selectedSkill);
+    const selectedSkills = useAgentSkillStore((state) => state.selectedSkills);
     const canvasReferences = useAgentStore((state) => state.canvasReferences);
     const provider = activeAgentProvider(useAgentStore((state) => state.agentProvider));
     const [command, setCommand] = useState<ComposerCommand | null>(null);
@@ -42,12 +42,12 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
     const [resourceCandidates, setResourceCandidates] = useState<CanvasResourceReference[]>([]);
     const [referenceHover, setReferenceHover] = useState<ReferenceHover | null>(null);
 
-    const messageSkill = useMemo<AgentSkillReference | undefined>(() => selectedSkill ? {
-        name: selectedSkill.name,
-        path: selectedSkill.path,
-        displayName: selectedSkill.interface?.displayName || undefined,
-    } : undefined, [selectedSkill]);
-    const tokens = useMemo(() => parseAgentInlineTokens(value, canvasReferences, messageSkill, provider), [canvasReferences, messageSkill, provider, value]);
+    const messageSkills = useMemo<AgentSkillReference[]>(() => selectedSkills.map((skill) => ({
+        name: skill.name,
+        path: skill.path,
+        displayName: skill.interface?.displayName || undefined,
+    })), [selectedSkills]);
+    const tokens = useMemo(() => parseAgentInlineTokens(value, canvasReferences, messageSkills, provider), [canvasReferences, messageSkills, provider, value]);
     const selectedReferenceIds = useMemo(() => new Set(canvasReferences.map((item) => item.nodeId)), [canvasReferences]);
     const candidates = useMemo<ComposerCandidate[]>(() => {
         if (!command) return [];
@@ -64,7 +64,7 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
 
     useEffect(() => {
         const editor = editorRef.current;
-        const skillKey = selectedSkill?.path || "";
+        const skillKey = selectedSkills.map((skill) => `${skill.name}:${skill.path}`).join("\u0000");
         const shouldFocusSkill = Boolean(skillKey) && skillKey !== previousSkillKeyRef.current;
         previousSkillKeyRef.current = skillKey;
         if (!editor || document.activeElement === editor && value === lastEmittedRef.current) return;
@@ -79,7 +79,7 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
             editor.focus();
             placeCaretAtEnd(editor);
         }
-    }, [selectedSkill?.path, theme, tokens, value]);
+    }, [selectedSkills, theme, tokens, value]);
 
     const emit = (next: string) => {
         lastEmittedRef.current = next;
@@ -122,10 +122,14 @@ export function AgentChatPromptInput({ value, disabled, placeholder, theme, onCh
     const insertCandidate = (candidate: ComposerCandidate) => {
         const editor = editorRef.current;
         if (!editor || !command) return;
-        if (candidate.type === "skill") editor.querySelector<HTMLElement>("[data-agent-token-kind='skill']")?.remove();
         removeTextBeforeCaret(command.length);
 
         if (candidate.type === "skill") {
+            if (useAgentSkillStore.getState().selectedSkills.some((skill) => skill.name === candidate.skill.name && skill.path === candidate.skill.path)) {
+                emit(serializeEditor(editor));
+                closeCommand();
+                return;
+            }
             const base = serializeEditor(editor);
             const defaultPrompt = candidate.skill.interface?.defaultPrompt?.trim();
             if (!base.trim() && defaultPrompt) {
@@ -293,6 +297,7 @@ function ReferencePreview({ reference }: { reference: CanvasResourceReference })
 function createSkillToken(skill: AgentSkillReference, theme: (typeof canvasThemes)[keyof typeof canvasThemes], provider: ReturnType<typeof activeAgentProvider>) {
     const token = createToken("skill", agentSkillMarker(skill, provider), theme);
     token.dataset.skillName = skill.name;
+    token.dataset.skillPath = skill.path;
     token.title = skill.path;
     token.textContent = `/${skill.displayName || skill.name}`;
     return token;
@@ -419,9 +424,11 @@ function syncSelectedMetadata(editor: HTMLElement) {
     const nodeIds = new Set(Array.from(editor.querySelectorAll<HTMLElement>("[data-agent-token-kind='resource']")).map((item) => item.dataset.nodeId));
     const references = state.canvasReferences.filter((item) => nodeIds.has(item.nodeId));
     if (references.length !== state.canvasReferences.length) state.setAgentState({ canvasReferences: references });
-    const selectedSkill = useAgentSkillStore.getState().selectedSkill;
-    const skillName = editor.querySelector<HTMLElement>("[data-agent-token-kind='skill']")?.dataset.skillName;
-    if (selectedSkill && skillName !== selectedSkill.name) useAgentSkillStore.getState().clearSelection();
+    const skillState = useAgentSkillStore.getState();
+    const skillKeys = new Set(Array.from(editor.querySelectorAll<HTMLElement>("[data-agent-token-kind='skill']")).map((item) => `${item.dataset.skillName || ""}\u0000${item.dataset.skillPath || ""}`));
+    const skills = skillState.selectedSkills.filter((skill) => skillKeys.has(`${skill.name}\u0000${skill.path}`));
+    const unchanged = skills.length === skillState.selectedSkills.length && skills.every((skill, index) => skill.name === skillState.selectedSkills[index]?.name && skill.path === skillState.selectedSkills[index]?.path);
+    if (!unchanged) skillState.setSelectedSkills(skills);
 }
 
 function textBeforeCaret(editor: HTMLElement | null) {

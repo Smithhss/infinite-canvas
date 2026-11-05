@@ -63,7 +63,7 @@ export function AgentPanel() {
 
     return (
         <motion.div
-            className={cn("relative z-[70] flex h-full shrink-0", overlay && "fixed inset-y-0 right-0 z-[80] shadow-2xl")}
+            className={cn("relative z-[70] flex h-full shrink-0", overlay && (canvasProject ? "fixed bottom-0 right-0 top-12 z-[80] h-auto shadow-2xl" : "fixed inset-y-0 right-0 z-[80] shadow-2xl"))}
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: panelOpen ? width + 1 : 0, opacity: panelOpen ? 1 : 0 }}
             transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: [0.22, 1, 0.36, 1] }}

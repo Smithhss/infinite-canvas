@@ -59,7 +59,7 @@ function PluginHubPage() {
                         <span className={`size-1.5 rounded-full ${phase === "connected" ? "bg-emerald-500" : phase === "failed" ? "bg-rose-500" : "bg-amber-500"}`} />
                         {t("pluginHub.agentStatus")} · {statusLabel}
                     </span>
-                    <Button type="text" size="small" className="!h-8 !rounded-lg !px-2.5" icon={<Bot className="size-3.5" />} onClick={openAgent}>
+                    <Button type="text" size="small" className="!h-10 !rounded-lg !px-2.5 sm:!h-8" icon={<Bot className="size-3.5" />} onClick={openAgent}>
                         {t(connected ? "pluginHub.openAgent" : "pluginHub.connectAgent")}
                     </Button>
                 </div>
@@ -125,7 +125,7 @@ function PluginHubPage() {
                                         <div className="truncate text-xs font-medium">{statusLabel}</div>
                                         <div className={`mt-0.5 truncate text-[11px] ${dark ? "text-white/35" : "text-stone-500"}`}>{connectError || activity || t("pluginHub.stepTwoHint")}</div>
                                     </div>
-                                    <Button size="small" className="!h-8 shrink-0 !rounded-lg" onClick={openAgent}>{t(connected ? "pluginHub.openAgent" : "pluginHub.openSetup")}</Button>
+                                    <Button size="small" className="!h-10 shrink-0 !rounded-lg sm:!h-8" onClick={openAgent}>{t(connected ? "pluginHub.openAgent" : "pluginHub.openSetup")}</Button>
                                 </div>
                             </li>
                         </ol>
@@ -143,7 +143,7 @@ function PluginHubPage() {
                         title={t("pluginHub.catalogTitle")}
                         description={t("pluginHub.catalogDescription")}
                         action={
-                            <Button type="text" size="small" className="!h-8" icon={<RefreshCw className={`size-3.5 ${catalog.loadingOfficial ? "animate-spin" : ""}`} />} onClick={() => void catalog.loadOfficial()} disabled={catalog.loadingOfficial}>
+                            <Button type="text" size="small" className="!h-10 sm:!h-8" icon={<RefreshCw className={`size-3.5 ${catalog.loadingOfficial ? "animate-spin" : ""}`} />} onClick={() => void catalog.loadOfficial()} disabled={catalog.loadingOfficial}>
                                 {t("pluginHub.refresh")}
                             </Button>
                         }
@@ -207,7 +207,7 @@ function OfficialCatalog({ catalog }: { catalog: ReturnType<typeof usePluginCata
                             record ? (
                                 <InstalledActions record={record} catalog={catalog} officialEntry={entry} upgradable={upgradable} />
                             ) : (
-                                <Button type="primary" size="small" className="!h-8" icon={<Download className="size-3.5" />} loading={catalog.busyId === entry.id} onClick={() => void catalog.installOfficial(entry)}>
+                                <Button type="primary" size="small" className="!h-10 sm:!h-8" icon={<Download className="size-3.5" />} loading={catalog.busyId === entry.id} onClick={() => void catalog.installOfficial(entry)}>
                                     {t("canvas.plugins.install")}
                                 </Button>
                             )
@@ -235,8 +235,8 @@ function ThirdPartyCatalog({ catalog }: { catalog: ReturnType<typeof usePluginCa
     return (
         <div className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row">
-                <Input placeholder={t("canvas.plugins.urlPlaceholder")} value={catalog.url} onChange={(event) => catalog.setUrl(event.target.value)} onPressEnter={() => void catalog.installFromUrl()} allowClear />
-                <Button type="primary" loading={catalog.installing} icon={<Puzzle className="size-3.5" />} onClick={() => void catalog.installFromUrl()}>
+                <Input className="!h-10 sm:!h-8" placeholder={t("canvas.plugins.urlPlaceholder")} value={catalog.url} onChange={(event) => catalog.setUrl(event.target.value)} onPressEnter={() => void catalog.installFromUrl()} allowClear />
+                <Button type="primary" className="!h-10 sm:!h-8" loading={catalog.installing} icon={<Puzzle className="size-3.5" />} onClick={() => void catalog.installFromUrl()}>
                     {t("canvas.plugins.install")}
                 </Button>
             </div>
@@ -265,20 +265,25 @@ function InstalledActions({ record, catalog, officialEntry, upgradable = false }
     const { t } = useTranslation();
     return (
         <div className="flex shrink-0 items-center gap-1">
-            <Switch checked={record.enabled} loading={catalog.busyId === record.id} onChange={(checked) => void catalog.togglePlugin(record, checked)} />
+            <Switch
+                checked={record.enabled}
+                loading={catalog.busyId === record.id}
+                className="relative before:absolute before:-inset-y-[9px] before:inset-x-0 before:content-[''] sm:before:hidden"
+                onChange={(checked) => void catalog.togglePlugin(record, checked)}
+            />
             {!record.local ? (
                 <>
                     <Button
                         type={upgradable ? "primary" : "text"}
                         size="small"
-                        className="!h-8 !w-8 !min-w-8"
+                        className="!h-10 !w-10 !min-w-10 sm:!h-8 sm:!w-8 sm:!min-w-8"
                         icon={<RefreshCw className="size-3.5" />}
                         loading={catalog.busyId === record.id}
                         title={t(upgradable ? "canvas.plugins.upgradeAvailable" : "canvas.plugins.updateFromSource")}
                         onClick={() => void catalog.updateInstalled(record, officialEntry)}
                     />
                     <Popconfirm title={t("canvas.plugins.uninstallTitle")} okText={t("canvas.plugins.uninstall")} cancelText={t("canvas.editors.cancel")} onConfirm={() => void catalog.uninstall(record)}>
-                        <Button type="text" size="small" className="!h-8 !w-8 !min-w-8" danger icon={<Trash2 className="size-3.5" />} title={t("canvas.plugins.uninstall")} />
+                        <Button type="text" size="small" className="!h-10 !w-10 !min-w-10 sm:!h-8 sm:!w-8 sm:!min-w-8" danger icon={<Trash2 className="size-3.5" />} title={t("canvas.plugins.uninstall")} />
                     </Popconfirm>
                 </>
             ) : null}
@@ -350,7 +355,7 @@ function CommandBlock({ command, onCopy, theme }: { command: string; onCopy: () 
         <div className="relative mt-5 max-h-[104px] overflow-hidden rounded-[14px] border px-3.5 py-3" style={{ borderColor: theme.node.stroke, color: theme.node.text, background: theme.node.panel }}>
             <div className="flex items-start gap-2">
                 <code className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[11px] leading-5 opacity-65">{command}</code>
-                <Button type="text" size="small" className="!h-8 !w-8 !min-w-8 shrink-0" icon={<Copy className="size-3.5" />} onClick={onCopy} aria-label={t("pluginHub.copyInstall")} />
+                <Button type="text" size="small" className="!h-10 !w-10 !min-w-10 shrink-0 sm:!h-8 sm:!w-8 sm:!min-w-8" icon={<Copy className="size-3.5" />} onClick={onCopy} aria-label={t("pluginHub.copyInstall")} />
             </div>
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10" style={{ background: `linear-gradient(to top, ${theme.node.panel}, transparent)` }} />
         </div>

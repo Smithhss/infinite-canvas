@@ -11,7 +11,7 @@ import { deleteClaudeThread, listClaudeThreads, readClaudeThread } from "../agen
 import { archiveCodexThread, CodexSkillLookupError, configureCodexSkill, generateCodexSkillDraft, interruptCodexTurn, isRecoverableThreadError, listCodexModels, listCodexSkills, listCodexThreads, readCodexThread, resolveCodexApproval, resolveCodexSkill, resumeCodexThread, runCodexTurn, startCodexThread, summarizeCodexThread } from "../agent/codex.js";
 import type { CodexReasoningEffort, CodexSkillSelector } from "../agent/codex-protocol.js";
 import { messageMetadataStore } from "../agent/message-metadata.js";
-import type { AgentAttachment, AgentPermissionMode } from "../agent/types.js";
+import type { AgentAttachment, AgentEmit, AgentPermissionMode } from "../agent/types.js";
 import { AGENT_PROTOCOL_VERSION, CanvasSession } from "../canvas/session.js";
 import { DEFAULT_PORT, ensureSiteWorkspace, loadConfig, saveConfig, updateSiteWorkspace, type CanvasAgentConfig } from "../config.js";
 import { logger } from "../utils/logger.js";
@@ -336,7 +336,7 @@ export function startHttpServer() {
         }
         const model = String(req.body?.model || "") || undefined;
         const effort = reasoningEffort(req.body?.effort);
-        const skill = req.body?.skill === undefined ? undefined : await resolveCodexSkill(emit, workspace.workspacePath, skillSelector(req.body.skill), true);
+        const skills = await resolveCodexSkills(emit, workspace.workspacePath, req.body?.skills, req.body?.skill);
         const messageId = String(req.body?.messageId || Date.now());
         const messageText = String(req.body?.messageText || prompt || `发送了 ${attachments.length} 张图片`);
         if (claudeAdapter.busy || !session.beginAgentTurn(clientId)) return res.status(409).json({ ok: false, code: "AGENT_BUSY", error: "本地 Agent 正在执行其他任务，请稍后重试" });
@@ -379,7 +379,7 @@ export function startHttpServer() {
                 permissionMode: permissionMode(req.body?.permissionMode),
                 model,
                 effort,
-                ...(skill ? { skill: { name: skill.name, path: skill.path } } : {}),
+                ...(skills.length ? { skill: skills.map((skill) => ({ name: skill.name, path: skill.path })) } : {}),
                 messageText,
                 appEmit: emit,
                 onStart: () => session.bindClient(clientId),
@@ -500,8 +500,8 @@ export function startHttpServer() {
         }
         const clientId = String(req.body?.clientId || "");
         if (!clientId || !session.hasClient(clientId)) return res.status(409).json({ ok: false, error: "发起 Claude 任务的网页已断开，请重新连接后再试" });
-        const skill = claudeSkillName(req.body?.skill);
-        if (skill === null) return res.status(400).json({ ok: false, error: "Claude Skill 选择无效" });
+        const skills = claudeSkillNames(req.body?.skills, req.body?.skill);
+        if (skills === null) return res.status(400).json({ ok: false, error: "Claude Skill 选择无效" });
         const attachments = normalizeClaudeImageAttachments(req.body?.attachments);
         const messageId = String(req.body?.messageId || "");
         const userMessageId = crypto.randomUUID();
@@ -543,7 +543,7 @@ export function startHttpServer() {
                 sessionId: String(req.body?.sessionId || req.body?.threadId || "") || undefined,
                 model: String(req.body?.model || "") || undefined,
                 permissionMode: permissionMode(req.body?.permissionMode),
-                skill: skill || undefined,
+                skill: skills.length ? skills : undefined,
                 effort: claudeEffort(req.body?.effort),
                 messageId: userMessageId,
                 isClientActive: () => session.hasClient(clientId),
@@ -637,11 +637,15 @@ function claudeEffort(value: unknown): "low" | "medium" | "high" | "xhigh" | "ma
     return value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max" ? value : undefined;
 }
 
-function claudeSkillName(value: unknown): string | null {
-    if (value === undefined || value === null) return "";
-    const skill = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-    const name = typeof skill.name === "string" ? skill.name.trim() : "";
-    return /^[a-z0-9][a-z0-9:_-]*$/.test(name) ? name : null;
+function claudeSkillNames(skillsValue: unknown, legacyValue: unknown): string[] | null {
+    const values = skillsValue === undefined ? (legacyValue === undefined || legacyValue === null ? [] : [legacyValue]) : skillsValue;
+    if (!Array.isArray(values) || values.length > 50) return null;
+    const names = values.map((value) => {
+        const skill = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+        const name = typeof skill.name === "string" ? skill.name.trim() : "";
+        return /^[a-z0-9][a-z0-9:_-]*$/.test(name) ? name : "";
+    });
+    return names.some((name) => !name) ? null : Array.from(new Set(names));
 }
 
 function startupStatus(value: unknown): "starting" | "ready" | "failed" | "cancelled" {
@@ -663,8 +667,28 @@ function skillSelector(value: unknown): CodexSkillSelector {
     const selector = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
     const name = typeof selector.name === "string" ? selector.name : "";
     const skillPath = typeof selector.path === "string" ? selector.path : "";
-    if (!name || !skillPath) throw new CodexSkillLookupError("Skill 选择无效", 400);
+    if (!name || !skillPath || !path.isAbsolute(skillPath)) throw new CodexSkillLookupError("Skill 选择无效", 400);
     return { name, path: skillPath };
+}
+
+async function resolveCodexSkills(emit: AgentEmit, cwd: string, skillsValue: unknown, legacyValue: unknown) {
+    const values = skillsValue === undefined ? (legacyValue === undefined || legacyValue === null ? [] : [legacyValue]) : skillsValue;
+    if (!Array.isArray(values) || values.length > 50) throw new CodexSkillLookupError("Skill 选择无效", 400);
+    const selectors = values.map(skillSelector);
+    const unique = Array.from(new Map(selectors.map((selector) => [`${selector.name}\u0000${selector.path}`, selector])).values());
+    if (!unique.length) return [];
+    const { skills } = await listCodexSkills(emit, cwd, true);
+    return unique.map((selector) => {
+        const skill = skills.find((item) => item.name === selector.name && sameSkillPath(item.path, selector.path));
+        if (!skill) throw new CodexSkillLookupError("找不到指定 Skill，请刷新列表后重试", 404);
+        if (!skill.enabled) throw new CodexSkillLookupError("该 Skill 已停用，请先启用后再使用", 409);
+        return skill;
+    });
+}
+
+function sameSkillPath(left: string, right: string) {
+    const normalize = (value: string) => process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+    return normalize(left) === normalize(right);
 }
 
 /** 使用当前操作系统的文件管理器定位本地文件。 */

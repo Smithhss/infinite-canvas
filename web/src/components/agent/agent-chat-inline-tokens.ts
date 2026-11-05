@@ -15,9 +15,16 @@ export function agentReferenceMarker(reference: Pick<AgentCanvasReference, "labe
     return `@${reference.label}`;
 }
 
-export function parseAgentInlineTokens(text: string, references: AgentCanvasReference[], skill?: AgentSkillReference, provider: AgentProvider = "codex"): AgentInlineToken[] {
+export function parseAgentInlineTokens(text: string, references: AgentCanvasReference[], skills?: AgentSkillReference | AgentSkillReference[], provider: AgentProvider = "codex"): AgentInlineToken[] {
+    const skillList = Array.isArray(skills) ? skills : skills ? [skills] : [];
+    const seenSkills = new Set<string>();
     const markers = [
-        ...(skill ? [{ marker: agentSkillMarker(skill, provider), token: { type: "skill", skill } as AgentInlineToken }] : []),
+        ...skillList.flatMap((skill) => {
+            const key = `${skill.name}\u0000${skill.path}`;
+            if (seenSkills.has(key)) return [];
+            seenSkills.add(key);
+            return [{ marker: agentSkillMarker(skill, provider), token: { type: "skill", skill } as AgentInlineToken }];
+        }),
         ...references.map((reference) => ({ marker: agentReferenceMarker(reference), token: { type: "reference", reference } as AgentInlineToken })),
     ].sort((a, b) => b.marker.length - a.marker.length);
     if (!markers.length) return [{ type: "text", value: text }];

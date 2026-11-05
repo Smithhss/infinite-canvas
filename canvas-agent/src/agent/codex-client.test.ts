@@ -142,6 +142,29 @@ test("显式 Skill 不重复已有的文本标记", async () => {
     await running;
 });
 
+test("多个显式 Skill 同时传入文本标记和结构化输入", async () => {
+    const writes: Array<Record<string, unknown>> = [];
+    const child = { stdin: { write: (line: string) => (writes.push(JSON.parse(line)), true) } };
+    const client = Reflect.construct(CodexAppClient, [child, () => undefined, emptyEventHistory]) as CodexAppClient;
+    const testClient = client as unknown as TestClient;
+    const skills = [
+        { name: "demo-skill", path: "D:\\site\\.agents\\skills\\demo-skill\\SKILL.md" },
+        { name: "copy-review", path: "D:\\site\\.agents\\skills\\copy-review\\SKILL.md" },
+    ];
+
+    const running = client.startTurn("thread-1", "执行任务", [], "request", undefined, undefined, undefined, skills);
+    const request = writes.find((item) => item.method === "turn/start");
+    assert.deepEqual((request?.params as { input?: unknown[] })?.input, [
+        { type: "text", text: "$demo-skill $copy-review 执行任务", text_elements: [] },
+        { type: "skill", ...skills[0] },
+        { type: "skill", ...skills[1] },
+    ]);
+    testClient.handle({ id: request?.id, result: { turn: { id: "turn-1" } } });
+    await new Promise((resolve) => setImmediate(resolve));
+    testClient.handleNotification("turn/completed", { threadId: "thread-1", turn: { id: "turn-1", status: "completed" } });
+    await running;
+});
+
 test("skills/changed 作为站点级事件单独广播", () => {
     const events: Array<{ type: string; payload: unknown }> = [];
     const child = { stdin: { write: () => true } };

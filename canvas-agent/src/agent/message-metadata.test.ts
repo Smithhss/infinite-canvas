@@ -22,6 +22,32 @@ test("message metadata survives Agent restarts", async (context) => {
     assert.equal(message.skill?.name, "product-grid");
 });
 
+test("multiple skills survive restarts and keep the legacy first-skill field", async (context) => {
+    const fixture = await createFixture(context);
+    await fixture.store.recordPending("message-1", {
+        skills: [
+            { name: "product-grid", path: "D:\\skills\\product-grid\\SKILL.md", displayName: "Product grid" },
+            { name: "copy-review", path: "D:\\skills\\copy-review\\SKILL.md", displayName: "Copy review" },
+            { name: "product-grid", path: "D:\\skills\\product-grid\\SKILL.md", displayName: "Product grid" },
+        ],
+    });
+    await fixture.store.bindTurn("message-1", "thread-1", "turn-1");
+
+    const [message] = await fixture.reopen().mergeThread("thread-1", [{ role: "user", threadId: "thread-1", turnId: "turn-1", text: "Generate and review" }]);
+    assert.equal(message.skill?.name, "product-grid");
+    assert.deepEqual(message.skills?.map((skill) => skill.name), ["product-grid", "copy-review"]);
+});
+
+test("legacy skill metadata upgrades to a skill list", async (context) => {
+    const fixture = await createFixture(context);
+    await fixture.store.recordPending("message-1", sampleMetadata());
+    await fixture.store.bindTurn("message-1", "thread-1", "turn-1");
+
+    const [message] = await fixture.reopen().mergeThread("thread-1", [{ role: "user", threadId: "thread-1", turnId: "turn-1" }]);
+    assert.equal(message.skill?.name, "product-grid");
+    assert.deepEqual(message.skills?.map((skill) => skill.name), ["product-grid"]);
+});
+
 test("message preview assets survive restarts and are deleted with their thread", async (context) => {
     const fixture = await createFixture(context);
     const metadata = await fixture.store.recordPending("message-1", sampleMetadata());

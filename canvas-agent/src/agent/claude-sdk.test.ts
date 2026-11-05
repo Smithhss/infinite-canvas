@@ -378,6 +378,29 @@ test("选择 Claude Skill 时只开放 Skill 与画布 MCP，并禁用项目 hoo
     }
 });
 
+test("同时选择多个 Claude Skill 时全部传给 SDK", async () => {
+    const cwd = await projectWithSkills("probe-skill", "copy-review");
+    let received: Record<string, unknown> | undefined;
+    const adapter = new ClaudeSdkAdapter(
+        ({ options }) => {
+            received = options as unknown as Record<string, unknown>;
+            return Object.assign((async function* () {
+                yield { type: "result", session_id: "session-1", subtype: "success", is_error: false, result: "完成", usage: {}, modelUsage: {} };
+            })(), { close: () => undefined });
+        },
+        () => ({ type: "sdk", name: "infinite-canvas", instance: {} } as never),
+    );
+    try {
+        await adapter.run("/probe-skill /copy-review 写入画布", () => undefined, { clientId: "client-1", cwd, permissionMode: "request", skill: ["probe-skill", "copy-review"] });
+        await waitFor(() => !adapter.busy);
+        assert.deepEqual(received?.settingSources, ["project"]);
+        assert.deepEqual(received?.tools, ["Skill"]);
+        assert.deepEqual(received?.skills, ["probe-skill", "copy-review"]);
+    } finally {
+        await fs.rm(cwd, { recursive: true, force: true });
+    }
+});
+
 test("没有项目 Skill 时不启动 Claude 查询，未知 Skill 也会被拒绝", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "canvas-claude-empty-"));
     let queries = 0;
@@ -506,9 +529,15 @@ async function waitFor(predicate: () => boolean) {
 }
 
 async function projectWithSkill(name: string) {
+    return await projectWithSkills(name);
+}
+
+async function projectWithSkills(...names: string[]) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "canvas-claude-skill-"));
-    const skillDir = path.join(root, ".claude", "skills", name);
-    await fs.mkdir(skillDir, { recursive: true });
-    await fs.writeFile(path.join(skillDir, "SKILL.md"), `---\nname: ${name}\ndescription: 测试 Skill\n---\n\n按项目规则执行。\n`);
+    for (const name of names) {
+        const skillDir = path.join(root, ".claude", "skills", name);
+        await fs.mkdir(skillDir, { recursive: true });
+        await fs.writeFile(path.join(skillDir, "SKILL.md"), `---\nname: ${name}\ndescription: 测试 Skill\n---\n\n按项目规则执行。\n`);
+    }
     return root;
 }

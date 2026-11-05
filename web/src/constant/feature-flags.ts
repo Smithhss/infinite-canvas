@@ -11,6 +11,7 @@ export const FEATURE_FLAG_DEFAULTS = {
     canvasFloatingChrome: false,
     agentPanelChrome: false,
     agentProviderSwitch: false,
+    agentMemory: false,
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAG_DEFAULTS;

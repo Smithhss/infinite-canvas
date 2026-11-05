@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { normalizeClaudeHistory } from "./claude-sessions.js";
+import { AGENT_MEMORY_CONTEXT_INSTRUCTION, AGENT_MEMORY_CONTEXT_MARKER } from "./memory-context.js";
 
 test("Claude history keeps text and tool summaries without local-only fields", () => {
     const history = normalizeClaudeHistory("session-1", [
@@ -102,4 +103,13 @@ test("Claude user history exposes the original prompt without model-only attachm
     }]);
 
     assert.deepEqual(history.map(({ turnId, text }) => ({ turnId, text })), [{ turnId: "user-attachment", text: "比较两张图" }]);
+});
+
+test("Claude history hides local Agent memory context", () => {
+    const prompt = `继续优化这个分镜${AGENT_MEMORY_CONTEXT_MARKER}1. 标题：视觉偏好\n优先使用自然光和低饱和色彩。${AGENT_MEMORY_CONTEXT_INSTRUCTION}`;
+    const history = normalizeClaudeHistory("session-memory", [
+        { uuid: "user-memory", type: "user", message: { content: [{ type: "text", text: prompt }] } },
+    ]);
+
+    assert.deepEqual(history.map(({ text }) => text), ["继续优化这个分镜"]);
 });

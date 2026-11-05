@@ -2,12 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { App, Button, Tooltip } from "antd";
 import dayjs from "dayjs";
-import { Bot, History, MessageSquare, PanelRightClose, PlugZap, Plus, Sparkles, Terminal } from "lucide-react";
+import { Bot, Brain, History, MessageSquare, PanelRightClose, PlugZap, Plus, Sparkles, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
 import { activeAgentProvider, agentProviderCapabilities, agentProviderSupportsImageType, type AgentProvider } from "@/lib/agent/agent-provider";
+import { enabledAgentMemoryEntries, promptWithAgentMemory } from "@/lib/agent/agent-memory";
 import { recoverPendingApprovals } from "@/lib/agent/agent-pending-approvals";
 import { rememberAgentPluginDetected, resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
 import { readAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
@@ -21,6 +22,7 @@ import { randomId } from "@/lib/utils";
 import { uploadImage } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useAgentSkillStore } from "@/stores/use-agent-skill-store";
+import { useAgentMemoryStore } from "@/stores/use-agent-memory-store";
 import { useShallow } from "zustand/react/shallow";
 import { useAgentStore, type AgentAttachment, type AgentBootstrapStatus, type AgentCanvasContext, type AgentCanvasReference, type AgentChatItem, type AgentConversationState, type AgentModel, type AgentPendingApproval, type AgentPendingToolCall, type AgentPermissionMode, type AgentReasoningEffort, type AgentThreadSummary } from "@/stores/use-agent-store";
 import { type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
@@ -69,6 +71,7 @@ import {
 } from "./agent-event-formatters";
 import { AgentHistoryView } from "./agent-history-view";
 import { AgentLogView } from "./agent-log-view";
+import { AgentMemoryView } from "./agent-memory-view";
 import { AgentPanelTabs } from "./agent-panel-tabs";
 import { AgentRuntimeStatus } from "./agent-runtime-status";
 import { AgentSkillsView } from "./agent-skills-view";
@@ -195,6 +198,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const loadSkills = useAgentSkillStore((state) => state.loadSkills);
     const clearSkillSelection = useAgentSkillStore((state) => state.clearSelection);
     const skillCount = useAgentSkillStore((state) => state.skills.length);
+    const memoryCount = useAgentMemoryStore((state) => state.entries.filter((entry) => entry.enabled).length);
     const messageCount = useAgentStore((state) => state.messages.length);
     const canvasContextRef = useRef<AgentCanvasContext | null>(useAgentStore.getState().canvasContext);
     const confirmToolsRef = useRef(confirmTools);
@@ -737,9 +741,24 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             setAgentState({ canvasReferences });
             message.warning(rt(canvasReferences.length ? "someCanvasReferencesMissing" : "canvasReferencesMissing"));
         }
-        const requestPrompt = promptWithCanvasReferences(promptWithAttachments(text, files), canvasReferences);
+        let requestPrompt = promptWithCanvasReferences(promptWithAttachments(text, files), canvasReferences);
         const conversationAllowed = claudeMode || ["ready", "warning"].includes(currentState.conversation.status);
         if (!currentState.connected || !requestPrompt || currentState.sending || currentState.waiting || currentState.loadingThreads || !conversationAllowed) return;
+        let appliedMemoryCount = 0;
+        if (isFeatureEnabled("agentMemory") && currentState.workspacePath) {
+            const memoryState = useAgentMemoryStore.getState();
+            if (memoryState.workspacePath !== currentState.workspacePath || (!memoryState.loaded && !memoryState.loading)) {
+                await memoryState.loadMemories(currentState.workspacePath);
+            }
+            const memoryEntries = enabledAgentMemoryEntries(useAgentMemoryStore.getState().entries);
+            const promptWithMemory = promptWithAgentMemory(requestPrompt, memoryEntries);
+            if (promptWithMemory === null) {
+                message.warning(t("agent.memory.tooLarge"));
+                return;
+            }
+            requestPrompt = promptWithMemory;
+            appliedMemoryCount = memoryEntries.length;
+        }
         let referenceImages: AgentAttachment[] = [];
         if (canvasReferences.some((item) => item.kind === "image")) {
             setAgentState({ sending: true, activity: rt("readingCanvasImages") });
@@ -789,7 +808,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             };
             const modelName = models.find((item) => item.model === model)?.displayName || model || rt("defaultModel");
             const effortName = claudeMode ? "" : reasoningEffort ? i18n.t(`agent.composer.effort.${reasoningEffort}`) : rt("defaultEffort");
-            addEventLog(rt("sendTask"), `${modelName}${effortName ? ` · ${effortName}` : ""}${messageSkills.length ? ` · Skill ${messageSkills.map((skill) => skill.name).join(", ")}` : ""}${files.length ? ` · ${rt("attachmentCount", { count: files.length })}` : ""}${canvasReferences.length ? ` · ${rt("canvasReferenceCount", { count: canvasReferences.length })}` : ""} · ${compactText(text) || rt(canvasReferences.length ? "canvasReferencesOnly" : "attachmentsOnly")}`);
+            addEventLog(rt("sendTask"), `${modelName}${effortName ? ` · ${effortName}` : ""}${messageSkills.length ? ` · Skill ${messageSkills.map((skill) => skill.name).join(", ")}` : ""}${files.length ? ` · ${rt("attachmentCount", { count: files.length })}` : ""}${canvasReferences.length ? ` · ${rt("canvasReferenceCount", { count: canvasReferences.length })}` : ""}${appliedMemoryCount ? ` · ${t("agent.memory.appliedCount", { count: appliedMemoryCount })}` : ""} · ${compactText(text) || rt(canvasReferences.length ? "canvasReferencesOnly" : "attachmentsOnly")}`);
             if (claudeMode) {
                 const accepted = await fetchAgentJson<AgentClaudeTurnResponse>(endpoint, token, "/agent/claude/turn", {
                     method: "POST",
@@ -1595,6 +1614,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                     { value: "chat", label: t("agent.panel.chat"), icon: <MessageSquare className="size-3.5" /> },
                     ...(providerCapabilities.history ? [{ value: "history" as const, label: t("agent.panel.history"), icon: <History className="size-3.5" />, count: threads.length }] : []),
                     ...(providerCapabilities.skills ? [{ value: "skills" as const, label: t("agent.panel.skills"), icon: <Sparkles className="size-3.5" />, count: skillCount }] : []),
+                    ...(isFeatureEnabled("agentMemory") ? [{ value: "memory" as const, label: t("agent.panel.memory"), icon: <Brain className="size-3.5" />, count: memoryCount }] : []),
                     { value: "log", label: t("agent.panel.logs"), icon: <Terminal className="size-3.5" />, count: eventLogs.length },
                 ]}
                 onChange={(activeTab) => {
@@ -1651,6 +1671,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 />
             ) : activeTab === "skills" ? (
                 <AgentSkillsView clientId={clientIdRef.current} />
+            ) : activeTab === "memory" ? (
+                <AgentMemoryView />
             ) : activeTab === "history" ? (
                 <AgentHistoryView
                     theme={theme}

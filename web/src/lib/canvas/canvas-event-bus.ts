@@ -1,5 +1,4 @@
-import localforage from "localforage";
-
+import { createPluginStorageInstance } from "@/lib/localforage-storage";
 import type { PluginStorage } from "@/types/canvas-plugin";
 
 // Lightweight canvas event bus for communication between nodes and plugins.
@@ -32,7 +31,7 @@ const stores = new Map<string, LocalForage>();
 export function createPluginStorage(pluginId: string): PluginStorage {
     let store = stores.get(pluginId);
     if (!store) {
-        store = localforage.createInstance({ name: "infinite-canvas-plugins", storeName: pluginId });
+        store = createPluginStorageInstance(pluginId);
         stores.set(pluginId, store);
     }
     return {

@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 
+import { appSessionStorageKey } from "../src/lib/storage-namespace";
 import { buildQuickCreateUrl, clearQuickCreateDraft, readQuickCreateDraft, storeQuickCreateDraft, type QuickCreateDraft } from "../src/lib/quick-create";
+
+const QUICK_CREATE_STORAGE_KEY = appSessionStorageKey("quick-create");
 
 function createStorage() {
     const values = new Map<string, string>();
@@ -35,7 +38,7 @@ test("keeps video drafts mode-scoped and never auto-runs", () => {
 
 test("normalizes stored values and ignores sensitive or unknown fields", () => {
     const storage = createStorage();
-    storage.setItem("infinite-canvas:quick-create", JSON.stringify({ mode: "video", prompt: `a\u0000${"x".repeat(700)}`, model: "kling-v26-pro", apiKey: "secret", token: "secret" }));
+    storage.setItem(QUICK_CREATE_STORAGE_KEY, JSON.stringify({ mode: "video", prompt: `a\u0000${"x".repeat(700)}`, model: "kling-v26-pro", apiKey: "secret", token: "secret" }));
 
     const draft = readQuickCreateDraft(storage);
     expect(draft?.mode).toBe("video");
@@ -50,7 +53,7 @@ test("rejects invalid or empty stored drafts", () => {
     expect(storeQuickCreateDraft({ mode: "image", prompt: "   " }, storage)).toBe(false);
     expect(readQuickCreateDraft(storage)).toBeNull();
 
-    storage.setItem("infinite-canvas:quick-create", "{broken");
+    storage.setItem(QUICK_CREATE_STORAGE_KEY, "{broken");
     expect(readQuickCreateDraft(storage)).toBeNull();
 });
 

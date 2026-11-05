@@ -3,6 +3,7 @@ import { initReactI18next } from "react-i18next";
 
 import enUS from "@/i18n/locales/en-US";
 import zhCN from "@/i18n/locales/zh-CN";
+import { readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 
 export type AppLocale = "zh-CN" | "en-US";
 
@@ -13,7 +14,7 @@ i18n.use(initReactI18next).init({
         "zh-CN": { translation: zhCN },
         "en-US": { translation: enUS },
     },
-    lng: (localStorage.getItem(LOCALE_STORAGE_KEY) as AppLocale) || "zh-CN",
+    lng: (readAppStorageItem(LOCALE_STORAGE_KEY) as AppLocale) || "zh-CN",
     fallbackLng: "zh-CN",
     supportedLngs: ["zh-CN", "en-US"],
     initAsync: false,
@@ -22,7 +23,7 @@ i18n.use(initReactI18next).init({
 });
 
 export function changeAppLocale(locale: AppLocale) {
-    localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+    writeAppStorageItem(LOCALE_STORAGE_KEY, locale);
     return i18n.changeLanguage(locale);
 }
 

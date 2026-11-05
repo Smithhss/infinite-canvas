@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { readLocalStorageUsage, type LocalStorageUsage } from "@/services/local-storage-usage";
+import { getStorageMigrationState } from "@/services/storage-namespace-migration";
 
 const storeLabelKeys: Record<string, string> = {
     app_state: "appState",
@@ -14,7 +15,10 @@ const storeLabelKeys: Record<string, string> = {
     image_generation_logs: "imageLogs",
     video_generation_logs: "videoLogs",
     agent_chat_messages: "agentMessages",
+    agent_memory: "agentMemory",
+    agent_skill_favorites: "agentSkillFavorites",
     prompt_cache: "promptCache",
+    migration_meta: "migrationMeta",
 };
 
 export function ConfigLocalStorage({ active }: { active: boolean }) {
@@ -22,6 +26,7 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
     const [usage, setUsage] = useState<LocalStorageUsage | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const migration = getStorageMigrationState();
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -52,12 +57,15 @@ export function ConfigLocalStorage({ active }: { active: boolean }) {
                             {t("config.localStorage.title")}
                         </div>
                         <div className="mt-1 text-xs text-stone-500">{t("config.localStorage.description")}</div>
+                        <div className="mt-1 text-xs text-stone-500">{t("config.localStorage.namespaceStatus", { namespace: migration.namespace === "current" ? t("config.localStorage.namespaceCurrent") : t("config.localStorage.namespaceLegacy"), database: migration.database })}</div>
                     </div>
                     <Button icon={<RefreshCw className="size-4" />} loading={loading} onClick={() => void refresh()}>
                         {t("config.localStorage.refresh")}
                     </Button>
                 </div>
                 {error ? <Alert className="mt-4" type="error" showIcon message={t("config.localStorage.readFailed")} description={error} /> : null}
+                {migration.status === "legacy-fallback" ? <Alert className="mt-4" type="warning" showIcon message={t("config.localStorage.legacyFallback")} description={migration.reason} /> : null}
+                {migration.status === "override-legacy" ? <Alert className="mt-4" type="warning" showIcon message={t("config.localStorage.legacyOverride")} /> : null}
                 {!usage && loading ? (
                     <div className="flex min-h-48 items-center justify-center"><Spin /></div>
                 ) : usage ? (

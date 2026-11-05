@@ -6,6 +6,7 @@ import { enqueuePendingTool, removePendingTool } from "@/lib/agent/agent-pending
 import { readAgentPluginDetected } from "@/lib/agent/agent-setup";
 import type { CanvasAgentOp, CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 
 export type AgentChatRole = "user" | "assistant" | "system" | "tool" | "error";
 export type AgentAttachment = { id: string; name: string; type: string; size: number; width: number; height: number; url: string; dataUrl: string };
@@ -44,10 +45,11 @@ export type AgentConversationState = {
 export type AgentPanelTab = "chat" | "setup" | "history" | "skills" | "memory" | "log";
 
 const CONNECT_TIMEOUT_MS = 6000;
-const initialAgentProvider = typeof window === "undefined" ? "codex" : ((localStorage.getItem("canvas-agent-provider") as AgentProvider | null) ?? "codex");
+const initialAgentProvider = typeof window === "undefined" ? "codex" : ((readAppStorageItem("canvas-agent-provider") as AgentProvider | null) ?? "codex");
 const initialModelStorageKey = `canvas-agent-model-${initialAgentProvider}`;
-const initialModel = typeof window === "undefined" ? "" : localStorage.getItem(initialModelStorageKey) || (initialAgentProvider === "codex" ? localStorage.getItem("canvas-agent-model") : "") || "";
-const initialReasoningEffort = typeof window === "undefined" || initialAgentProvider === "claude" ? "" : localStorage.getItem("canvas-agent-reasoning-effort-codex") || localStorage.getItem("canvas-agent-reasoning-effort") || "";
+const initialModel = typeof window === "undefined" ? "" : readAppStorageItem(initialModelStorageKey) || (initialAgentProvider === "codex" ? readAppStorageItem("canvas-agent-model") : "") || "";
+const initialReasoningEffort =
+    typeof window === "undefined" || initialAgentProvider === "claude" ? "" : readAppStorageItem("canvas-agent-reasoning-effort-codex") || readAppStorageItem("canvas-agent-reasoning-effort") || "";
 let agentSource: EventSource | null = null;
 let connectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -109,13 +111,13 @@ type AgentStore = {
 export const CANVAS_AGENT_PANEL_MOTION_MS = 500;
 
 export const useAgentStore = create<AgentStore>((set, get) => ({
-    width: typeof window === "undefined" ? 440 : Number(localStorage.getItem("canvas-agent-panel-width")) || 440,
+    width: typeof window === "undefined" ? 440 : Number(readAppStorageItem("canvas-agent-panel-width")) || 440,
     panelOpen: false,
     panelMounted: true,
     panelClosing: false,
     canvasContext: null,
-    url: typeof window === "undefined" ? "http://127.0.0.1:17371" : localStorage.getItem("canvas-agent-url") || "http://127.0.0.1:17371",
-    token: typeof window === "undefined" ? "" : localStorage.getItem("canvas-agent-token") || "",
+    url: typeof window === "undefined" ? "http://127.0.0.1:17371" : readAppStorageItem("canvas-agent-url") || "http://127.0.0.1:17371",
+    token: typeof window === "undefined" ? "" : readAppStorageItem("canvas-agent-token") || "",
     connected: false,
     enabled: false,
     pluginDetected: readAgentPluginDetected(),
@@ -136,8 +138,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     loadingThreads: false,
     activeTab: "setup",
     confirmTools: false,
-    permissionMode: typeof window === "undefined" ? "request" : (localStorage.getItem("canvas-agent-permission-mode") as AgentPermissionMode) || "request",
-    claudePermissionMode: typeof window === "undefined" ? "request" : (localStorage.getItem("canvas-agent-permission-mode-claude") as AgentPermissionMode) || "request",
+    permissionMode: typeof window === "undefined" ? "request" : (readAppStorageItem("canvas-agent-permission-mode") as AgentPermissionMode) || "request",
+    claudePermissionMode: typeof window === "undefined" ? "request" : (readAppStorageItem("canvas-agent-permission-mode-claude") as AgentPermissionMode) || "request",
     models: [],
     model: initialModel,
     reasoningEffort: initialReasoningEffort as AgentReasoningEffort | "",
@@ -171,8 +173,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         } catch {
             return set({ connectError: silent ? "" : i18n.t("agent.state.invalidUrl") });
         }
-        localStorage.setItem("canvas-agent-url", endpoint);
-        localStorage.setItem("canvas-agent-token", token);
+        writeAppStorageItem("canvas-agent-url", endpoint);
+        writeAppStorageItem("canvas-agent-token", token);
         // Only set enabled here; LocalAgentPanel's effect owns SSE initialization.
         set({ url: endpoint, token, enabled: true, silentConnect: silent, fragmentBootstrap: false, activity: i18n.t("agent.status.connecting"), connectError: "" });
     },

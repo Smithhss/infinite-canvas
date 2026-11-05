@@ -15,6 +15,7 @@ import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
+import { readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
@@ -131,12 +132,12 @@ const CANVAS_SYNC_CHANNEL = "infinite-canvas:canvas-sync";
 
 function initialWorkspaceView(): CanvasWorkspaceView {
     if (typeof window === "undefined") return "workflow";
-    return localStorage.getItem(CANVAS_WORKSPACE_VIEW_KEY) === "storyboard" ? "storyboard" : "workflow";
+    return readAppStorageItem(CANVAS_WORKSPACE_VIEW_KEY) === "storyboard" ? "storyboard" : "workflow";
 }
 
 function initialShowConnections() {
     if (typeof window === "undefined") return true;
-    return localStorage.getItem(CANVAS_SHOW_CONNECTIONS_KEY) !== "false";
+    return readAppStorageItem(CANVAS_SHOW_CONNECTIONS_KEY) !== "false";
 }
 
 type CanvasClipboard = {
@@ -1401,7 +1402,7 @@ function InfiniteCanvasPage() {
     }, [focusNode]);
 
     useEffect(() => {
-        localStorage.setItem(CANVAS_WORKSPACE_VIEW_KEY, workspaceView);
+        writeAppStorageItem(CANVAS_WORKSPACE_VIEW_KEY, workspaceView);
         if (workspaceView !== "storyboard") return;
         setSelectedNodeIds(new Set());
         setSelectedConnectionId(null);
@@ -1414,7 +1415,7 @@ function InfiniteCanvasPage() {
     }, [workspaceView]);
 
     useEffect(() => {
-        localStorage.setItem(CANVAS_SHOW_CONNECTIONS_KEY, String(showConnections));
+        writeAppStorageItem(CANVAS_SHOW_CONNECTIONS_KEY, String(showConnections));
         if (!showConnections) setSelectedConnectionId(null);
     }, [showConnections]);
 

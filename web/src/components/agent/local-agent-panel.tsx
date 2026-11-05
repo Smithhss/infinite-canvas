@@ -18,6 +18,7 @@ import { imageMetadata } from "@/lib/canvas/canvas-node-factory";
 import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { resolveCanvasReferenceImages } from "@/lib/canvas/canvas-resource-references";
 import { readImageMeta } from "@/lib/image-utils";
+import { appSessionStorageKey, readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 import { randomId } from "@/lib/utils";
 import { uploadImage } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -373,8 +374,8 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
 
     useEffect(() => {
         if (!clientReady || !enabled || !token.trim()) return;
-        localStorage.setItem("canvas-agent-url", endpoint);
-        localStorage.setItem("canvas-agent-token", token);
+        writeAppStorageItem("canvas-agent-url", endpoint);
+        writeAppStorageItem("canvas-agent-token", token);
         const clientId = clientIdRef.current;
         let disposed = false;
         let protocolRejected = false;
@@ -677,9 +678,9 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                     setAgentState({ models: [], model: "", reasoningEffort: "" });
                     return;
                 }
-                const savedModel = localStorage.getItem(AGENT_MODEL_STORAGE_KEYS.claude);
+                const savedModel = readAppStorageItem(AGENT_MODEL_STORAGE_KEYS.claude);
                 const current = models.find((item) => item.model === savedModel) || models[0];
-                localStorage.setItem(AGENT_MODEL_STORAGE_KEYS.claude, current.model);
+                writeAppStorageItem(AGENT_MODEL_STORAGE_KEYS.claude, current.model);
                 setAgentState({ models, model: current.model, reasoningEffort: "" });
                 return;
             }
@@ -696,13 +697,13 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                 setAgentState({ models: [], model: "", reasoningEffort: "" });
                 return;
             }
-            const savedModel = localStorage.getItem(AGENT_MODEL_STORAGE_KEYS.codex) || localStorage.getItem("canvas-agent-model");
+            const savedModel = readAppStorageItem(AGENT_MODEL_STORAGE_KEYS.codex) || readAppStorageItem("canvas-agent-model");
             const current = models.find((item) => item.model === savedModel) || models.find((item) => item.isDefault) || models[0];
-            const savedEffort = localStorage.getItem(AGENT_REASONING_STORAGE_KEY) || localStorage.getItem("canvas-agent-reasoning-effort");
+            const savedEffort = readAppStorageItem(AGENT_REASONING_STORAGE_KEY) || readAppStorageItem("canvas-agent-reasoning-effort");
             const efforts = current.supportedReasoningEfforts.map((item) => item.reasoningEffort);
             const nextEffort = savedEffort && efforts.includes(savedEffort as AgentReasoningEffort) ? savedEffort as AgentReasoningEffort : current.defaultReasoningEffort || efforts[0]!;
-            localStorage.setItem(AGENT_MODEL_STORAGE_KEYS.codex, current.model);
-            localStorage.setItem(AGENT_REASONING_STORAGE_KEY, nextEffort);
+            writeAppStorageItem(AGENT_MODEL_STORAGE_KEYS.codex, current.model);
+            writeAppStorageItem(AGENT_REASONING_STORAGE_KEY, nextEffort);
             setAgentState({ models, model: current.model, reasoningEffort: nextEffort });
         }).catch((error) => {
             if (disposed) return;
@@ -1057,10 +1058,10 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const changePermissionMode = (nextMode: AgentPermissionMode) => {
         const apply = () => {
             if (effectiveAgentProvider === "claude") {
-                localStorage.setItem("canvas-agent-permission-mode-claude", nextMode);
+                writeAppStorageItem("canvas-agent-permission-mode-claude", nextMode);
                 setAgentState({ claudePermissionMode: nextMode });
             } else {
-                localStorage.setItem("canvas-agent-permission-mode", nextMode);
+                writeAppStorageItem("canvas-agent-permission-mode", nextMode);
                 setAgentState({ permissionMode: nextMode });
             }
         };
@@ -1089,7 +1090,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             URL.revokeObjectURL(item.url);
             attachmentUrlsRef.current.delete(item.url);
         });
-        localStorage.setItem("canvas-agent-provider", nextProvider);
+        writeAppStorageItem("canvas-agent-provider", nextProvider);
         loadThreadsSequenceRef.current += 1;
         useAgentSkillStore.getState().reset();
         claudeRunIdRef.current = "";
@@ -1740,12 +1741,12 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                             const selected = models.find((item) => item.model === model);
                             if (!selected) return;
                             const effort = selected.defaultReasoningEffort || selected.supportedReasoningEfforts[0]?.reasoningEffort;
-                            localStorage.setItem(AGENT_MODEL_STORAGE_KEYS[effectiveAgentProvider], model);
-                            if (effort) localStorage.setItem(AGENT_REASONING_STORAGE_KEY, effort);
+                            writeAppStorageItem(AGENT_MODEL_STORAGE_KEYS[effectiveAgentProvider], model);
+                            if (effort) writeAppStorageItem(AGENT_REASONING_STORAGE_KEY, effort);
                             setAgentState({ model, ...(effort ? { reasoningEffort: effort } : {}) });
                         } : undefined}
                         onReasoningEffortChange={providerCapabilities.reasoning ? (reasoningEffort) => {
-                            localStorage.setItem(AGENT_REASONING_STORAGE_KEY, reasoningEffort);
+                            writeAppStorageItem(AGENT_REASONING_STORAGE_KEY, reasoningEffort);
                             setAgentState({ reasoningEffort });
                         } : undefined}
                         agentProvider={agentProviderSwitchEnabled ? agentProvider : undefined}
@@ -1801,7 +1802,7 @@ function acquireAgentClientId() {
 
 function readAgentClientId() {
     try {
-        return sessionStorage.getItem("canvas-agent-client-id") || "";
+        return sessionStorage.getItem(appSessionStorageKey("canvas-agent-client-id")) || "";
     } catch {
         return "";
     }
@@ -1809,7 +1810,7 @@ function readAgentClientId() {
 
 function saveAgentClientId(clientId: string) {
     try {
-        sessionStorage.setItem("canvas-agent-client-id", clientId);
+        sessionStorage.setItem(appSessionStorageKey("canvas-agent-client-id"), clientId);
     } catch {
         // The in-memory identity still keeps request ownership consistent within the current page session.
     }

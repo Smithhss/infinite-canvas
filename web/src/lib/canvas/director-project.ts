@@ -239,6 +239,19 @@ export function createDirectorObject(kind: DirectorObjectKind, index: number): D
     };
 }
 
+export function createDirectorSceneNode(kind: DirectorSceneNodeKind, index: number, parentId: string | null = null): DirectorSceneNode {
+    const safeIndex = Math.max(0, Math.floor(index));
+    return {
+        id: `scene-${kind}-${Date.now().toString(36)}-${safeIndex}`,
+        name: `${kind === "group" ? "Group" : "Node"} ${safeIndex + 1}`,
+        kind,
+        parentId: normalizeOptionalId(parentId),
+        visible: true,
+        locked: false,
+        transform: normalizeTransform(undefined),
+    };
+}
+
 export function isValidDirectorCapture(dataUrl: string) {
     if (!/^data:image\/png;base64,[a-z0-9+/=\r\n]+$/i.test(dataUrl)) return false;
     const payload = dataUrl.slice(dataUrl.indexOf(",") + 1);

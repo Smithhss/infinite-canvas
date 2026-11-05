@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, ColorPicker, InputNumber, Modal, Select, Slider, Switch, theme as antdTheme } from "antd";
-import { Box, Camera, Circle, Cylinder, Folder, Lightbulb, MapPin, RotateCcw, Route, Save, Trash2, Triangle } from "lucide-react";
+import { App, Button, ColorPicker, Input, InputNumber, Modal, Select, Slider, Switch, theme as antdTheme } from "antd";
+import { Box, Camera, Circle, Cylinder, Folder, Lightbulb, MapPin, Plus, RotateCcw, Route, Save, Trash2, Triangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Group, Mesh, Object3D, Scene } from "three";
 
 import {
     DIRECTOR_MAX_FOV,
     DIRECTOR_MAX_OBJECTS,
+    DIRECTOR_MAX_SCENE_NODES,
     DIRECTOR_MIN_FOV,
     createDirectorObject,
     createDirectorProject,
+    createDirectorSceneNode,
     isValidDirectorCapture,
     normalizeDirectorColor,
     normalizeDirectorProject,
@@ -19,9 +21,10 @@ import {
     type DirectorObject,
     type DirectorObjectKind,
     type DirectorProjectState,
+    type DirectorSceneNode,
     type DirectorVector3,
 } from "@/lib/canvas/director-project";
-import { buildDirectorSceneTree, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
+import { buildDirectorSceneTree, getAvailableDirectorSceneNodeParents, type DirectorSceneTreeEntry } from "@/lib/canvas/director-scene-tree";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -62,6 +65,7 @@ export function CanvasDirectorShell({
     const [project, setProject] = useState(initialProjectState.project);
     const [unsupportedProjectVersion, setUnsupportedProjectVersion] = useState(initialProjectState.unsupportedVersion);
     const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+    const [selectedSceneNodeId, setSelectedSceneNodeId] = useState<string | null>(null);
     const [sceneError, setSceneError] = useState<string | null>(null);
     const [capturing, setCapturing] = useState(false);
     const [sceneRevision, setSceneRevision] = useState(0);
@@ -77,6 +81,7 @@ export function CanvasDirectorShell({
         setProject(next.project);
         setUnsupportedProjectVersion(next.unsupportedVersion);
         setSelectedObjectId(null);
+        setSelectedSceneNodeId(null);
         setSceneError(null);
     }, [initialProject, open]);
 
@@ -139,6 +144,7 @@ export function CanvasDirectorShell({
                     raycaster.setFromCamera(pointer, camera);
                     const hit = raycaster.intersectObjects(objectRoot.children, true).find((item) => item.object.userData.directorObjectId);
                     setSelectedObjectId(hit?.object.userData.directorObjectId || null);
+                    setSelectedSceneNodeId(null);
                 };
                 const rememberPointer = (event: PointerEvent) => {
                     pointerStart = { x: event.clientX, y: event.clientY };
@@ -250,6 +256,8 @@ export function CanvasDirectorShell({
     }, [project, selectedObjectId]);
 
     const selectedObject = useMemo(() => project.objects.find((item) => item.id === selectedObjectId) || null, [project.objects, selectedObjectId]);
+    const selectedSceneNode = useMemo(() => project.sceneNodes.find((item) => item.id === selectedSceneNodeId) || null, [project.sceneNodes, selectedSceneNodeId]);
+    const availableSceneParents = useMemo(() => selectedSceneNode ? getAvailableDirectorSceneNodeParents(project.sceneNodes, selectedSceneNode.id) : [], [project.sceneNodes, selectedSceneNode]);
     const sceneTree = useMemo(() => buildDirectorSceneTree(project), [project]);
 
     const addObject = (kind: DirectorObjectKind) => {
@@ -260,6 +268,18 @@ export function CanvasDirectorShell({
         const item = createDirectorObject(kind, project.objects.length);
         setProject((current) => ({ ...current, objects: [...current.objects, item] }));
         setSelectedObjectId(item.id);
+        setSelectedSceneNodeId(null);
+    };
+
+    const addSceneGroup = () => {
+        if (project.sceneNodes.length >= DIRECTOR_MAX_SCENE_NODES) {
+            message.warning(t("canvas.director.sceneNodeLimit", { count: DIRECTOR_MAX_SCENE_NODES }));
+            return;
+        }
+        const item = createDirectorSceneNode("group", project.sceneNodes.length, selectedSceneNodeId);
+        setProject((current) => ({ ...current, sceneNodes: [...current.sceneNodes, item] }));
+        setSelectedObjectId(null);
+        setSelectedSceneNodeId(item.id);
     };
 
     const updateSelectedObject = (patch: Partial<DirectorObject>) => {
@@ -273,6 +293,14 @@ export function CanvasDirectorShell({
     const updateSelectedPosition = (axis: keyof DirectorVector3, value: number | null) => {
         if (!selectedObject || value === null) return;
         updateSelectedObject({ position: { ...selectedObject.position, [axis]: value } });
+    };
+
+    const updateSelectedSceneNode = (patch: Partial<DirectorSceneNode>) => {
+        if (!selectedSceneNodeId) return;
+        setProject((current) => ({
+            ...current,
+            sceneNodes: current.sceneNodes.map((item) => (item.id === selectedSceneNodeId ? { ...item, ...patch } : item)),
+        }));
     };
 
     const removeSelectedObject = () => {
@@ -320,6 +348,7 @@ export function CanvasDirectorShell({
         setProject(createDirectorProject());
         setUnsupportedProjectVersion(null);
         setSelectedObjectId(null);
+        setSelectedSceneNodeId(null);
     };
 
     return (
@@ -387,24 +416,40 @@ export function CanvasDirectorShell({
                         </div>
                     ) : null}
                     <div className="mb-5">
-                        <label className="mb-2 block text-xs font-medium opacity-60">{t("canvas.director.sceneTree")}</label>
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                            <label className="text-xs font-medium opacity-60">{t("canvas.director.sceneTree")}</label>
+                            <Button size="small" type="text" className="!h-7 !px-2" icon={<Plus className="size-3.5" />} onClick={addSceneGroup}>
+                                {t("canvas.director.addSceneGroup")}
+                            </Button>
+                        </div>
                         <div className="max-h-52 overflow-y-auto rounded-xl border p-1.5" style={{ borderColor: canvasTheme.node.stroke }}>
                             {sceneTree.map((entry) => {
                                 const Icon = sceneTreeIcon(entry);
                                 const label = sceneTreeLabel(entry, t);
+                                const selectable = Boolean(entry.objectId || entry.sceneNodeId);
+                                const selected = entry.objectId ? entry.objectId === selectedObjectId : entry.sceneNodeId ? entry.sceneNodeId === selectedSceneNodeId : false;
+                                const selectEntry = () => {
+                                    if (entry.objectId) {
+                                        setSelectedObjectId(entry.objectId);
+                                        setSelectedSceneNodeId(null);
+                                    } else if (entry.sceneNodeId) {
+                                        setSelectedSceneNodeId(entry.sceneNodeId);
+                                        setSelectedObjectId(null);
+                                    }
+                                };
                                 const content = (
                                     <>
                                         <Icon className="size-3.5 shrink-0 opacity-55" />
                                         <span className="min-w-0 flex-1 truncate">{label}</span>
                                     </>
                                 );
-                                return entry.objectId ? (
+                                return selectable ? (
                                     <button
                                         key={entry.id}
                                         type="button"
-                                        className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[11px] transition ${entry.objectId === selectedObjectId ? "bg-black/[0.06] font-medium dark:bg-white/[0.09]" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]"}`}
+                                        className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[11px] transition ${selected ? "bg-black/[0.06] font-medium dark:bg-white/[0.09]" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]"}`}
                                         style={{ paddingLeft: 8 + entry.depth * 12 }}
-                                        onClick={() => setSelectedObjectId(entry.objectId!)}
+                                        onClick={selectEntry}
                                     >
                                         {content}
                                     </button>
@@ -489,6 +534,41 @@ export function CanvasDirectorShell({
                                 />
                             </div>
                         </div>
+                    ) : selectedSceneNode ? (
+                        <div className="space-y-5">
+                            <div>
+                                <div className="text-sm font-semibold">{selectedSceneNode.kind === "group" ? t("canvas.director.sceneGroup") : t("canvas.director.sceneNode")}</div>
+                                <div className="mt-1 text-xs opacity-45">{selectedSceneNode.id}</div>
+                            </div>
+                            <div>
+                                <div className="mb-2 text-xs font-medium opacity-60">{t("canvas.director.sceneNodeName")}</div>
+                                <Input
+                                    value={selectedSceneNode.name}
+                                    maxLength={60}
+                                    onChange={(event) => updateSelectedSceneNode({ name: event.target.value })}
+                                    onBlur={() => {
+                                        if (selectedSceneNode.name.trim()) {
+                                            updateSelectedSceneNode({ name: selectedSceneNode.name.trim() });
+                                            return;
+                                        }
+                                        const index = project.sceneNodes.findIndex((item) => item.id === selectedSceneNode.id) + 1;
+                                        updateSelectedSceneNode({ name: defaultSceneNodeName(selectedSceneNode, index, t) });
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <div className="mb-2 text-xs font-medium opacity-60">{t("canvas.director.sceneNodeParent")}</div>
+                                <Select
+                                    className="w-full"
+                                    value={selectedSceneNode.parentId ?? ""}
+                                    options={[
+                                        { value: "", label: t("canvas.director.sceneNodeRoot") },
+                                        ...availableSceneParents.map((node) => ({ value: node.id, label: node.name })),
+                                    ]}
+                                    onChange={(parentId: string) => updateSelectedSceneNode({ parentId: parentId || null })}
+                                />
+                            </div>
+                        </div>
                     ) : (
                         <div className="grid min-h-72 place-items-center rounded-xl border border-dashed p-6 text-center text-sm opacity-55" style={{ borderColor: canvasTheme.node.stroke }}>
                             {t("canvas.director.selectObject")}
@@ -526,6 +606,12 @@ function sceneTreeIcon(entry: DirectorSceneTreeEntry) {
 function sceneTreeLabel(entry: DirectorSceneTreeEntry, t: (key: string) => string) {
     if (entry.kind === "camera") return t("canvas.director.mainCamera");
     return entry.label;
+}
+
+function defaultSceneNodeName(node: DirectorSceneNode, index: number, t: (key: string, values?: Record<string, unknown>) => string) {
+    return node.kind === "group"
+        ? t("canvas.director.defaultSceneGroupName", { count: index })
+        : t("canvas.director.defaultSceneNodeName", { count: index });
 }
 
 function addStudioGeometry(THREE: typeof import("three"), scene: Scene) {

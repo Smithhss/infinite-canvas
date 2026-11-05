@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { createDirectorProject, normalizeDirectorProject } from "../src/lib/canvas/director-project";
-import { DIRECTOR_MAX_TREE_DEPTH, buildDirectorSceneTree } from "../src/lib/canvas/director-scene-tree";
+import { DIRECTOR_MAX_TREE_DEPTH, buildDirectorSceneTree, getAvailableDirectorSceneNodeParents } from "../src/lib/canvas/director-scene-tree";
 
 test("builds camera, grouped scene nodes, nested path nodes and objects", () => {
     const project = normalizeDirectorProject({
@@ -42,6 +42,7 @@ test("builds camera, grouped scene nodes, nested path nodes and objects", () => 
     ]);
     expect(tree.find((entry) => entry.kind === "object")?.objectId).toBe("hero-box");
     expect(tree.find((entry) => entry.kind === "object")?.label).toBe("Hero prop");
+    expect(tree.find((entry) => entry.kind === "group")?.sceneNodeId).toBe("group-a");
 });
 
 test("caps scene-tree display depth without dropping nested entries", () => {
@@ -70,4 +71,17 @@ test("keeps an unnormalized scene-node cycle visible", () => {
 
     const tree = buildDirectorSceneTree(project).filter((entry) => entry.kind === "group");
     expect(tree.map((entry) => entry.label)).toEqual(["Group A", "Group B"]);
+});
+
+test("excludes a scene node and its descendants from parent choices", () => {
+    const project = normalizeDirectorProject({
+        sceneNodes: [
+            { id: "root", name: "Root", kind: "group" },
+            { id: "child", name: "Child", kind: "group", parentId: "root" },
+            { id: "grandchild", name: "Grandchild", kind: "group", parentId: "child" },
+            { id: "sibling", name: "Sibling", kind: "group" },
+        ],
+    });
+
+    expect(getAvailableDirectorSceneNodeParents(project.sceneNodes, "child").map((node) => node.id)).toEqual(["root", "sibling"]);
 });

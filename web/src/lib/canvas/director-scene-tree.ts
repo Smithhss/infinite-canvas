@@ -9,6 +9,7 @@ export type DirectorSceneTreeEntry = {
     kind: DirectorSceneTreeKind;
     depth: number;
     objectId?: string;
+    sceneNodeId?: string;
 };
 
 export function buildDirectorSceneTree(project: DirectorProjectState): DirectorSceneTreeEntry[] {
@@ -45,7 +46,7 @@ export function buildDirectorSceneTree(project: DirectorProjectState): DirectorS
         if (visitedSceneNodes.has(node.id)) return;
         visitedSceneNodes.add(node.id);
         const safeDepth = clampTreeDepth(depth);
-        entries.push({ id: `scene:${node.id}`, label: node.name, kind: node.kind, depth: safeDepth });
+        entries.push({ id: `scene:${node.id}`, label: node.name, kind: node.kind, depth: safeDepth, sceneNodeId: node.id });
         appendObjects(node.id, safeDepth + 1);
         appendSceneNodes(node.id, safeDepth + 1);
     };
@@ -91,6 +92,21 @@ export function buildDirectorSceneTree(project: DirectorProjectState): DirectorS
 
     appendObjects(null, 0);
     return entries;
+}
+
+export function getAvailableDirectorSceneNodeParents(sceneNodes: DirectorSceneNode[], nodeId: string) {
+    const blocked = new Set([nodeId]);
+    let changed = true;
+    while (changed) {
+        changed = false;
+        sceneNodes.forEach((node) => {
+            if (node.parentId && blocked.has(node.parentId) && !blocked.has(node.id)) {
+                blocked.add(node.id);
+                changed = true;
+            }
+        });
+    }
+    return sceneNodes.filter((node) => !blocked.has(node.id));
 }
 
 function objectName(object: DirectorObject, index: number) {

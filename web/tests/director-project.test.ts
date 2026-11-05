@@ -8,6 +8,7 @@ import {
     DIRECTOR_PROJECT_VERSION,
     createDirectorProject,
     createDirectorObject,
+    createDirectorSceneNode,
     hasValidDirectorGlbHeader,
     isValidDirectorCapture,
     normalizeDirectorColor,
@@ -173,6 +174,23 @@ test("keeps a real scene hierarchy and breaks parent cycles", () => {
     expect(project.sceneNodes[2].parentId).toBe("group-a");
     expect(project.sceneNodes[3].parentId).toBeNull();
     expect(project.sceneNodes[3].asset).toEqual({ fileName: "scene.glb", byteSize: 3890196 });
+});
+
+test("creates a bounded scene group with an optional parent", () => {
+    const group = createDirectorSceneNode("group", 2, "group-parent");
+    expect(group).toMatchObject({
+        name: "Group 3",
+        kind: "group",
+        parentId: "group-parent",
+        visible: true,
+        locked: false,
+        transform: {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: { x: 1, y: 1, z: 1 },
+        },
+    });
+    expect(group.id).toMatch(/^scene-group-/);
 });
 
 test("rejects non-GLB or oversized scene asset metadata", () => {

@@ -17,6 +17,10 @@ export function canvasEmptyQuickActionNodeType(action: CanvasEmptyQuickActionId)
     return null;
 }
 
+export function isCanvasEmptyQuickActionEnabled(action: CanvasEmptyQuickActionId) {
+    return action === "smart-cut" || Boolean(canvasEmptyQuickActionNodeType(action));
+}
+
 export function canvasTopBarLayout({ width, floating, agentOpen }: { width: number; floating: boolean; agentOpen: boolean }) {
     return {
         compactActions: floating ? agentOpen || width < 1280 : width < 768,

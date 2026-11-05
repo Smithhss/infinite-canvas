@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Modal, Segmented, Switch, Tooltip } from "antd";
-import { CircleDot, CircleHelp, Eraser, Grid2x2, Group, Hand, History, Image as ImageIcon, Images, Info, Keyboard, MoreHorizontal, Moon, MousePointer2, Music2, Palette, Plus, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
+import { CircleDot, CircleHelp, Eraser, Grid2x2, Group, Hand, History, Image as ImageIcon, Images, Info, Keyboard, MoreHorizontal, Moon, MousePointer2, Music2, Palette, Plus, Redo2, Scissors, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { getNodeSpec } from "@/constant/canvas";
@@ -29,6 +29,7 @@ type CanvasCommandDockProps = {
     onRedo: () => void;
     onUpload: () => void;
     onOpenAssets: () => void;
+    onSmartCut: () => void;
     onDelete: () => void;
     onClear: () => void;
     onCanvasToolChange: (tool: "select" | "pan") => void;
@@ -128,6 +129,7 @@ export function CanvasCommandDock(props: CanvasCommandDockProps) {
                     {panel === "more" ? (
                         <>
                             <PanelHeading label={t("canvas.commandDock.more")} muted={theme.node.muted} />
+                            <DockMenuItem theme={theme} icon={<Scissors className="size-4" />} label={t("canvas.smartCut.title")} hint={t("canvas.smartCut.menuHint")} onClick={() => runAndClose(props.onSmartCut)} />
                             <DockMenuItem theme={theme} icon={<Trash2 className="size-4" />} label={t("canvas.deleteSelected")} disabled={!props.selectedCount} danger onClick={() => runAndClose(props.onDelete)} />
                             <DockMenuItem theme={theme} icon={<Eraser className="size-4" />} label={t("canvas.toolbar.clear")} danger onClick={() => runAndClose(props.onClear)} />
                             <DockMenuItem

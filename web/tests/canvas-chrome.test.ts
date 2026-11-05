@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { CANVAS_EMPTY_QUICK_ACTION_IDS, canvasEmptyQuickActionNodeType, canvasTopBarLayout, shouldOverlayAgentPanel, shouldShowCanvasEmptyQuickActions } from "../src/lib/canvas/canvas-chrome";
+import { CANVAS_EMPTY_QUICK_ACTION_IDS, canvasEmptyQuickActionNodeType, canvasTopBarLayout, isCanvasEmptyQuickActionEnabled, shouldOverlayAgentPanel, shouldShowCanvasEmptyQuickActions } from "../src/lib/canvas/canvas-chrome";
 import { CanvasNodeType } from "../src/types/canvas";
 
 test("empty canvas quick actions only show after a workflow project has loaded with no nodes", () => {
@@ -11,13 +11,14 @@ test("empty canvas quick actions only show after a workflow project has loaded w
     expect(shouldShowCanvasEmptyQuickActions({ enabled: true, projectLoaded: true, workspaceView: "workflow", nodeCount: 1 })).toBe(false);
 });
 
-test("empty canvas quick actions map to existing node types and keep smart cut disabled", () => {
+test("empty canvas quick actions map built-ins and expose local smart cut", () => {
     expect(CANVAS_EMPTY_QUICK_ACTION_IDS).toEqual(["image", "video", "audio", "script", "smart-cut"]);
     expect(canvasEmptyQuickActionNodeType("image")).toBe(CanvasNodeType.Image);
     expect(canvasEmptyQuickActionNodeType("video")).toBe(CanvasNodeType.Video);
     expect(canvasEmptyQuickActionNodeType("audio")).toBe(CanvasNodeType.Audio);
     expect(canvasEmptyQuickActionNodeType("script")).toBe(CanvasNodeType.Text);
     expect(canvasEmptyQuickActionNodeType("smart-cut")).toBeNull();
+    expect(CANVAS_EMPTY_QUICK_ACTION_IDS.every(isCanvasEmptyQuickActionEnabled)).toBe(true);
 });
 
 test("canvas top bar switches compact clusters at the actual layout breakpoints", () => {

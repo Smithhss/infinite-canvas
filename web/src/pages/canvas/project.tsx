@@ -94,7 +94,9 @@ import { getNodeDefinition, isBuiltinNodeType as isBuiltinType, useNodeRegistryV
 import { registerBuiltinNodes } from "@/components/canvas/nodes/builtin-nodes";
 import { CanvasPluginManagerModal } from "@/components/canvas/canvas-plugin-manager-modal";
 import { CanvasRefreshShell } from "@/components/canvas/canvas-refresh-shell";
+import { CanvasSmartCutDialog, type SmartCutSourceVideo } from "@/components/canvas/canvas-smart-cut-dialog";
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
+import type { SmartCutRenderResult } from "@/lib/canvas/canvas-smart-cut-render";
 import { BuiltinAgentPanel } from "@/components/canvas/builtin-agent-panel";
 import { ConnectionCreateMenu, NodeCreateMenu, type PendingConnectionCreate } from "@/components/canvas/canvas-create-menus";
 import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
@@ -300,6 +302,7 @@ function InfiniteCanvasPage() {
     const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
     const [infoNodeId, setInfoNodeId] = useState<string | null>(null);
     const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
+    const [smartCutOpen, setSmartCutOpen] = useState(false);
     const [directorOpen, setDirectorOpen] = useState(false);
     const [panoramaNodeId, setPanoramaNodeId] = useState<string | null>(null);
     const [cropNodeId, setCropNodeId] = useState<string | null>(null);
@@ -870,6 +873,16 @@ function InfiniteCanvasPage() {
     const previewContent = previewImageId ? previewNode?.metadata?.images?.find((image) => image.id === previewImageId)?.content : previewNode?.metadata?.content;
     const hasMultipleSelectedNodes = selectedNodeIds.size > 1;
     const selectedNodes = useMemo(() => nodes.filter((node) => selectedNodeIds.has(node.id)), [nodes, selectedNodeIds]);
+    const smartCutVideos = useMemo<SmartCutSourceVideo[]>(() => {
+        const videos = nodes.filter((node) => node.type === CanvasNodeType.Video && node.metadata?.content && !node.locked);
+        const selectedVideos = videos.filter((node) => selectedNodeIds.has(node.id));
+        return (selectedVideos.length ? selectedVideos : videos).map((node) => ({
+            id: node.id,
+            title: node.title || t("assets.kinds.video"),
+            src: node.metadata!.content!,
+            durationMs: node.metadata?.durationMs,
+        }));
+    }, [nodes, selectedNodeIds, t]);
     const hasLockedSelection = selectedNodes.some((node) => node.locked);
     const canGroupSelection = !hasLockedSelection && canGroupSelectedNodes(selectedNodeIds, nodes);
     const canUngroupSelection = !hasLockedSelection && canUngroupSelectedNodes(selectedNodeIds, nodes);
@@ -1023,6 +1036,37 @@ function InfiniteCanvasPage() {
             if (type === CanvasNodeType.Text || type === CanvasNodeType.Audio) setDialogNodeId(node.id);
         },
         [createNode],
+    );
+
+    const applySmartCut = useCallback(
+        async (result: SmartCutRenderResult, sourceNodeIds: string[]) => {
+            const video = await uploadMediaFile(result.blob, "video");
+            const size = fitNodeSize(result.width, result.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+            const sources = nodesRef.current.filter((node) => sourceNodeIds.includes(node.id));
+            const center = sources.length
+                ? {
+                      x: Math.max(...sources.map((node) => node.position.x + node.width)) + 80 + size.width / 2,
+                      y: sources.reduce((total, node) => total + node.position.y + node.height / 2, 0) / sources.length,
+                  }
+                : getCanvasCenter();
+            const id = nanoid();
+            const node: CanvasNodeData = {
+                id,
+                type: CanvasNodeType.Video,
+                title: t("canvas.smartCut.outputTitle"),
+                position: { x: center.x - size.width / 2, y: center.y - size.height / 2 },
+                width: size.width,
+                height: size.height,
+                metadata: { ...videoMetadata(video), durationMs: result.durationMs || video.durationMs },
+            };
+            setNodes((current) => [...current, node]);
+            setConnections((current) => [...current, ...sources.map((source) => ({ id: nanoid(), fromNodeId: source.id, toNodeId: id }))]);
+            setSelectedNodeIds(new Set([id]));
+            setSelectedConnectionId(null);
+            setSmartCutOpen(false);
+            message.success(t("canvas.smartCut.completed"));
+        },
+        [getCanvasCenter, message, t],
     );
 
     const deleteNodes = useCallback(
@@ -3733,7 +3777,7 @@ function InfiniteCanvasPage() {
                             ) : null}
                         </InfiniteCanvas>
 
-                        <CanvasEmptyQuickActions enabled={canvasFloatingChromeEnabled} projectLoaded={projectLoaded} workspaceView={workspaceView} nodeCount={nodes.length} onCreate={createNodeFromEmptyAction} />
+                        <CanvasEmptyQuickActions enabled={canvasFloatingChromeEnabled} projectLoaded={projectLoaded} workspaceView={workspaceView} nodeCount={nodes.length} onCreate={createNodeFromEmptyAction} onSmartCut={() => setSmartCutOpen(true)} />
 
                         {referencePickerNodeId ? (
                             <button
@@ -3833,6 +3877,7 @@ function InfiniteCanvasPage() {
                                 onRedo={redoCanvas}
                                 onUpload={() => handleUploadRequest()}
                                 onOpenAssets={() => setAssetPickerOpen(true)}
+                                onSmartCut={() => setSmartCutOpen(true)}
                                 onDelete={() => deleteNodes(new Set(selectedNodeIds))}
                                 onClear={() => setClearConfirmOpen(true)}
                                 onCanvasToolChange={setCanvasTool}
@@ -3858,6 +3903,7 @@ function InfiniteCanvasPage() {
                                 onUndo={undoCanvas}
                                 onRedo={redoCanvas}
                                 onUpload={() => handleUploadRequest()}
+                                onSmartCut={() => setSmartCutOpen(true)}
                                 onDelete={() => deleteNodes(new Set(selectedNodeIds))}
                                 onClear={() => setClearConfirmOpen(true)}
                                 onCanvasToolChange={setCanvasTool}
@@ -3916,6 +3962,7 @@ function InfiniteCanvasPage() {
                         <input ref={imageInputRef} type="file" multiple accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
 
                         <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
+                        <CanvasSmartCutDialog open={smartCutOpen} videos={smartCutVideos} onClose={() => setSmartCutOpen(false)} onApply={applySmartCut} />
 
                         {cropNode?.metadata?.content ? <CanvasNodeCropDialog dataUrl={cropNode.metadata.content} open={Boolean(cropNode)} onClose={() => setCropNodeId(null)} onConfirm={(crop) => void cropImageNode(cropNode!, crop)} /> : null}
 

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Button, Input, Popconfirm, Switch, Tabs } from "antd";
-import { AlertTriangle, ArrowRight, Bot, CheckCircle2, CircleAlert, Code2, Copy, Download, Image as ImageIcon, LoaderCircle, Puzzle, RefreshCw, ShieldCheck, Sparkles, TerminalSquare, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bot, Boxes, BrainCircuit, CheckCircle2, CircleAlert, Code2, Copy, Download, Image as ImageIcon, LoaderCircle, Puzzle, RefreshCw, ShieldCheck, Sparkles, TerminalSquare, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router-dom";
 
@@ -10,13 +10,10 @@ import { useAgentStore } from "@/stores/use-agent-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import { resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
-import { AGENT_CLAUDE_MCP_COMMAND, AGENT_CLI_COMMAND, AGENT_PLUGIN_INSTALL_COMMAND } from "@/lib/agent/plugin-commands";
+import { AGENT_INTEGRATION_TARGETS, resolveAgentIntegrationMode, resolveAgentIntegrationPhase, type AgentIntegrationMode, type AgentIntegrationTarget } from "@/lib/agent/agent-integration-targets";
 import { canvasThemes } from "@/lib/canvas-theme";
 import type { OfficialPluginEntry } from "@/lib/canvas/plugin-registry";
 import type { InstalledPlugin } from "@/stores/canvas/use-plugin-store";
-
-type InstallMode = "plugin" | "cli";
-type AgentTarget = "codex" | "claude-code";
 
 export default function PluginsPage() {
     const enabled = isFeatureEnabled("pluginHub");
@@ -30,8 +27,10 @@ function PluginHubPage() {
     const colorTheme = useThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
     const catalog = usePluginCatalog({ active: true });
-    const [installMode, setInstallMode] = useState<InstallMode>("plugin");
-    const [agentTarget, setAgentTarget] = useState<AgentTarget>("codex");
+    const [installMode, setInstallMode] = useState<AgentIntegrationMode>("plugin");
+    const [agentTargetId, setAgentTargetId] = useState(AGENT_INTEGRATION_TARGETS[0].id);
+    const agentTarget = AGENT_INTEGRATION_TARGETS.find((target) => target.id === agentTargetId) || AGENT_INTEGRATION_TARGETS[0];
+    const activeMode = resolveAgentIntegrationMode(agentTarget, installMode);
 
     const connected = useAgentStore((state) => state.connected);
     const enabled = useAgentStore((state) => state.enabled);
@@ -40,17 +39,28 @@ function PluginHubPage() {
     const pluginDetected = useAgentStore((state) => state.pluginDetected);
     const conversation = useAgentStore((state) => state.conversation);
     const activity = useAgentStore((state) => state.activity);
-    const phase = resolveAgentSetupPhase({ connected, enabled, connectError, conversationStatus: conversation.status, mcpStatuses: conversation.mcpStatuses, pluginDetected, tokenPresent: Boolean(token.trim()) });
-    const statusLabel = t(`agent.connect.status${phase === "not-detected" ? "NotDetected" : phase === "mcp-starting" ? "McpStarting" : phase.charAt(0).toUpperCase() + phase.slice(1)}`);
+    const setupPhase = resolveAgentSetupPhase({ connected, enabled, connectError, conversationStatus: conversation.status, mcpStatuses: conversation.mcpStatuses, pluginDetected, tokenPresent: Boolean(token.trim()) });
+    const phase = resolveAgentIntegrationPhase(agentTarget, setupPhase);
+    const statusLabel = phase === "planned" ? t("pluginHub.planned") : t(`agent.connect.status${phase === "not-detected" ? "NotDetected" : phase === "mcp-starting" ? "McpStarting" : phase.charAt(0).toUpperCase() + phase.slice(1)}`);
+    const statusHint = agentTarget.status === "planned" ? t("pluginHub.plannedConnectDescription") : connectError || activity || t("pluginHub.stepTwoHint");
 
     const officialCount = catalog.official.length;
     const installedCount = catalog.officialRecordById.size + catalog.localPlugins.length + catalog.thirdPartyPlugins.length;
-    const command = agentTarget === "claude-code" ? AGENT_CLAUDE_MCP_COMMAND : installMode === "plugin" ? t("agent.connect.installPrompt") : AGENT_CLI_COMMAND;
+    const commandKey = agentTarget.commandKeys?.[activeMode];
+    const command = agentTarget.status === "available" ? agentTarget.commands[activeMode] || (commandKey ? t(commandKey) : undefined) : undefined;
+    const copyDescription = agentTarget.status === "planned"
+        ? t("pluginHub.plannedStepDescription")
+        : t(agentTarget.id === "claude-code" ? "pluginHub.claudeCodeStepCopyDescription" : "pluginHub.stepCopyDescription");
+    const connectDescription = agentTarget.status === "planned"
+        ? t("pluginHub.plannedConnectDescription")
+        : t(agentTarget.id === "claude-code" ? "pluginHub.claudeCodeStepConnectDescription" : "pluginHub.stepConnectDescription");
     const openAgent = () => {
         useAgentStore.getState().setAgentState({ activeTab: connected ? "chat" : "setup" });
         useAgentStore.getState().openPanel();
     };
-    const copyCommand = () => copyText(command, t("pluginHub.commandCopied"));
+    const copyCommand = () => {
+        if (command) copyText(command, t("pluginHub.commandCopied"));
+    };
     const dark = colorTheme === "dark";
 
     return (
@@ -58,7 +68,7 @@ function PluginHubPage() {
             <div className="mx-auto w-full max-w-[1512px] px-4 pb-16 pt-4 sm:px-7 lg:px-10">
                 <div className="flex min-h-8 items-center justify-end gap-2">
                     <span className={`inline-flex h-8 items-center gap-2 rounded-lg px-3 text-xs ${dark ? "bg-white/[0.04] text-white/65" : "bg-white text-stone-500 shadow-sm"}`}>
-                        <span className={`size-1.5 rounded-full ${phase === "connected" ? "bg-emerald-500" : phase === "failed" ? "bg-rose-500" : "bg-amber-500"}`} />
+                        <span className={`size-1.5 rounded-full ${phase === "connected" ? "bg-emerald-500" : phase === "failed" ? "bg-rose-500" : phase === "planned" ? dark ? "bg-white/20" : "bg-stone-300" : "bg-amber-500"}`} />
                         {t("pluginHub.agentStatus")} · {statusLabel}
                     </span>
                     <Button type="text" size="small" className="!h-10 !rounded-lg !px-2.5 sm:!h-8" icon={<Bot className="size-3.5" />} onClick={openAgent}>
@@ -84,69 +94,90 @@ function PluginHubPage() {
                     <section className={`mt-8 rounded-[24px] border p-4 ${dark ? "border-white/[0.08] bg-[#171717]" : "border-stone-200 bg-white shadow-[0_24px_80px_-60px_rgba(28,25,23,.45)]"}`} aria-label={t("pluginHub.installPanelLabel")}>
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className={`flex flex-wrap items-center gap-1.5 ${dark ? "text-white/60" : "text-stone-500"}`} aria-label={t("pluginHub.chooseAgent")}>
-                                {(["codex", "claude-code"] as const).map((target) => (
+                                {AGENT_INTEGRATION_TARGETS.map((target) => (
                                     <button
-                                        key={target}
+                                        key={target.id}
                                         type="button"
-                                        className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition ${agentTarget === target ? (dark ? "border-white/15 bg-white/[0.09] text-white" : "border-stone-300 bg-white text-stone-950 shadow-sm") : dark ? "border-transparent text-white/45 hover:border-white/10 hover:text-white/80" : "border-transparent text-stone-500 hover:border-stone-200 hover:text-stone-950"}`}
-                                        aria-pressed={agentTarget === target}
+                                        className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition ${agentTarget.id === target.id ? (dark ? "border-white/15 bg-white/[0.09] text-white" : "border-stone-300 bg-white text-stone-950 shadow-sm") : dark ? "border-transparent text-white/45 hover:border-white/10 hover:text-white/80" : "border-transparent text-stone-500 hover:border-stone-200 hover:text-stone-950"}`}
+                                        aria-pressed={agentTarget.id === target.id}
                                         onClick={() => {
-                                            setAgentTarget(target);
-                                            if (target === "claude-code") setInstallMode("cli");
+                                            setAgentTargetId(target.id);
+                                            setInstallMode(target.modes[0]);
                                         }}
                                     >
-                                        {target === "codex" ? <Bot className="size-4" /> : <TerminalSquare className="size-4" />}
-                                        {t(target === "codex" ? "pluginHub.codexAgent" : "pluginHub.claudeCodeAgent")}
+                                        <AgentTargetIcon target={target} />
+                                        {target.label}
+                                        {target.status === "planned" ? <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${dark ? "bg-white/[0.06] text-white/40" : "bg-stone-100 text-stone-400"}`}>{t("pluginHub.planned")}</span> : null}
                                     </button>
                                 ))}
                             </div>
-                            {agentTarget === "codex" ? (
-                                <div className={`inline-flex h-10 w-fit items-center rounded-full p-1 ${dark ? "bg-white/[0.06]" : "bg-stone-100"}`}>
-                                    {(["plugin", "cli"] as const).map((mode) => (
+                            <div className={`inline-flex h-10 w-fit items-center rounded-full p-1 ${dark ? "bg-white/[0.06]" : "bg-stone-100"}`}>
+                                {agentTarget.modes.map((mode) => {
+                                    const active = agentTarget.status === "available" && activeMode === mode;
+                                    return (
                                         <button
                                             key={mode}
                                             type="button"
-                                            className={`inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs font-medium transition ${installMode === mode ? (dark ? "bg-[#383838] text-white shadow-sm" : "bg-stone-950 text-white shadow-sm") : dark ? "text-white/55 hover:text-white" : "text-stone-500 hover:text-stone-950"}`}
+                                            disabled={agentTarget.status === "planned"}
+                                            className={`inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs font-medium transition ${active ? (dark ? "bg-[#383838] text-white shadow-sm" : "bg-stone-950 text-white shadow-sm") : agentTarget.status === "planned" ? "cursor-not-allowed opacity-45" : dark ? "text-white/55 hover:text-white" : "text-stone-500 hover:text-stone-950"}`}
                                             onClick={() => setInstallMode(mode)}
-                                            aria-pressed={installMode === mode}
-                                            style={installMode === mode ? { color: "#ffffff" } : undefined}
+                                            aria-pressed={active}
+                                            style={active ? { color: "#ffffff" } : undefined}
                                         >
-                                            {mode === "plugin" ? <Puzzle className="size-3.5" /> : <Code2 className="size-3.5" />}
-                                            {t(mode === "plugin" ? "pluginHub.pluginShort" : "pluginHub.cliShort")}
+                                            {mode === "plugin" ? <Puzzle className="size-3.5" /> : mode === "cli" ? <Code2 className="size-3.5" /> : <TerminalSquare className="size-3.5" />}
+                                            {t(mode === "plugin" ? "pluginHub.pluginShort" : mode === "cli" ? "pluginHub.cliShort" : "pluginHub.mcpShort")}
                                         </button>
-                                    ))}
-                                </div>
-                            ) : (
-                                <span className={`inline-flex h-9 items-center gap-2 rounded-full px-4 text-xs font-medium ${dark ? "bg-white/[0.06] text-white/70" : "bg-stone-100 text-stone-600"}`}>
-                                    <TerminalSquare className="size-3.5" />
-                                    {t("pluginHub.mcpShort")}
-                                </span>
-                            )}
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className={`mt-2 flex flex-wrap items-start justify-between gap-2 border-t pt-3 text-xs ${dark ? "border-white/[0.06] text-white/45" : "border-stone-200 text-stone-500"}`}>
+                            <p className="max-w-2xl leading-5">{t(agentTarget.descriptionKey)}</p>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${agentTarget.status === "available" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : dark ? "bg-white/[0.06] text-white/45" : "bg-stone-100 text-stone-500"}`}>
+                                {t(agentTarget.status === "available" ? "pluginHub.available" : "pluginHub.planned")}
+                            </span>
                         </div>
 
                         <ol className={`mt-4 grid overflow-hidden rounded-[20px] border lg:grid-cols-2 ${dark ? "border-white/[0.07]" : "border-stone-200"}`}>
                             <li className={`min-w-0 p-5 sm:p-6 lg:border-r ${dark ? "border-white/[0.07]" : "border-stone-200"}`}>
                                 <StepNumber value="1" dark={dark} />
                                 <h2 className="mt-4 text-base font-semibold">{t("pluginHub.stepCopyTitle")}</h2>
-                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{t(agentTarget === "claude-code" ? "pluginHub.claudeCodeStepCopyDescription" : "pluginHub.stepCopyDescription")}</p>
-                                <CommandBlock command={command} onCopy={copyCommand} theme={theme} />
+                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{copyDescription}</p>
+                                {command ? <CommandBlock command={command} onCopy={copyCommand} theme={theme} /> : <PlannedCommandNotice dark={dark} />}
                             </li>
                             <li className="min-w-0 p-5 sm:p-6 lg:pl-7">
                                 <StepNumber value="2" dark={dark} />
                                 <h2 className="mt-4 text-base font-semibold">{t("pluginHub.stepConnectTitle")}</h2>
-                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{t(agentTarget === "claude-code" ? "pluginHub.claudeCodeStepConnectDescription" : "pluginHub.stepConnectDescription")}</p>
+                                <p className={`mt-2 text-xs leading-5 ${dark ? "text-white/45" : "text-stone-500"}`}>{connectDescription}</p>
                                 <div className={`mt-5 flex items-center gap-3 rounded-[14px] border px-4 py-3 ${dark ? "border-white/[0.07] bg-white/[0.02]" : "border-stone-200 bg-stone-50/70"}`}>
-                                    <span className={`grid size-8 shrink-0 place-items-center rounded-full ${phase === "connected" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>
+                                    <span className={`grid size-8 shrink-0 place-items-center rounded-full ${phase === "connected" ? "bg-emerald-500/10 text-emerald-500" : phase === "planned" ? dark ? "bg-white/[0.06] text-white/45" : "bg-stone-100 text-stone-500" : "bg-amber-500/10 text-amber-500"}`}>
                                         {phase === "connected" ? <CheckCircle2 className="size-4" /> : phase === "connecting" || phase === "mcp-starting" ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
                                     </span>
                                     <div className="min-w-0 flex-1">
                                         <div className="truncate text-xs font-medium">{statusLabel}</div>
-                                        <div className={`mt-0.5 truncate text-[11px] ${dark ? "text-white/35" : "text-stone-500"}`}>{connectError || activity || t("pluginHub.stepTwoHint")}</div>
+                                        <div className={`mt-0.5 truncate text-[11px] ${dark ? "text-white/35" : "text-stone-500"}`}>{statusHint}</div>
                                     </div>
-                                    <Button size="small" className="!h-10 shrink-0 !rounded-lg sm:!h-8" onClick={openAgent}>{t(connected ? "pluginHub.openAgent" : "pluginHub.openSetup")}</Button>
+                                    {agentTarget.status === "available" ? <Button size="small" className="!h-10 shrink-0 !rounded-lg sm:!h-8" onClick={openAgent}>{t(connected ? "pluginHub.openAgent" : "pluginHub.openSetup")}</Button> : null}
                                 </div>
                             </li>
                         </ol>
+
+                        <div className={`mt-3 grid gap-3 rounded-[16px] border p-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)] ${dark ? "border-white/[0.07] bg-white/[0.02]" : "border-stone-200 bg-stone-50/55"}`}>
+                            <div className="min-w-0">
+                                <div className={`text-[10px] font-medium uppercase tracking-[0.12em] ${dark ? "text-white/30" : "text-stone-400"}`}>{t("pluginHub.sourceLabel")}</div>
+                                <code className={`mt-1.5 block break-words text-[11px] leading-5 ${dark ? "text-white/60" : "text-stone-600"}`}>{agentTarget.source || t("pluginHub.sourcePlanned")}</code>
+                            </div>
+                            <div className="min-w-0">
+                                <div className={`text-[10px] font-medium uppercase tracking-[0.12em] ${dark ? "text-white/30" : "text-stone-400"}`}>{t("pluginHub.capabilitiesLabel")}</div>
+                                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                    {agentTarget.capabilities.length ? agentTarget.capabilities.map((capability) => (
+                                        <span key={capability} className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${dark ? "bg-white/[0.06] text-white/55" : "bg-white text-stone-500 ring-1 ring-stone-200"}`}>{capability}</span>
+                                    )) : <span className={`text-[11px] ${dark ? "text-white/35" : "text-stone-400"}`}>{t("pluginHub.capabilitiesPlanned")}</span>}
+                                </div>
+                                <p className={`mt-1.5 text-[10px] leading-4 ${dark ? "text-white/30" : "text-stone-400"}`}>{t("pluginHub.capabilitiesHint")}</p>
+                            </div>
+                        </div>
                     </section>
                 </section>
 
@@ -335,6 +366,11 @@ function HeroAppGlyph({ icon, className, raised = false }: { icon: ReactNode; cl
     );
 }
 
+function AgentTargetIcon({ target }: { target: AgentIntegrationTarget }) {
+    const Icon = target.id === "codex" ? Bot : target.id === "claude" ? BrainCircuit : target.id === "claude-code" ? TerminalSquare : target.id === "openclaw" ? Boxes : target.id === "hermes" ? Zap : Code2;
+    return <Icon className="size-4" />;
+}
+
 function StepNumber({ value, dark }: { value: string; dark: boolean }) {
     return <span className={`grid size-7 place-items-center rounded-full text-xs font-semibold ${dark ? "bg-white/[0.08] text-white/70" : "bg-stone-100 text-stone-600"}`}>{value}</span>;
 }
@@ -376,6 +412,16 @@ function CommandBlock({ command, onCopy, theme }: { command: string; onCopy: () 
                 <Button type="text" size="small" className="!h-10 !w-10 !min-w-10 shrink-0 sm:!h-8 sm:!w-8 sm:!min-w-8" icon={<Copy className="size-3.5" />} onClick={onCopy} aria-label={t("pluginHub.copyInstall")} />
             </div>
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10" style={{ background: `linear-gradient(to top, ${theme.node.panel}, transparent)` }} />
+        </div>
+    );
+}
+
+function PlannedCommandNotice({ dark }: { dark: boolean }) {
+    const { t } = useTranslation();
+    return (
+        <div className={`mt-5 flex items-center gap-2 rounded-[14px] border px-3.5 py-3 text-xs ${dark ? "border-white/[0.07] bg-white/[0.02] text-white/45" : "border-stone-200 bg-stone-50/70 text-stone-500"}`}>
+            <CircleAlert className="size-4 shrink-0" />
+            <span>{t("pluginHub.plannedCommand")}</span>
         </div>
     );
 }

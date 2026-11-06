@@ -40,6 +40,16 @@ export type CanvasNodeImage = {
     mimeType: string;
 };
 
+export type CanvasGenerationReferenceKind = "image" | "video" | "audio" | "text";
+
+export type CanvasGenerationReference = {
+    kind: CanvasGenerationReferenceKind;
+    nodeId?: string;
+    title?: string;
+    storageKey?: string;
+    url?: string;
+};
+
 export type CanvasNodeText = {
     id: string;
     status: CanvasNodeStatus;
@@ -187,6 +197,7 @@ export type CanvasNodeMetadata = {
     audioSpeed?: string;
     audioInstructions?: string;
     references?: string[];
+    generationReferences?: CanvasGenerationReference[];
     naturalWidth?: number;
     naturalHeight?: number;
     freeResize?: boolean;

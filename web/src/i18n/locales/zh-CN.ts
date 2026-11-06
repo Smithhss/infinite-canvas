@@ -714,7 +714,12 @@ export default {
             processSelection: "在画布中处理",
             selectItem: "选择该素材",
             deselectItem: "取消选择该素材",
-            fields: { group: "分组", status: "状态", model: "模型", size: "尺寸", node: "节点 ID", prompt: "提示词" },
+            referenceCount: "{{count}} 个参考素材",
+            referenceMissing: "参考素材已缺失",
+            generationTypes: { generation: "文生图", edit: "图生图" },
+            videoModes: { frames: "首尾帧", reference: "参考素材" },
+            parameters: { count: "{{count}} 张", seconds: "{{value}} 秒", background: "背景 {{value}}", audio: "声音 {{value}}", watermark: "水印 {{value}}" },
+            fields: { group: "分组", status: "状态", model: "模型", size: "尺寸", parameters: "生成参数", references: "参考素材", node: "节点 ID", prompt: "提示词" },
             workbench: {
                 title: "项目素材库",
                 back: "后退",

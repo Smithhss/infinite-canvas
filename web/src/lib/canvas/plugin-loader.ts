@@ -1,4 +1,5 @@
 import { APP_VERSION } from "@/constant/env";
+import { localPluginManifestPath } from "@/lib/canvas/local-plugins";
 import { registerNodeDefinitions, unregisterPluginNodes } from "@/lib/canvas/node-registry";
 import { verifySha256 } from "@/lib/canvas/plugin-integrity";
 import { isAppVersionCompatible } from "@/lib/canvas/plugin-manifest";
@@ -188,12 +189,12 @@ export async function ensurePluginsLoaded() {
     await loadDevPlugins();
 }
 
-// Discover local plugins from web/public/plugins, add them disabled, and expose them in the manager without a URL.
+// Discover local plugins from web/public/local-plugins, add them disabled, and expose them in the manager without a URL.
 // Refresh metadata and source for existing records while preserving the enabled flag so persisted versions stay current.
 async function loadLocalPlugins() {
     let urls: unknown;
     try {
-        const response = await fetch("/plugins/index.json");
+        const response = await fetch(localPluginManifestPath(import.meta.env.BASE_URL));
         if (!response.ok) return;
         urls = await response.json();
     } catch {

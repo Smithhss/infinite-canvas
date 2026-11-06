@@ -50,7 +50,7 @@ import { buildPlugin } from "@infinite-canvas/plugin-sdk/build";
 await buildPlugin(import.meta.url);
 ```
 
-`npm run build` 产出 `dist/<目录名>.js` 并同步到 `web/public/plugins/`。
+`npm run build` 产出 `dist/<目录名>.js` 并同步到 `web/public/local-plugins/`。
 
 ## 依赖接入
 

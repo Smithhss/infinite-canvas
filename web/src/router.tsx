@@ -1,6 +1,7 @@
 import { createBrowserRouter, Outlet } from "react-router-dom";
 
 import { AnalyticsTracker } from "@/components/layout/analytics-tracker";
+import { routerBasename } from "@/lib/app-router";
 import UserLayout from "@/layouts/user-layout";
 import AgentPage from "@/pages/agent";
 import AssetsPage from "@/pages/assets";
@@ -40,4 +41,4 @@ export const router = createBrowserRouter([
         ],
     },
     { path: "*", element: <NotFound /> },
-]);
+], { basename: routerBasename(import.meta.env.BASE_URL) });

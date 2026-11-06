@@ -10,7 +10,7 @@ export const STORAGE_NAMESPACE_OVERRIDE_KEY = "infinite-canvas:v1:storage-namesp
 
 const LEGACY_NAMESPACE_PREFIX = "infinite-canvas:";
 const LEGACY_STORAGE_KEYS = new Set(["canvas-workspace-view", "canvas-show-connections", "libtv-sidebar-collapsed"]);
-const LEGACY_STORAGE_PREFIXES = [LEGACY_NAMESPACE_PREFIX, "canvas-storyboard-collapsed:", "canvas-agent-", "canvas-side-panel-", "canvas-image-quick-tools-"];
+const LEGACY_STORAGE_PREFIXES = [LEGACY_NAMESPACE_PREFIX, "canvas-storyboard-collapsed:", "canvas-storyboard-layout:", "canvas-agent-", "canvas-side-panel-", "canvas-image-quick-tools-"];
 
 export type StorageNamespace = "current" | "legacy";
 

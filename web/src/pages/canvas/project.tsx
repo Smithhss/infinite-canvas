@@ -122,6 +122,7 @@ import {
     type SelectionBox,
     type ViewportTransform,
     type CanvasWorkspaceView,
+    type CanvasStoryboardCategory,
 } from "@/types/canvas";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
@@ -2154,6 +2155,15 @@ function InfiniteCanvasPage() {
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, title } : node)));
     }, []);
 
+    const handleStoryboardCategoryChange = useCallback(
+        (nodeId: string, category: CanvasStoryboardCategory) => {
+            if (rejectLockedNode(nodeId)) return false;
+            setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, storyboardCategory: category } } : node)));
+            return true;
+        },
+        [rejectLockedNode],
+    );
+
     const toggleBatchExpanded = useCallback((nodeId: string) => {
         setExpandedBatchNodeIds((current) => {
             const next = new Set(current);
@@ -3750,7 +3760,7 @@ function InfiniteCanvasPage() {
                             onUngroupStoryboardGrid={ungroupStoryboardGrid}
                         />
                     ) : (
-                        <CanvasStoryboard key={projectId} projectId={projectId} nodes={nodes} onLocateNode={locateStoryboardNode} onSelectNodesInCanvas={selectStoryboardNodesInCanvas} />
+                        <CanvasStoryboard key={projectId} projectId={projectId} nodes={nodes} onLocateNode={locateStoryboardNode} onSelectNodesInCanvas={selectStoryboardNodesInCanvas} onUpdateNodeCategory={handleStoryboardCategoryChange} />
                     )
                 ) : (
                     <>

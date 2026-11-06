@@ -229,3 +229,26 @@ test("derives typed references from legacy metadata without treating remote URLs
         { kind: "audio", url: "https://example.com/voice.mp3" },
     ]);
 });
+
+test("keeps the required category and lock state for storyboard edits", () => {
+    const projection = buildStoryboardProjection([
+        {
+            ...base,
+            id: "locked-image",
+            type: CanvasNodeType.Image,
+            title: "锁定角色图",
+            locked: true,
+            metadata: { content: "blob:image", status: "success", storyboardCategory: "character" },
+        },
+        {
+            ...base,
+            id: "uncategorized-text",
+            type: CanvasNodeType.Text,
+            title: "未分类文本",
+            metadata: { content: "场景描述", status: "success" },
+        },
+    ]);
+
+    expect(projection.image[0]).toMatchObject({ category: "character", locked: true });
+    expect(projection.text[0]).toMatchObject({ category: "other", locked: false });
+});

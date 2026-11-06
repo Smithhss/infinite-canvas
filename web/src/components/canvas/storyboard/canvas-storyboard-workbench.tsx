@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { App } from "antd";
-import { ArrowLeft, ArrowRight, Boxes, Check, ChevronDown, Columns3, Download, FileText, Image as ImageIcon, ListChecks, ListFilter, LocateFixed, Plus, Redo2, ScrollText, Search, Sparkles, Table2, Trash2, Undo2, Video, WandSparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, Boxes, Check, ChevronDown, Columns3, Download, FileText, Image as ImageIcon, ListChecks, ListFilter, LocateFixed, Plus, Redo2, ScrollText, Search, Sparkles, Table2, Trash2, Undo2, Video, WandSparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { CanvasScriptAssetSummary } from "@/components/canvas/script/canvas-script-asset-summary";
@@ -9,6 +9,7 @@ import { CanvasScriptPresetModal } from "@/components/canvas/script/canvas-scrip
 import { CanvasScriptPromptEditor } from "@/components/canvas/script/canvas-script-prompt-editor";
 import { CanvasScriptStoryboardGrid } from "@/components/canvas/script/canvas-script-storyboard-grid";
 import { CanvasScriptTable } from "@/components/canvas/script/canvas-script-table";
+import { useStoryboardTransferActions } from "@/hooks/use-storyboard-transfer-actions";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { buildStoryboardProjection, type StoryboardItem } from "@/lib/canvas/storyboard-projection";
 import { filterStoryboardLibraryItems, groupStoryboardLibraryItems, STORYBOARD_LIBRARY_CATEGORIES, type StoryboardLibraryCategory } from "@/lib/canvas/storyboard-workbench";
@@ -77,6 +78,7 @@ function itemSize(item: StoryboardItem) {
 export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesInCanvas, onAddAsset, onUpdateScript, onCreateStoryboardGrid, onClearStoryboardGrid, onConvertStoryboardGrid, onUngroupStoryboardGrid }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const { addToAgent, addingToAgent, exportItems, exporting } = useStoryboardTransferActions(nodes);
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
     const projection = useMemo(() => buildStoryboardProjection(nodes), [nodes]);
     const allItems = useMemo(() => [...projection.script, ...projection.text, ...projection.image, ...projection.video], [projection]);
@@ -216,6 +218,14 @@ export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesIn
                             <span className="min-w-0 flex-1 truncate px-1 text-[11px]" style={{ color: theme.node.muted }}>
                                 {t("canvas.storyboard.workbench.selected", { count: selectedItems.length })}
                             </span>
+                            <button type="button" className="flex h-7 items-center gap-1 rounded-md px-2 text-xs" style={{ color: theme.node.muted }} aria-label={t("canvas.storyboard.exportSelection")} disabled={exporting} onClick={() => void exportItems(selectedItems)}>
+                                <Download className="size-3.5" />
+                                <span className="hidden xl:inline">{t("canvas.storyboard.exportSelection")}</span>
+                            </button>
+                            <button type="button" className="flex h-7 items-center gap-1 rounded-md px-2 text-xs" style={{ color: theme.node.muted }} aria-label={t("canvas.storyboard.addToAgent")} disabled={addingToAgent} onClick={() => void addToAgent(selectedItems)}>
+                                <Bot className="size-3.5" />
+                                <span className="hidden xl:inline">{t("canvas.storyboard.addToAgent")}</span>
+                            </button>
                             <button type="button" className="h-7 rounded-md px-2.5 text-xs font-medium" style={{ background: theme.toolbar.activeBg, color: theme.toolbar.activeText }} onClick={() => onSelectNodesInCanvas(selectedNodeIds)}>
                                 {t("canvas.storyboard.workbench.process")}
                             </button>

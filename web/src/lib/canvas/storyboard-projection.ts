@@ -53,6 +53,29 @@ export type StoryboardProjection = {
     video: StoryboardItem[];
 };
 
+export function scriptV2Text(script?: CanvasScriptV2) {
+    return [
+        script?.originalStoryText,
+        ...(script?.rows || []).flatMap((row) => [
+            row.plotDescription,
+            ...(row.characters || []),
+            row.videoReference,
+            row.shotSize,
+            row.emotion,
+            ...(row.propTags || []),
+            row.cameraMovement,
+            row.dialogue,
+            row.lightingAndAtmosphere,
+            row.audioEffects,
+            row.imageGenerationPrompt,
+            row.videoMotionPrompt,
+            row.imageToVideoMotionPrompt,
+        ]),
+    ]
+        .filter(Boolean)
+        .join("\n");
+}
+
 function primaryText(node: CanvasNodeData) {
     return node.metadata?.texts?.find((item) => item.id === node.metadata?.primaryTextId)?.content || node.metadata?.content || node.metadata?.prompt || "";
 }
@@ -110,26 +133,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
 
         if (node.type === CanvasNodeType.Script) {
             const script = node.metadata?.scriptV2;
-            const content = [
-                script?.originalStoryText,
-                ...(script?.rows || []).flatMap((row) => [
-                    row.plotDescription,
-                    ...(row.characters || []),
-                    row.videoReference,
-                    row.shotSize,
-                    row.emotion,
-                    ...(row.propTags || []),
-                    row.cameraMovement,
-                    row.dialogue,
-                    row.lightingAndAtmosphere,
-                    row.audioEffects,
-                    row.imageGenerationPrompt,
-                    row.videoMotionPrompt,
-                    row.imageToVideoMotionPrompt,
-                ]),
-            ]
-                .filter(Boolean)
-                .join("\n");
+            const content = scriptV2Text(script);
             projection.script.push({
                 id: node.id,
                 nodeId: node.id,

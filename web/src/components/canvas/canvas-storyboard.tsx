@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Empty, Input, Modal, Select } from "antd";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Image as ImageIcon, LocateFixed, MousePointer2, Music2, Play, Search, Type, Video } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Download, Image as ImageIcon, LocateFixed, MousePointer2, Music2, Play, Search, Type, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { useStoryboardTransferActions } from "@/hooks/use-storyboard-transfer-actions";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { buildStoryboardProjection, filterStoryboardItems, type StoryboardGeneration, type StoryboardItem } from "@/lib/canvas/storyboard-projection";
 import { readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
@@ -85,6 +86,7 @@ function itemMeta(item: StoryboardItem) {
 export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodesInCanvas, onUpdateNodeCategory }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const { addToAgent, addingToAgent, exportItems, exporting } = useStoryboardTransferActions(nodes);
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
     useSyncExternalStore(subscribeVideoPosters, getVideoPosterRevision);
     const projection = useMemo(() => buildStoryboardProjection(nodes), [nodes]);
@@ -283,6 +285,28 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                         </button>
                         <button type="button" className="rounded-md px-2 py-1 text-xs transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.muted }} onClick={() => setSelectedItemIds(new Set())}>
                             {t("canvas.storyboard.clearSelection")}
+                        </button>
+                        <button
+                            type="button"
+                            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 sm:h-7 sm:min-w-0 dark:hover:bg-white/10"
+                            style={{ color: theme.node.muted }}
+                            onClick={() => void exportItems(selectedItems)}
+                            disabled={exporting}
+                            aria-label={t("canvas.storyboard.exportSelection")}
+                        >
+                            <Download className="size-3.5" />
+                            <span className="hidden sm:inline">{t("canvas.storyboard.exportSelection")}</span>
+                        </button>
+                        <button
+                            type="button"
+                            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 sm:h-7 sm:min-w-0 dark:hover:bg-white/10"
+                            style={{ color: theme.node.muted }}
+                            onClick={() => void addToAgent(selectedItems)}
+                            disabled={addingToAgent}
+                            aria-label={t("canvas.storyboard.addToAgent")}
+                        >
+                            <Bot className="size-3.5" />
+                            <span className="hidden sm:inline">{t("canvas.storyboard.addToAgent")}</span>
                         </button>
                         <button
                             type="button"

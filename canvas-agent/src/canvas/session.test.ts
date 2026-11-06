@@ -311,6 +311,7 @@ test("new clients receive the current Codex state and later updates", (t) => {
     const session = new CanvasSession("thread-2");
     session.setCodexState({ busy: true, threadId: "thread-2", turnId: "turn-1" });
     session.trackCodexEvent("codex_approval", { requestId: "approval-1", threadId: "thread-2" });
+    session.trackCodexEvent("codex_user_input", { requestId: "question-1", threadId: "thread-2", questions: [{ id: "style", header: "风格", question: "选择风格" }] });
     const client = connect(session, "first", "thread-2");
     t.after(() => client.close());
 
@@ -320,14 +321,20 @@ test("new clients receive the current Codex state and later updates", (t) => {
     assert.deepEqual(field(hello, "conversation"), { revision: 1, conversationId: "thread-2", threadId: "thread-2", status: "ready", mcpStatuses: {} });
     assert.deepEqual(field(hello, "codex"), { busy: true, threadId: "thread-2", turnId: "turn-1" });
     assert.deepEqual(field(hello, "pendingApprovals"), [{ requestId: "approval-1", threadId: "thread-2" }]);
+    assert.deepEqual(field(hello, "pendingUserInputs"), [{ requestId: "question-1", threadId: "thread-2", questions: [{ id: "style", header: "风格", question: "选择风格" }] }]);
 
     session.trackCodexEvent("codex_approval_resolved", { requestId: "approval-1" });
     assert.deepEqual(session.codexPendingApprovals, []);
+    session.trackCodexEvent("codex_user_input_resolved", { requestId: "question-1" });
+    assert.deepEqual(session.codexPendingUserInputs, []);
     session.trackCodexEvent("codex_approval", { requestId: "approval-2", threadId: "thread-2" });
+    session.trackCodexEvent("codex_user_input", { requestId: "question-2", threadId: "thread-2", questions: [{ id: "pace", header: "节奏", question: "选择节奏" }] });
     session.setCodexState({ busy: false });
     assert.deepEqual(session.codexPendingApprovals, [{ requestId: "approval-2", threadId: "thread-2" }]);
+    assert.deepEqual(session.codexPendingUserInputs, [{ requestId: "question-2", threadId: "thread-2", questions: [{ id: "pace", header: "节奏", question: "选择节奏" }] }]);
     session.trackCodexEvent("agent_error", { message: "app-server exited" });
     assert.deepEqual(session.codexPendingApprovals, []);
+    assert.deepEqual(session.codexPendingUserInputs, []);
     session.trackCodexEvent("claude_approval", { requestId: "claude-approval-1", threadId: "thread-2" });
     assert.deepEqual(session.codexPendingApprovals, [{ requestId: "claude-approval-1", threadId: "thread-2" }]);
     session.trackCodexEvent("claude_approval_resolved", { requestId: "claude-approval-1" });

@@ -1,13 +1,13 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { App, Button, Image, Modal, Popover } from "antd";
-import { Brain, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleAlert, Copy, ExternalLink, FilePenLine, FileText, FolderOpen, ListChecks, LoaderCircle, Search, ShieldAlert, TerminalSquare, Wrench, XCircle } from "lucide-react";
+import { App, Button, Image, Input, Modal, Popover } from "antd";
+import { Brain, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleAlert, CircleHelp, Copy, ExternalLink, FilePenLine, FileText, FolderOpen, ListChecks, LoaderCircle, Search, Send, ShieldAlert, TerminalSquare, Wrench, XCircle } from "lucide-react";
 import { Streamdown, type LinkSafetyModalProps } from "streamdown";
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { useAgentStore, type AgentCanvasReference, type AgentPendingApproval, type AgentSkillReference } from "@/stores/use-agent-store";
+import { useAgentStore, type AgentCanvasReference, type AgentPendingApproval, type AgentPendingUserInput, type AgentSkillReference } from "@/stores/use-agent-store";
 import { resolveAgentMessageAssetUrl, revealAgentLocalFile } from "@/services/api/canvas-agent";
 import { AgentCanvasReferencePreview, canvasReferenceIcon, canvasReferenceKindLabel } from "./agent-canvas-reference-preview";
 import { agentInlineTokenClass, agentInlineTokenIconClass, agentInlineTokenMediaClass, agentReferenceMarker, parseAgentInlineTokens } from "./agent-chat-inline-tokens";
@@ -237,6 +237,104 @@ export function AgentApprovalCard({ approval, theme, onDecision }: { approval: A
                 <Button danger type="text" className="!h-8" disabled={Boolean(approval.deciding)} loading={approval.deciding === "decline"} onClick={() => onDecision("decline")}>{t("agent.message.decline")}</Button>
                 <Button type="text" className="!h-8" disabled={Boolean(approval.deciding)} loading={approval.deciding === "accept"} onClick={() => onDecision("accept")}>{t("agent.message.allowOnce")}</Button>
                 <Button type="text" className="!h-8" disabled={Boolean(approval.deciding)} loading={approval.deciding === "acceptForSession"} style={{ color: "#ea580c" }} onClick={() => onDecision("acceptForSession")}>{t("agent.message.allowSession")}</Button>
+            </div>
+        </div>
+    );
+}
+
+export function AgentUserInputCard({ input, theme, onSubmit }: { input: AgentPendingUserInput; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onSubmit: (input: AgentPendingUserInput, answers: Record<string, string[]>) => void }) {
+    const { t } = useTranslation();
+    const [answers, setAnswers] = useState<Record<string, string>>({});
+    const [otherAnswers, setOtherAnswers] = useState<Record<string, string>>({});
+    const submitting = Boolean(input.submitting);
+    const complete = input.questions.every((question) => Boolean((answers[question.id] || otherAnswers[question.id] || "").trim()));
+    const submit = () => {
+        if (!complete || submitting) return;
+        onSubmit(input, Object.fromEntries(input.questions.map((question) => [question.id, [(answers[question.id] || otherAnswers[question.id] || "").trim()]])));
+    };
+    return (
+        <div className="min-w-0 rounded-xl border px-3 py-3" style={{ borderColor: "rgba(37,99,235,.28)", background: "rgba(37,99,235,.035)", color: theme.node.text }}>
+            <div className="flex items-start gap-2.5">
+                <CircleHelp className="mt-0.5 size-4 shrink-0 text-blue-600" />
+                <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">{t("agent.message.userInputTitle")}</div>
+                    <div className="mt-1 text-xs leading-5" style={{ color: theme.node.muted }}>{t("agent.message.userInputDescription")}</div>
+                    <div className="mt-3 space-y-4">
+                        {input.questions.map((question, questionIndex) => {
+                            const selected = answers[question.id] || "";
+                            const options = question.options || [];
+                            const freeText = Boolean(question.isOther || !options.length);
+                            return (
+                                <div key={question.id}>
+                                    <div className="flex items-baseline gap-2">
+                                        <span className="shrink-0 text-[11px] tabular-nums" style={{ color: theme.node.muted }}>{questionIndex + 1}.</span>
+                                        <div className="min-w-0">
+                                            {question.header ? <div className="text-sm font-medium">{question.header}</div> : null}
+                                            <div className="text-xs leading-5" style={{ color: theme.node.muted }}>{question.question}</div>
+                                        </div>
+                                    </div>
+                                    {options.length ? (
+                                        <div className="mt-2 grid gap-1.5 pl-5" role="radiogroup" aria-label={question.header || question.question}>
+                                            {options.map((option) => {
+                                                const active = selected === option.label;
+                                                return (
+                                                    <button
+                                                        key={option.label}
+                                                        type="button"
+                                                        role="radio"
+                                                        aria-checked={active}
+                                                        className={`rounded-lg border px-3 py-2 text-left transition hover:bg-black/[.035] dark:hover:bg-white/[.06] ${active ? "ring-1" : ""}`}
+                                                        style={{ borderColor: active ? "rgba(37,99,235,.5)" : theme.node.stroke, background: active ? theme.toolbar.panel : "transparent", color: theme.node.text }}
+                                                        onClick={() => {
+                                                            setAnswers((previous) => ({ ...previous, [question.id]: option.label }));
+                                                            setOtherAnswers((previous) => ({ ...previous, [question.id]: "" }));
+                                                        }}
+                                                    >
+                                                        <div className="text-sm leading-5">{option.label}</div>
+                                                        {option.description ? <div className="mt-0.5 text-xs leading-5" style={{ color: theme.node.muted }}>{option.description}</div> : null}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : null}
+                                    {freeText ? (
+                                        <div className="mt-2 pl-5">
+                                            {question.isSecret ? (
+                                                <Input.Password
+                                                    value={otherAnswers[question.id] || ""}
+                                                    placeholder={t("agent.message.userInputPlaceholder")}
+                                                    autoComplete="off"
+                                                    onChange={(event) => {
+                                                        setOtherAnswers((previous) => ({ ...previous, [question.id]: event.target.value }));
+                                                        setAnswers((previous) => ({ ...previous, [question.id]: "" }));
+                                                    }}
+                                                />
+                                            ) : (
+                                                <Input.TextArea
+                                                    value={otherAnswers[question.id] || ""}
+                                                    placeholder={t("agent.message.userInputPlaceholder")}
+                                                    autoSize={{ minRows: 2, maxRows: 5 }}
+                                                    onChange={(event) => {
+                                                        setOtherAnswers((previous) => ({ ...previous, [question.id]: event.target.value }));
+                                                        setAnswers((previous) => ({ ...previous, [question.id]: "" }));
+                                                    }}
+                                                />
+                                            )}
+                                            {options.length ? <div className="mt-1 text-[11px]" style={{ color: theme.node.muted }}>{t("agent.message.userInputOther")}</div> : null}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    {input.autoResolutionMs ? <div className="mt-3 text-[11px]" style={{ color: theme.node.muted }}>{t("agent.message.userInputTimeout", { seconds: Math.max(1, Math.round(input.autoResolutionMs / 1000)) })}</div> : null}
+                    {input.error ? <div className="mt-3 rounded-lg px-2.5 py-2 text-xs leading-5 text-red-600" style={{ background: "rgba(220,38,38,.06)" }}>{input.error}</div> : null}
+                    <div className="mt-3 flex justify-end gap-2 border-t pt-3" style={{ borderColor: theme.node.stroke }}>
+                        <Button type="text" className="!h-8" icon={<Send className="size-3.5" />} loading={submitting} disabled={!complete || submitting} onClick={submit}>
+                            {t("agent.message.userInputSubmit")}
+                        </Button>
+                    </div>
+                </div>
             </div>
         </div>
     );

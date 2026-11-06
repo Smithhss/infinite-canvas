@@ -25,3 +25,16 @@ test("generation flow still creates a prompt node for prose prompts", () => {
     const config = ops.find((op) => op.type === "add_node" && op.nodeType === "config");
     assert.match(String(config?.metadata?.prompt), /@\[node:text-/);
 });
+
+test("generation flow accepts stable media tokens", () => {
+    const ops = opsOf("canvas_generate_image", {
+        prompt: "{{ image:text-1 }} {{video:video-1}}",
+        referenceNodeIds: ["text-1", "video-1"],
+        autoRun: true,
+    });
+    const addedTextNodes = ops.filter((op) => op.type === "add_node" && op.nodeType === "text");
+    const config = ops.find((op) => op.type === "add_node" && op.nodeType === "config");
+    assert.equal(addedTextNodes.length, 0);
+    assert.match(String(config?.metadata?.prompt), /@\[node:text-1\]/);
+    assert.match(String(config?.metadata?.prompt), /@\[node:video-1\]/);
+});

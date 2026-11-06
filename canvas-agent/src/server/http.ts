@@ -8,7 +8,7 @@ import { runClaudeTurn } from "../agent/claude.js";
 import { ClaudeAttachmentError, normalizeClaudeImageAttachments, withAttachmentContext } from "../agent/claude-attachments.js";
 import { ClaudeSdkAdapter } from "../agent/claude-sdk.js";
 import { deleteClaudeThread, listClaudeThreads, readClaudeThread } from "../agent/claude-sessions.js";
-import { archiveCodexThread, CodexSkillLookupError, configureCodexSkill, generateCodexSkillDraft, interruptCodexTurn, isRecoverableThreadError, listCodexModels, listCodexSkills, listCodexThreads, readCodexThread, resolveCodexApproval, resolveCodexSkill, resumeCodexThread, runCodexTurn, startCodexThread, summarizeCodexThread } from "../agent/codex.js";
+import { archiveCodexThread, CodexSkillLookupError, configureCodexSkill, generateCodexSkillDraft, interruptCodexTurn, isRecoverableThreadError, listCodexModels, listCodexSkills, listCodexThreads, readCodexThread, resolveCodexApproval, resolveCodexSkill, resolveCodexUserInput, resumeCodexThread, runCodexTurn, startCodexThread, summarizeCodexThread } from "../agent/codex.js";
 import type { CodexReasoningEffort, CodexSkillSelector } from "../agent/codex-protocol.js";
 import { messageMetadataStore } from "../agent/message-metadata.js";
 import type { AgentAttachment, AgentEmit, AgentPermissionMode } from "../agent/types.js";
@@ -18,6 +18,7 @@ import { logger } from "../utils/logger.js";
 import { checkVersions } from "../version-check.js";
 import { previewGithubSkill, searchGithubSkillRepositories } from "../skills/remote.js";
 import { SkillStore, SkillStoreError } from "../skills/store.js";
+import { isLocalConfigOrigin } from "./config-access.js";
 
 /** 启动仅监听本机的 Canvas Agent HTTP 服务。 */
 export function startHttpServer() {
@@ -127,7 +128,10 @@ export function startHttpServer() {
         next();
     });
     app.get("/health", (_req, res) => res.json({ ...session.health(), claudeBusy: claudeAdapter.busy }));
-    app.get("/config", (_req, res) => res.json({ ok: true, protocolVersion: AGENT_PROTOCOL_VERSION, url: config.url, hasToken: true }));
+    app.get("/config", (req, res) => {
+        const exposeToken = isLocalConfigOrigin(req.headers.origin);
+        res.json({ ok: true, protocolVersion: AGENT_PROTOCOL_VERSION, url: config.url, hasToken: true, ...(exposeToken ? { token: config.token } : {}) });
+    });
     app.use((req, res, next) => {
         if (validToken(req, requestUrl(req, config), config.token)) return next();
         res.status(401).json({ ok: false, error: "invalid token" });
@@ -469,6 +473,21 @@ export function startHttpServer() {
         if (!["accept", "acceptForSession", "decline", "cancel"].includes(decision)) return res.status(400).json({ ok: false, error: "无效的审批决定" });
         const ok = await resolveCodexApproval(String(req.body?.requestId || ""), decision);
         res.status(ok ? 200 : 409).json({ ok, ...(ok ? {} : { error: "审批请求已失效" }) });
+    }));
+    app.post("/agent/codex/user-input", route(async (req, res) => {
+        const requestId = String(req.body?.requestId || "");
+        const rawAnswers = req.body?.answers;
+        if (!requestId || !rawAnswers || typeof rawAnswers !== "object" || Array.isArray(rawAnswers)) return res.status(400).json({ ok: false, error: "无效的问题回答" });
+        const entries = Object.entries(rawAnswers as Record<string, unknown>);
+        if (!entries.length) return res.status(400).json({ ok: false, error: "至少需要回答一个问题" });
+        if (entries.some(([questionId, value]) => !questionId || !Array.isArray(value) || !value.length || value.some((item) => typeof item !== "string" || !item.trim()))) {
+            return res.status(400).json({ ok: false, error: "无效的问题回答" });
+        }
+        const answers = Object.fromEntries(entries.map(([questionId, value]) => [questionId, (value as string[]).map((item) => item.trim())]));
+        const resolution = await resolveCodexUserInput(requestId, answers);
+        if (resolution.ok) return res.json({ ok: true, duplicate: resolution.duplicate || false });
+        const status = resolution.code === "INVALID_USER_INPUT" ? 400 : 409;
+        res.status(status).json({ ok: false, code: resolution.code, error: resolution.error });
     }));
     app.post("/agent/codex/interrupt", route(async (req, res) => {
         const ok = await interruptCodexTurn(skillDraftRunning ? undefined : String(req.body?.threadId || ""));

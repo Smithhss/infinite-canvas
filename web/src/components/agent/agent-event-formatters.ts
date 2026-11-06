@@ -491,9 +491,9 @@ export function promptWithAttachments(text: string, attachments: AgentAttachment
 export function promptWithCanvasReferences(text: string, references: CanvasResourceReference[]) {
     if (!references.length) return text;
     const task = text || "请处理引用的画布素材。";
-    const list = references.map((item, index) => `${index + 1}. mention=${JSON.stringify(`@${item.label}`)}, nodeId=${JSON.stringify(item.nodeId)}, title=${JSON.stringify(item.title)}, type=${item.kind}`).join("\n");
+    const list = references.map((item, index) => `${index + 1}. mention=${JSON.stringify(`@${item.label}`)}, token=${JSON.stringify(`{{${item.kind}:${item.nodeId}}}`)}, nodeId=${JSON.stringify(item.nodeId)}, title=${JSON.stringify(item.title)}, type=${item.kind}`).join("\n");
     const imageHint = references.some((item) => item.kind === "image") ? "\n其中图片素材的实际内容已作为本轮图片附件提供，可直接查看；nodeId 用于后续画布操作。" : "";
-    return `${task}\n\n本轮引用的当前画布素材：\n${list}${imageHint}\n需要读取或操作这些素材时，先调用 canvas_get_state，并使用上面的 nodeId 精确定位，不要按标题猜测节点。`;
+    return `${task}\n\n本轮引用的当前画布素材：\n${list}${imageHint}\n需要读取或操作这些素材时，先调用 canvas_get_state，并使用上面的 token 或 nodeId 精确定位，不要按标题猜测节点。`;
 }
 
 export function attachmentPayloadBytes(attachments: AgentAttachment[]) {

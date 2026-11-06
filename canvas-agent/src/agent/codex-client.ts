@@ -16,8 +16,13 @@ type PendingRequest = { resolve: (value: unknown) => void; reject: (error: Error
 type ActiveTurn = PendingRequest & { threadId: string; turnId: string; prompt: string; messageText?: string };
 type ItemDeltaParams = { threadId: string; turnId: string; itemId: string; delta: string; summaryIndex?: number };
 type PendingDelta = { delta: string; itemType: string; params: ItemDeltaParams; timer: ReturnType<typeof setTimeout> };
-type ApprovalRequest = { id: number; method: string; params: JsonRecord; decision?: string };
+type RequestId = string | number;
+type ApprovalRequest = { id: RequestId; method: string; params: JsonRecord; decision?: string };
+type UserInputRequest = { id: RequestId; method: string; params: JsonRecord; submittedAnswers?: Record<string, string[]>; timer?: ReturnType<typeof setTimeout> };
 type PendingTurnStart = { threadId: string; prompt: string; messageText?: string; turnId?: string; onTurn?: (turnId: string) => void };
+export type UserInputResolution =
+    | { ok: true; duplicate?: boolean }
+    | { ok: false; code: "INVALID_USER_INPUT" | "USER_INPUT_CONFLICT" | "USER_INPUT_EXPIRED"; error: string };
 
 const canvasAgentMcp = canvasAgentMcpCommand();
 const require = createRequire(import.meta.url);
@@ -51,6 +56,7 @@ export class CodexAppClient {
     private nextItemSequences = new Map<string, number>();
     private plansByTurn = new Map<string, CodexPlanUpdate>();
     private approvalRequests = new Map<string, ApprovalRequest>();
+    private userInputRequests = new Map<string, UserInputRequest>();
     private finalizingTurns = new Map<string, Promise<void>>();
     private skillReloads = new Map<string, Promise<CodexRequestResult<"skills/list">>>();
     private silentThreadIds = new Set<string>();
@@ -162,6 +168,16 @@ export class CodexAppClient {
     /** 读取指定 Codex 线程。 */
     readThread(threadId: string, includeTurns = true) {
         return this.request("thread/read", { threadId, includeTurns });
+    }
+
+    /** 分页读取线程 turn；用于不支持 thread/read(includeTurns=true) 的线程。 */
+    listThreadTurns(threadId: string, params: Omit<CodexRequestParams<"thread/turns/list">, "threadId"> = {}) {
+        return this.request("thread/turns/list", { threadId, ...params });
+    }
+
+    /** 分页读取线程 item；保留给未随 turn 一起返回完整 item 的线程。 */
+    listThreadItems(threadId: string, params: Omit<CodexRequestParams<"thread/items/list">, "threadId"> = {}) {
+        return this.request("thread/items/list", { threadId, ...params });
     }
 
     /** 归档指定 Codex 线程。 */
@@ -292,6 +308,24 @@ export class CodexAppClient {
         return true;
     }
 
+    /** 回复网页端填写的 Codex 结构化问题。 */
+    resolveUserInput(requestId: string, answers: Record<string, string[]>) {
+        const request = this.userInputRequests.get(requestId);
+        if (!request) return { ok: false, code: "USER_INPUT_EXPIRED", error: "问题已失效或已提交" } satisfies UserInputResolution;
+        const normalized = normalizeUserInputAnswers(request.params, answers);
+        if (!normalized.ok) return { ok: false, code: "INVALID_USER_INPUT", error: normalized.error } satisfies UserInputResolution;
+        if (request.submittedAnswers) {
+            return sameUserInputAnswers(request.submittedAnswers, normalized.answers)
+                ? { ok: true, duplicate: true } satisfies UserInputResolution
+                : { ok: false, code: "USER_INPUT_CONFLICT", error: "问题已由其他窗口提交，当前回答未采用" } satisfies UserInputResolution;
+        }
+        request.submittedAnswers = normalized.answers;
+        clearUserInputTimer(request);
+        const result = Object.fromEntries(Object.entries(normalized.answers).map(([questionId, value]) => [questionId, { answers: value }]));
+        this.write({ id: request.id, result: { answers: result } });
+        return { ok: true } satisfies UserInputResolution;
+    }
+
     /** 标记下一次临时线程创建，使早于请求响应到达的通知也不会外泄。 */
     private async startSilentThread<Method extends "thread/start" | "thread/fork">(method: Method, params: CodexRequestParams<Method>) {
         const pendingStart = Symbol();
@@ -375,6 +409,13 @@ export class CodexAppClient {
             if (request) {
                 this.approvalRequests.delete(requestId);
                 this.emit("codex_approval_resolved", { ...request.params, ...params, requestId, decision: request.decision });
+                return;
+            }
+            const input = requestId ? this.userInputRequests.get(requestId) : undefined;
+            if (input) {
+                clearUserInputTimer(input);
+                this.userInputRequests.delete(requestId);
+                this.emit("codex_user_input_resolved", { ...input.params, ...params, requestId });
             }
             return;
         }
@@ -666,14 +707,22 @@ export class CodexAppClient {
         const params = (field(message, "params") as JsonRecord) || {};
         const threadId = String(field(params, "threadId") || this.currentThreadId);
         if (this.silentThreadIds.has(threadId)) {
-            const result = method === "item/permissions/requestApproval" ? { permissions: {}, scope: "turn" } : { decision: "decline" };
+            const result = isUserInputRequest(method) ? { answers: {} } : method === "item/permissions/requestApproval" ? { permissions: {}, scope: "turn" } : { decision: "decline" };
             this.write({ id: message.id, result });
             return;
         }
         if (["item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval"].includes(method)) {
             const requestId = String(message.id);
-            this.approvalRequests.set(requestId, { id: Number(message.id), method, params });
+            this.approvalRequests.set(requestId, { id: requestIdValue(message.id), method, params });
             this.emit("codex_approval", { requestId, method, ...params });
+            return;
+        }
+        if (isUserInputRequest(method)) {
+            const requestId = String(message.id);
+            const request = { id: requestIdValue(message.id), method, params };
+            this.userInputRequests.set(requestId, request);
+            this.scheduleUserInputAutoResolution(requestId, request);
+            this.emit("codex_user_input", { requestId, method, ...params });
             return;
         }
         const result = method === "mcpServer/elicitation/request" ? { action: "accept", content: {}, _meta: null } : { decision: "decline" };
@@ -693,12 +742,31 @@ export class CodexAppClient {
         if (pending) (this.pending.delete(id), pending.reject(new Error(message)));
     }
 
+    /** 按 app-server 的自动超时约定清空未回答的问题，避免 turn 永久占用。 */
+    private scheduleUserInputAutoResolution(requestId: string, request: UserInputRequest) {
+        const timeout = Number(field(request.params, "autoResolutionMs"));
+        if (!Number.isFinite(timeout) || timeout <= 0) return;
+        request.timer = setTimeout(() => {
+            if (this.userInputRequests.get(requestId) !== request || request.submittedAnswers) return;
+            request.submittedAnswers = {};
+            this.userInputRequests.delete(requestId);
+            this.write({ id: request.id, result: { answers: {} } });
+            this.emit("codex_user_input_resolved", { ...request.params, requestId, cancelled: true, timedOut: true });
+        }, Math.min(timeout, 2_147_483_647));
+        request.timer.unref?.();
+    }
+
     /** 拒绝进程退出时仍未完成的请求与 turn。 */
     private failAll(message: string, reported = false) {
         if (this.failing) return;
         this.failing = true;
         this.failureMessage = message;
         this.approvalRequests.forEach((request, requestId) => this.emit("codex_approval_resolved", { ...request.params, requestId, decision: request.decision || "cancel" }));
+        this.userInputRequests.forEach((request, requestId) => {
+            clearUserInputTimer(request);
+            this.emit("codex_user_input_resolved", { ...request.params, requestId, cancelled: true });
+        });
+        this.userInputRequests.clear();
         const failedTurns = new Map<string, { threadId: string; turnId: string; prompt: string; messageText?: string }>();
         this.activeTurns.forEach(({ threadId, turnId, prompt, messageText }, key) => {
             if (this.silentThreadIds.has(threadId)) return;
@@ -811,6 +879,59 @@ function turnSettings(permissionMode: AgentPermissionMode) {
 
 function skillDraftTurnSettings() {
     return { approvalPolicy: "never" as const, sandboxPolicy: { type: "readOnly" as const, networkAccess: false } };
+}
+
+function requestIdValue(value: unknown): RequestId {
+    return typeof value === "string" || typeof value === "number" ? value : String(value);
+}
+
+function clearUserInputTimer(request: UserInputRequest) {
+    if (!request.timer) return;
+    clearTimeout(request.timer);
+    request.timer = undefined;
+}
+
+function sameUserInputAnswers(left: Record<string, string[]>, right: Record<string, string[]>) {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
+
+type NormalizedUserInputAnswers = { ok: true; answers: Record<string, string[]> } | { ok: false; error: string };
+
+function normalizeUserInputAnswers(params: JsonRecord, answers: Record<string, string[]>): NormalizedUserInputAnswers {
+    const rawQuestions = field(params, "questions");
+    if (!Array.isArray(rawQuestions) || !rawQuestions.length) return { ok: false, error: "问题定义无效" };
+    const questions = rawQuestions.filter((question): question is JsonRecord => Boolean(question && typeof question === "object" && !Array.isArray(question)));
+    if (questions.length !== rawQuestions.length) return { ok: false, error: "问题定义无效" };
+    const questionIds = questions.map((question) => String(field(question, "id") || ""));
+    if (questionIds.some((id) => !id) || new Set(questionIds).size !== questionIds.length) return { ok: false, error: "问题定义无效" };
+    const unknown = Object.keys(answers).filter((id) => !questionIds.includes(id));
+    if (unknown.length) return { ok: false, error: `包含未知问题：${unknown.join(", ")}` };
+    const missing = questionIds.filter((id) => !Object.hasOwn(answers, id));
+    if (missing.length) return { ok: false, error: "请回答全部问题" };
+
+    const normalized: Array<readonly [string, string[]]> = [];
+    for (const questionId of questionIds) {
+        const raw = answers[questionId];
+        const values = Array.isArray(raw) ? raw.map((item) => typeof item === "string" ? item.trim() : "").filter(Boolean) : [];
+        if (!values.length) return { ok: false, error: "每个问题至少需要一个非空回答" };
+        const question = questions.find((item) => String(field(item, "id")) === questionId)!;
+        const rawOptions = field(question, "options");
+        const labels = Array.isArray(rawOptions)
+            ? rawOptions.flatMap((option) => {
+                const label = typeof option === "object" && option && !Array.isArray(option) ? String(field(option as JsonRecord, "label") || "") : "";
+                return label ? [label] : [];
+            })
+            : [];
+        if (labels.length && field(question, "isOther") !== true && values.some((value) => !labels.includes(value))) {
+            return { ok: false, error: "回答不在可选项中" };
+        }
+        normalized.push([questionId, values]);
+    }
+    return { ok: true, answers: Object.fromEntries(normalized) };
+}
+
+function isUserInputRequest(method: string) {
+    return method === "item/tool/requestUserInput" || method === "tool/requestUserInput";
 }
 
 /** 将文本、本地图片和显式 Skill 转换为 Codex turn 输入。 */

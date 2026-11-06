@@ -29,6 +29,9 @@ export type AgentModel = {
 };
 export type AgentApprovalDecision = "accept" | "acceptForSession" | "decline";
 export type AgentPendingApproval = { requestId: string; method: string; provider?: AgentProvider; threadId?: string; turnId?: string; itemId?: string; reason?: string; title?: string; description?: string; displayName?: string; toolName?: string; toolInput?: unknown; command?: unknown; cwd?: string; grantRoot?: string; networkApprovalContext?: unknown; permissions?: unknown; deciding?: AgentApprovalDecision };
+export type AgentUserInputOption = { label: string; description: string };
+export type AgentUserInputQuestion = { id: string; header: string; question: string; options?: AgentUserInputOption[] | null; isOther?: boolean; isSecret?: boolean };
+export type AgentPendingUserInput = { requestId: string; itemId?: string; threadId?: string; turnId?: string; questions: AgentUserInputQuestion[]; autoResolutionMs?: number | null; submitting?: boolean; error?: string };
 export type AgentCanvasContext = { snapshot: CanvasAgentSnapshot; applyOps: (ops?: CanvasAgentOp[]) => CanvasAgentSnapshot; undoOps: () => CanvasAgentSnapshot | null; canUndo: boolean };
 export type AgentThreadSummary = { id: string; preview: string; name?: string | null; cwd?: string; status?: string; source?: unknown; createdAt?: number; updatedAt?: number };
 export type AgentTokenUsage = { input: number; cached: number; output: number };
@@ -94,6 +97,9 @@ type AgentStore = {
     connectError: string;
     pendingTools: AgentPendingToolCall[];
     pendingApprovals: AgentPendingApproval[];
+    pendingUserInputs: AgentPendingUserInput[];
+    autoConnectSuppressed: boolean;
+    autoConnectRequest: number;
     setAgentState: (patch: Partial<Omit<AgentStore, "setAgentState" | "connectAgent" | "disconnectAgent" | "addMessage" | "addEventLog" | "clearEventLogs" | "openPanel" | "closePanel" | "togglePanel" | "setCanvasContext" | "enqueuePendingTool" | "removePendingTool">>) => void;
     openPanel: () => void;
     closePanel: () => void;
@@ -151,6 +157,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     connectError: "",
     pendingTools: [],
     pendingApprovals: [],
+    pendingUserInputs: [],
+    autoConnectSuppressed: false,
+    autoConnectRequest: 0,
     setAgentState: (patch) => set(patch),
     openPanel: () => set({ panelOpen: true, panelMounted: true, panelClosing: false }),
     closePanel: () => {
@@ -176,14 +185,14 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         writeAppStorageItem("canvas-agent-url", endpoint);
         writeAppStorageItem("canvas-agent-token", token);
         // Only set enabled here; LocalAgentPanel's effect owns SSE initialization.
-        set({ url: endpoint, token, enabled: true, silentConnect: silent, fragmentBootstrap: false, activity: i18n.t("agent.status.connecting"), connectError: "" });
+        set({ url: endpoint, token, enabled: true, silentConnect: silent, fragmentBootstrap: false, autoConnectSuppressed: false, activity: i18n.t("agent.status.connecting"), connectError: "" });
     },
     disconnectAgent: (patch = {}) => {
         agentSource?.close();
         agentSource = null;
         if (connectTimer) clearTimeout(connectTimer);
         connectTimer = null;
-        set({ enabled: false, connected: false, silentConnect: false, fragmentBootstrap: false, activity: i18n.t("agent.state.offline"), conversation: { revision: 0, conversationId: "", threadId: "", status: "idle", mcpStatuses: {} }, bootstrapStatus: null, mcpStartupStatuses: {}, pendingTools: [], ...patch });
+        set({ enabled: false, connected: false, silentConnect: false, fragmentBootstrap: false, activity: i18n.t("agent.state.offline"), conversation: { revision: 0, conversationId: "", threadId: "", status: "idle", mcpStatuses: {} }, bootstrapStatus: null, mcpStartupStatuses: {}, pendingTools: [], pendingApprovals: [], pendingUserInputs: [], ...patch });
     },
     enqueuePendingTool: (tool) => set((state) => ({ pendingTools: enqueuePendingTool(state.pendingTools, tool) })),
     removePendingTool: (requestId) => set((state) => ({ pendingTools: removePendingTool(state.pendingTools, requestId) })),

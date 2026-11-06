@@ -44,6 +44,7 @@ export class CanvasSession {
     private clientFocusOrder = new Map<string, number>();
     private pending = new Map<string, PendingRequest>();
     private pendingApprovals = new Map<string, Record<string, unknown>>();
+    private pendingUserInputs = new Map<string, Record<string, unknown>>();
     private canvasStates = new Map<string, CanvasSnapshot>();
     private turnAttachments = new Map<string, TurnAttachment>();
     private codexReplayEvents = new Map<string, ReplayEvent>();
@@ -229,12 +230,22 @@ export class CanvasSession {
         return [...this.pendingApprovals.values()];
     }
 
+    /** 返回刷新后仍需展示的 Codex 结构化问题。 */
+    get codexPendingUserInputs() {
+        return [...this.pendingUserInputs.values()];
+    }
+
     /** 跟踪需要跨页面重连恢复的 Agent 权限请求。 */
     trackCodexEvent(type: string, payload: Record<string, unknown>) {
         const requestId = String(payload.requestId || "");
         if ((type === "codex_approval" || type === "claude_approval") && requestId) this.pendingApprovals.set(requestId, payload);
         if ((type === "codex_approval_resolved" || type === "claude_approval_resolved") && requestId) this.pendingApprovals.delete(requestId);
-        if (type === "agent_error") this.pendingApprovals.clear();
+        if (type === "codex_user_input" && requestId) this.pendingUserInputs.set(requestId, payload);
+        if (type === "codex_user_input_resolved" && requestId) this.pendingUserInputs.delete(requestId);
+        if (type === "agent_error") {
+            this.pendingApprovals.clear();
+            this.pendingUserInputs.clear();
+        }
     }
 
     /** 更新并广播 Codex 运行状态；静默后台活动可保留上一 turn 的断线重放。 */
@@ -284,7 +295,7 @@ export class CanvasSession {
                 this.clientFocusOrder.set(clientId, ++this.focusSequence);
             }
         }
-        sendEvent(res, "hello", { ok: true, protocolVersion: AGENT_PROTOCOL_VERSION, clientId, workspace: { activeThreadId }, conversation: this.conversationStateSnapshot, codex: this.codexState, pendingApprovals: this.codexPendingApprovals });
+        sendEvent(res, "hello", { ok: true, protocolVersion: AGENT_PROTOCOL_VERSION, clientId, workspace: { activeThreadId }, conversation: this.conversationStateSnapshot, codex: this.codexState, pendingApprovals: this.codexPendingApprovals, pendingUserInputs: this.codexPendingUserInputs });
         if (!statusOnly && activeThreadId && this.codexState.threadId === activeThreadId) this.codexReplayEvents.forEach((event) => sendEvent(res, event.type, event.payload));
         const timer = setInterval(() => sendEvent(res, "ping", { time: Date.now() }), 15000);
         res.on("close", () => {

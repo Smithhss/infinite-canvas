@@ -17,22 +17,23 @@ bun install
 bun run dev
 ```
 
-2. 启动本地 Canvas Agent：
+2. 插件 MCP 启动时会自动拉起本地 Canvas Agent 网页服务。只有 MCP 未加载或连接失败时，才手动运行：
 
 ```bash
 npx -y @smithhsiiiii/canvas-agent@latest
 ```
 
-3. 从启动输出取得 `Local URL` 和 `Connect token`，在 Codex 右侧浏览器打开：
+3. 在 Codex 右侧浏览器打开：
 
 ```text
-<Vite Local 地址>/canvas?mode=new#agentUrl=<Local URL>&agentToken=<Connect token>
+<Vite Local 地址>/canvas?mode=new
 ```
+
+本地页面会从 `http://127.0.0.1:17371/config` 自动发现地址和 token；部署页面首次仍通过插件注入的连接片段完成配对，之后会持久化并自动重连。
 
 ## MCP 与连接地址
 
-插件在新的 Codex 任务中加载时会自动启动 `npx -y @smithhsiiiii/canvas-agent@latest mcp`。这个 MCP 进程负责提供画布工具，不提供网页连接服务；
-上面启动的普通 Canvas Agent 负责提供 `Local URL` 和 `Connect token`。两个进程读取同一份本地配置，因此不需要用户手动填写地址或 token。
+插件在新的 Codex 任务中加载时会自动启动 `npx -y @smithhsiiiii/canvas-agent@latest mcp`。MCP 进程会检查本机网页连接服务，必要时以 detached 模式启动同一个 CLI；两个进程读取同一份本地配置，因此不需要用户每次手动填写地址或 token。
 
 ## 打开模式
 

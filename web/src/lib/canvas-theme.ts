@@ -1,5 +1,6 @@
 export type CanvasColorTheme = "light" | "dark";
 export type CanvasBackgroundMode = "dots" | "lines" | "blank";
+export const DEFAULT_CANVAS_BACKGROUND_MODE: CanvasBackgroundMode = "lines";
 
 export const canvasThemes = {
     light: {

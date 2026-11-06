@@ -4,7 +4,7 @@ import { persist, type PersistStorage, type StorageValue } from "zustand/middlew
 import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { localForageStorage } from "@/lib/localforage-storage";
-import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
+import { DEFAULT_CANVAS_BACKGROUND_MODE, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { normalizeDirectorProject, type DirectorProjectState } from "@/lib/canvas/director-project";
 import { duplicateCanvasProject } from "@/lib/canvas/canvas-project-copy";
 import { useCanvasSaveStatusStore } from "@/stores/canvas/canvas-save-status-store";
@@ -98,7 +98,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     connections: [],
                     chatSessions: [],
                     activeChatId: null,
-                    backgroundMode: "dots",
+                    backgroundMode: DEFAULT_CANVAS_BACKGROUND_MODE,
                     showImageInfo: false,
                     viewport: initialViewport,
                 };
@@ -126,7 +126,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     connections: source.connections || [],
                     chatSessions: source.chatSessions || [],
                     activeChatId: source.activeChatId || null,
-                    backgroundMode: source.backgroundMode || "dots",
+                    backgroundMode: source.backgroundMode || DEFAULT_CANVAS_BACKGROUND_MODE,
                     showImageInfo: source.showImageInfo || false,
                     viewport: source.viewport || initialViewport,
                     director: source.director ? normalizeDirectorProject(source.director) : undefined,

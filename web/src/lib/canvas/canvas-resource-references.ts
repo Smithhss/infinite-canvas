@@ -1,6 +1,7 @@
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import i18n from "@/i18n";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { scriptV2Text } from "@/lib/canvas/storyboard-projection";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
@@ -133,6 +134,7 @@ function isResourceNode(node: CanvasNodeData) {
 
 function resourceText(node: CanvasNodeData): string | undefined {
     if (node.type === CanvasNodeType.Text) return node.metadata?.content || node.metadata?.prompt;
+    if (node.type === CanvasNodeType.Script) return scriptV2Text(node.metadata?.scriptV2) || undefined;
     const resource = getNodeDefinition(node.type)?.resource?.(node);
     return resource?.kind === "text" ? resource.text : undefined;
 }
@@ -142,6 +144,7 @@ function resourceKind(node: CanvasNodeData): CanvasResourceKind | null {
     if (node.type === CanvasNodeType.Video && node.metadata?.content) return "video";
     if (node.type === CanvasNodeType.Audio && node.metadata?.content) return "audio";
     if (node.type === CanvasNodeType.Text && (node.metadata?.content || node.metadata?.prompt)) return "text";
+    if (node.type === CanvasNodeType.Script && node.metadata?.scriptV2) return "text";
     // Plugin nodes declare their input eligibility through definition.resource.
     return getNodeDefinition(node.type)?.resource?.(node)?.kind || null;
 }

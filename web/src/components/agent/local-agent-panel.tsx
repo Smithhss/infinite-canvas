@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
 import { activeAgentProvider, agentProviderCapabilities, agentProviderSupportsImageType, type AgentProvider } from "@/lib/agent/agent-provider";
+import { AGENT_MAX_ATTACHMENT_PAYLOAD_BYTES, AGENT_MAX_ATTACHMENTS } from "@/lib/agent/agent-limits";
 import { enabledAgentMemoryEntries, promptWithAgentMemory } from "@/lib/agent/agent-memory";
 import { recoverPendingApprovals } from "@/lib/agent/agent-pending-approvals";
 import { rememberAgentPluginDetected, resolveAgentSetupPhase } from "@/lib/agent/agent-setup";
@@ -78,8 +79,8 @@ import { AgentPanelTabs } from "./agent-panel-tabs";
 import { AgentRuntimeStatus } from "./agent-runtime-status";
 import { AgentSkillsView } from "./agent-skills-view";
 
-const MAX_ATTACHMENTS = 6;
-const MAX_ATTACHMENT_PAYLOAD_BYTES = 28 * 1024 * 1024;
+const MAX_ATTACHMENTS = AGENT_MAX_ATTACHMENTS;
+const MAX_ATTACHMENT_PAYLOAD_BYTES = AGENT_MAX_ATTACHMENT_PAYLOAD_BYTES;
 const CLAUDE_IMAGE_ACCEPT = "image/png,image/jpeg,image/jpg,image/gif,image/webp";
 const MESSAGE_PREVIEW_LONG_EDGE = 192;
 const MESSAGE_PREVIEW_MAX_LENGTH = 500_000;

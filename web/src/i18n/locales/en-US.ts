@@ -714,7 +714,12 @@ export default {
             processSelection: "Process on canvas",
             selectItem: "Select asset",
             deselectItem: "Deselect asset",
-            fields: { group: "Group", status: "Status", model: "Model", size: "Size", node: "Node ID", prompt: "Prompt" },
+            referenceCount: "{{count}} references",
+            referenceMissing: "Reference unavailable",
+            generationTypes: { generation: "Text to image", edit: "Image edit" },
+            videoModes: { frames: "First and last frame", reference: "References" },
+            parameters: { count: "{{count}} images", seconds: "{{value}} seconds", background: "Background {{value}}", audio: "Audio {{value}}", watermark: "Watermark {{value}}" },
+            fields: { group: "Group", status: "Status", model: "Model", size: "Size", parameters: "Generation parameters", references: "References", node: "Node ID", prompt: "Prompt" },
             workbench: {
                 title: "Project assets",
                 back: "Back",

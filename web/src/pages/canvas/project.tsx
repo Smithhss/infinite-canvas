@@ -57,6 +57,7 @@ import { useBuiltinCanvasAgent } from "@/pages/canvas/hooks/use-builtin-canvas-a
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
+import { buildGenerationReferences } from "@/lib/canvas/canvas-generation-reference";
 import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, createCanvasNode, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-node-factory";
 import {
     applyGroupSelection,
@@ -2221,6 +2222,7 @@ function InfiniteCanvasPage() {
                 quality: node.metadata?.quality,
                 background: node.metadata?.background,
                 references: node.metadata?.references,
+                generationReferences: node.metadata?.generationReferences,
             },
         };
         setNodes((prev) => [...prev, copy]);
@@ -3016,6 +3018,7 @@ function InfiniteCanvasPage() {
                             watermark: generationConfig.videoWatermark,
                             videoMode: generationConfig.videoMode,
                             references: generationReferenceUrls(generationContext),
+                            generationReferences: buildGenerationReferences({ images: generationContext.referenceImages, videos: generationContext.referenceVideos, audios: generationContext.referenceAudios }),
                         },
                     };
                     pendingChildIds = [videoId];
@@ -3041,6 +3044,7 @@ function InfiniteCanvasPage() {
                                 watermark: generationConfig.videoWatermark,
                                 videoMode: generationConfig.videoMode,
                                 references: generationReferenceUrls(generationContext),
+                                generationReferences: buildGenerationReferences({ images: generationContext.referenceImages, videos: generationContext.referenceVideos, audios: generationContext.referenceAudios }),
                             },
                             generationContext.referenceVideos,
                             generationContext.referenceAudios,
@@ -3339,6 +3343,7 @@ function InfiniteCanvasPage() {
                             generateAudio: generationConfig.videoGenerateAudio,
                             watermark: generationConfig.videoWatermark,
                             videoMode: generationConfig.videoMode,
+                            generationReferences: buildGenerationReferences({ images: retryImages, videos: context?.referenceVideos, audios: context?.referenceAudios }),
                         },
                         context?.referenceVideos || [],
                         context?.referenceAudios || [],
@@ -3375,6 +3380,7 @@ function InfiniteCanvasPage() {
                           ...(generationConfig.background ? { background: generationConfig.background } : {}),
                           count: savedImageMetadata.count || 1,
                           references: savedImageMetadata.references,
+                          generationReferences: savedImageMetadata.generationReferences || buildGenerationReferences({ images: retryImages }),
                       }
                     : buildImageGenerationMetadata(useReferenceImages ? "edit" : "generation", generationConfig, 1, retryImages);
                 setNodes((prev) =>

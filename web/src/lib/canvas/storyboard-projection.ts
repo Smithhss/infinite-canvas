@@ -1,6 +1,29 @@
-import { CanvasNodeType, type CanvasNodeData, type CanvasNodeStatus, type CanvasScriptV2, type CanvasStoryboardCategory } from "@/types/canvas";
+import {
+    CanvasNodeType,
+    type CanvasGenerationReference,
+    type CanvasImageGenerationType,
+    type CanvasNodeData,
+    type CanvasNodeMetadata,
+    type CanvasNodeStatus,
+    type CanvasScriptV2,
+    type CanvasStoryboardCategory,
+} from "@/types/canvas";
 
 export type StoryboardItemKind = "script" | "text" | "image" | "video";
+
+export type StoryboardGeneration = {
+    type?: CanvasImageGenerationType;
+    size?: string;
+    quality?: string;
+    count?: number;
+    background?: string;
+    seconds?: string;
+    vquality?: string;
+    generateAudio?: string;
+    watermark?: string;
+    videoMode?: string;
+    references: CanvasGenerationReference[];
+};
 
 export type StoryboardItem = {
     id: string;
@@ -18,6 +41,7 @@ export type StoryboardItem = {
     durationMs?: number;
     isPrimary?: boolean;
     category: CanvasStoryboardCategory;
+    generation?: StoryboardGeneration;
     script?: CanvasScriptV2;
 };
 
@@ -34,6 +58,42 @@ function primaryText(node: CanvasNodeData) {
 
 function isEmptyIdle(status: CanvasNodeStatus | undefined, content: string | undefined) {
     return !content && (!status || status === "idle");
+}
+
+export function storyboardGenerationReferences(metadata: CanvasNodeMetadata | undefined) {
+    if (metadata?.generationReferences?.length) return metadata.generationReferences;
+    return (metadata?.references || []).map((reference): CanvasGenerationReference => {
+        const storageKey = /^(image|video|audio|text|file):/.test(reference);
+        const mediaUrl = reference.match(/\.(mp4|webm|mov|mp3|wav|ogg)(?:[?#]|$)/i)?.[1]?.toLowerCase();
+        const kind =
+            reference.startsWith("video:") || (mediaUrl && ["mp4", "webm", "mov"].includes(mediaUrl))
+                ? "video"
+                : reference.startsWith("audio:") || (mediaUrl && ["mp3", "wav", "ogg"].includes(mediaUrl))
+                  ? "audio"
+                  : reference.startsWith("text:")
+                    ? "text"
+                    : "image";
+        return storageKey ? { kind, storageKey: reference } : { kind, url: reference };
+    });
+}
+
+function generationDetails(metadata: CanvasNodeMetadata | undefined): StoryboardGeneration | undefined {
+    if (!metadata) return undefined;
+    const references = storyboardGenerationReferences(metadata);
+    const details: StoryboardGeneration = {
+        type: metadata.generationType,
+        size: metadata.size,
+        quality: metadata.quality,
+        count: metadata.count,
+        background: metadata.background,
+        seconds: metadata.seconds,
+        vquality: metadata.vquality,
+        generateAudio: metadata.generateAudio,
+        watermark: metadata.watermark,
+        videoMode: metadata.videoMode,
+        references,
+    };
+    return Object.values(details).some((value) => (Array.isArray(value) ? value.length : value !== undefined)) ? details : undefined;
 }
 
 export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardProjection {
@@ -99,6 +159,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                 prompt,
                 model: node.metadata?.model,
                 category,
+                generation: generationDetails(node.metadata),
             });
             continue;
         }
@@ -122,6 +183,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                         height: image.naturalHeight || node.metadata?.naturalHeight,
                         isPrimary: image.id === node.metadata?.primaryImageId,
                         category,
+                        generation: generationDetails(node.metadata),
                     });
                 });
             } else {
@@ -142,6 +204,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                     height: node.metadata?.naturalHeight,
                     isPrimary: true,
                     category,
+                    generation: generationDetails(node.metadata),
                 });
             }
             continue;
@@ -165,6 +228,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                 height: node.metadata?.naturalHeight,
                 durationMs: node.metadata?.durationMs,
                 category,
+                generation: generationDetails(node.metadata),
             });
         }
     }

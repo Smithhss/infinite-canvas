@@ -15,7 +15,7 @@ const MIGRATION_META_STORE = "migration_meta";
 const TARGET_DATABASE_VERSION = 2;
 const MIGRATION_OWNER = "infinite-canvas-storage-migration";
 const MIGRATION_LOCK_NAME = "infinite-canvas:v1:storage-migration";
-const KNOWN_STORES = ["app_state", "image_files", "image_previews", "image_generation_logs", "video_generation_logs", "media_files", "prompt_cache", "agent_memory", "agent_skill_favorites", "local-forage-detect-blob-support"];
+const KNOWN_STORES = ["app_state", "image_files", "image_previews", "image_generation_logs", "video_generation_logs", "media_files", "video_posters", "prompt_cache", "agent_memory", "agent_skill_favorites", "local-forage-detect-blob-support"];
 
 type StoredRecord = { key: IDBValidKey; value: unknown };
 type StoreSchema = { name: string; keyPath: string | string[] | null; autoIncrement: boolean; indexes: IndexSchema[] };

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { buildStoryboardProjection, filterStoryboardItems } from "../src/lib/canvas/storyboard-projection";
+import { buildStoryboardProjection, filterStoryboardItems, storyboardGenerationReferences } from "../src/lib/canvas/storyboard-projection";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
 
 const base = { position: { x: 0, y: 0 }, width: 320, height: 240 };
@@ -173,4 +173,59 @@ test("handles a high-density storyboard without dropping or duplicating media", 
     expect(filterStoryboardItems(projection.image, "镜头 17", "all").map((item) => item.nodeId)).toEqual(["image-16"]);
     expect(filterStoryboardItems(projection.image, "", "error")).toHaveLength(3);
     expect(filterStoryboardItems(projection.video, "", "loading").map((item) => item.nodeId)).toEqual(["video-0"]);
+});
+
+test("keeps ordered typed generation references for every image alternative", () => {
+    const projection = buildStoryboardProjection([
+        {
+            ...base,
+            id: "image-generated",
+            type: CanvasNodeType.Image,
+            title: "生成图",
+            metadata: {
+                prompt: "图1的角色换成背影",
+                model: "nebula-2-flash",
+                generationType: "edit",
+                size: "2k",
+                quality: "high",
+                count: 2,
+                images: [
+                    { id: "image-a", status: "success", content: "blob:a", storageKey: "image:a", naturalWidth: 2048, naturalHeight: 1152, bytes: 10, mimeType: "image/png" },
+                    { id: "image-b", status: "success", content: "blob:b", storageKey: "image:b", naturalWidth: 2048, naturalHeight: 1152, bytes: 10, mimeType: "image/png" },
+                ],
+                generationReferences: [
+                    { kind: "image", title: "角色图", storageKey: "image:ref-1" },
+                    { kind: "image", title: "场景图", url: "https://example.com/scene.webp" },
+                ],
+            },
+        },
+    ]);
+
+    expect(projection.image).toHaveLength(2);
+    expect(projection.image[0].generation).toMatchObject({
+        type: "edit",
+        size: "2k",
+        quality: "high",
+        count: 2,
+        references: [
+            { kind: "image", title: "角色图", storageKey: "image:ref-1" },
+            { kind: "image", title: "场景图", url: "https://example.com/scene.webp" },
+        ],
+    });
+    expect(projection.image[1].generation).toEqual(projection.image[0].generation);
+});
+
+test("derives typed references from legacy metadata without treating remote URLs as storage keys", () => {
+    expect(
+        storyboardGenerationReferences({
+            references: ["image:first", "https://example.com/scene.webp", "video:clip", "audio:voice", "https://example.com/cut.mp4", "https://example.com/voice.mp3"],
+        }),
+    ).toEqual([
+        { kind: "image", storageKey: "image:first" },
+        { kind: "image", url: "https://example.com/scene.webp" },
+        { kind: "video", storageKey: "video:clip" },
+        { kind: "audio", storageKey: "audio:voice" },
+        { kind: "video", url: "https://example.com/cut.mp4" },
+        { kind: "audio", url: "https://example.com/voice.mp3" },
+    ]);
 });

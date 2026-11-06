@@ -1,4 +1,5 @@
 import { getNodeSpec, NODE_DEFAULT_SIZE } from "@/constant/canvas";
+import { buildGenerationReferences } from "@/lib/canvas/canvas-generation-reference";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import type { AiConfig } from "@/stores/use-config-store";
 import type { UploadedImage } from "@/services/image-storage";
@@ -37,7 +38,7 @@ export function audioMetadata(audio: UploadedFile): CanvasNodeMetadata {
 }
 
 export function referenceUrl(image: ReferenceImage) {
-    return image.storageKey || image.url || (!image.dataUrl.startsWith("data:") ? image.dataUrl : undefined);
+    return image.storageKey || [image.url, image.dataUrl].find((value) => value && !/^(blob|data):/.test(value));
 }
 
 export function buildImageGenerationMetadata(type: CanvasImageGenerationType, config: AiConfig, count: number, references: ReferenceImage[]): CanvasNodeMetadata {
@@ -49,6 +50,7 @@ export function buildImageGenerationMetadata(type: CanvasImageGenerationType, co
         ...(config.background ? { background: config.background } : {}),
         count,
         references: references.map(referenceUrl).filter((url): url is string => Boolean(url)),
+        generationReferences: buildGenerationReferences({ images: references }),
     };
 }
 

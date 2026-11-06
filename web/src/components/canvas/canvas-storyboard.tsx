@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Empty, Input, Modal, Select } from "antd";
-import { Check, ChevronDown, Image as ImageIcon, LocateFixed, MousePointer2, Play, Search, Type, Video } from "lucide-react";
+import { Check, ChevronDown, Image as ImageIcon, LocateFixed, MousePointer2, Music2, Play, Search, Type, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
-import { buildStoryboardProjection, filterStoryboardItems, type StoryboardItem } from "@/lib/canvas/storyboard-projection";
+import { buildStoryboardProjection, filterStoryboardItems, type StoryboardGeneration, type StoryboardItem } from "@/lib/canvas/storyboard-projection";
 import { readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 import { cn } from "@/lib/utils";
-import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
+import { ensureVideoPoster, getVideoPosterRevision, subscribeVideoPosters, videoPosterUrlFor } from "@/services/file-storage";
+import { ensureImagePreview, getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
-import type { CanvasNodeData, CanvasNodeStatus } from "@/types/canvas";
+import type { CanvasGenerationReference, CanvasNodeData, CanvasNodeStatus } from "@/types/canvas";
 
 type ModuleKey = "text" | "image" | "video";
 type StatusFilter = CanvasNodeStatus | "all";
@@ -53,6 +54,7 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
+    useSyncExternalStore(subscribeVideoPosters, getVideoPosterRevision);
     const projection = useMemo(() => buildStoryboardProjection(nodes), [nodes]);
     const [keyword, setKeyword] = useState("");
     const [collapsed, setCollapsed] = useState(() => readCollapsed(projectId));
@@ -72,6 +74,11 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
         }),
         [filters, keyword, projection],
     );
+    useEffect(() => {
+        items.video.forEach((item) => {
+            if (item.storageKey) void ensureVideoPoster(item.storageKey);
+        });
+    }, [items.video]);
     const total = items.text.length + items.image.length + items.video.length;
     const visibleItems = useMemo(() => [...items.text, ...items.image, ...items.video], [items]);
     const selectedItems = useMemo(() => visibleItems.filter((item) => selectedItemIds.has(item.id)), [selectedItemIds, visibleItems]);
@@ -219,7 +226,7 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                                     <div key={item.id} className="relative min-w-0">
                                         <button type="button" onClick={() => setDetail(item)} className="group block w-full min-w-0 overflow-hidden rounded-lg text-left transition hover:bg-white/[0.035]" style={{ background: theme.toolbar.panel }}>
                                             <span className="relative flex aspect-video items-center justify-center overflow-hidden bg-black">
-                                                {mediaUrl(item) ? <video src={`${mediaUrl(item)}#t=0.1`} muted playsInline preload="metadata" className="size-full object-contain" /> : <Video className="size-7 text-white/30" />}
+                                                {videoPosterUrlFor(item.storageKey) ? <img src={videoPosterUrlFor(item.storageKey)} alt={item.title} className="size-full object-contain" /> : item.storageKey ? null : mediaUrl(item) ? <video src={`${mediaUrl(item)}#t=0.1`} muted playsInline preload="metadata" className="size-full object-contain" /> : <Video className="size-7 text-white/30" />}
                                                 <span className="absolute inset-0 grid place-items-center bg-black/10 opacity-80">
                                                     <span className="grid size-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur">
                                                         <Play className="ml-0.5 size-4 fill-current" />
@@ -359,12 +366,28 @@ function StoryboardEmpty({ label }: { label: string }) {
 function StoryboardDetail({ item, theme, onClose, onLocate }: { item: StoryboardItem | null; theme: CanvasTheme; onClose: () => void; onLocate: (item: StoryboardItem) => void }) {
     const { t } = useTranslation();
     const src = item ? mediaUrl(item) : "";
+    const poster = item?.kind === "video" ? videoPosterUrlFor(item.storageKey) : undefined;
+    const generation = item?.generation;
+    const parameters = generation
+        ? [
+              generation.type ? t(`canvas.storyboard.generationTypes.${generation.type}`) : "",
+              generation.size,
+              generation.quality,
+              generation.count ? t("canvas.storyboard.parameters.count", { count: generation.count }) : "",
+              generation.seconds ? t("canvas.storyboard.parameters.seconds", { value: generation.seconds }) : "",
+              generation.vquality,
+              generation.background ? t("canvas.storyboard.parameters.background", { value: generation.background }) : "",
+              generation.generateAudio ? t("canvas.storyboard.parameters.audio", { value: yesNo(generation.generateAudio, t) }) : "",
+              generation.watermark ? t("canvas.storyboard.parameters.watermark", { value: yesNo(generation.watermark, t) }) : "",
+              generation.videoMode ? t(`canvas.storyboard.videoModes.${generation.videoMode}`, { defaultValue: generation.videoMode }) : "",
+          ].filter((value): value is string => Boolean(value))
+        : [];
     return (
         <Modal
             open={Boolean(item)}
             title={item?.title}
             onCancel={onClose}
-            width={960}
+            width={1080}
             footer={
                 item ? (
                     <button type="button" onClick={() => onLocate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium" style={{ background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}>
@@ -375,24 +398,98 @@ function StoryboardDetail({ item, theme, onClose, onLocate }: { item: Storyboard
             }
         >
             {item ? (
-                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
-                    <div className="flex min-h-72 items-center justify-center overflow-hidden rounded-xl" style={{ background: theme.node.panel }}>
-                        {item.kind === "image" && src ? <img src={src} alt={item.title} className="max-h-[68vh] max-w-full object-contain" /> : null}
-                        {item.kind === "video" && src ? <video src={src} controls autoPlay className="max-h-[68vh] w-full object-contain" /> : null}
-                        {item.kind === "text" ? <div className="thin-scrollbar max-h-[68vh] w-full overflow-y-auto whitespace-pre-wrap p-5 text-sm leading-6">{item.content || item.prompt}</div> : null}
-                        {item.kind !== "text" && !src ? <span className="text-sm opacity-45">{t("canvas.storyboard.noPreview")}</span> : null}
+                <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_250px]">
+                    <div className="min-w-0 space-y-4">
+                        <div className="flex min-h-72 items-center justify-center overflow-hidden rounded-xl" style={{ background: theme.node.panel }}>
+                            {item.kind === "image" && src ? <img src={src} alt={item.title} className="max-h-[62vh] max-w-full object-contain" /> : null}
+                            {item.kind === "video" && src ? <video src={src} poster={poster} controls autoPlay className="max-h-[62vh] w-full object-contain" /> : null}
+                            {item.kind === "text" ? <div className="thin-scrollbar max-h-[62vh] w-full overflow-y-auto whitespace-pre-wrap p-5 text-sm leading-6">{item.content || item.prompt}</div> : null}
+                            {item.kind !== "text" && !src ? <span className="text-sm opacity-45">{t("canvas.storyboard.noPreview")}</span> : null}
+                        </div>
+                        {generation?.references.length ? (
+                            <section className="rounded-xl border p-4" style={{ borderColor: theme.toolbar.border, background: theme.node.panel }}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <h3 className="text-xs font-medium" style={{ color: theme.node.muted }}>
+                                        {t("canvas.storyboard.fields.references")}
+                                    </h3>
+                                    <span className="text-[11px] tabular-nums" style={{ color: theme.node.faint }}>
+                                        {t("canvas.storyboard.referenceCount", { count: generation.references.length })}
+                                    </span>
+                                </div>
+                                <GenerationReferences generation={generation} theme={theme} />
+                            </section>
+                        ) : null}
                     </div>
                     <dl className="space-y-3 text-sm">
                         <DetailRow label={t("canvas.storyboard.fields.group")} value={item.groupTitle || "-"} />
                         <DetailRow label={t("canvas.storyboard.fields.status")} value={t(`canvas.storyboard.status.${item.status}`)} />
                         <DetailRow label={t("canvas.storyboard.fields.model")} value={item.model || "-"} />
                         <DetailRow label={t("canvas.storyboard.fields.size")} value={itemMeta(item) || "-"} />
+                        {parameters.length ? (
+                            <div>
+                                <dt className="text-xs opacity-45">{t("canvas.storyboard.fields.parameters")}</dt>
+                                <dd className="mt-2 flex flex-wrap gap-1.5">
+                                    {parameters.map((parameter, index) => (
+                                        <span key={`${parameter}:${index}`} className="rounded-md px-2 py-1 text-[11px] leading-4" style={{ background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}>
+                                            {parameter}
+                                        </span>
+                                    ))}
+                                </dd>
+                            </div>
+                        ) : null}
                         <DetailRow label={t("canvas.storyboard.fields.node")} value={item.nodeId} mono />
                         {item.prompt ? <DetailRow label={t("canvas.storyboard.fields.prompt")} value={item.prompt} /> : null}
                     </dl>
                 </div>
             ) : null}
         </Modal>
+    );
+}
+
+function yesNo(value: string, t: ReturnType<typeof useTranslation>["t"]) {
+    return value === "true" ? t("settingsPanels.common.yes") : value === "false" ? t("settingsPanels.common.no") : value;
+}
+
+function referenceSource(reference: CanvasGenerationReference) {
+    return (reference.storageKey ? previewUrlFor(reference.storageKey) : undefined) || reference.url || "";
+}
+
+function GenerationReferences({ generation, theme }: { generation: StoryboardGeneration; theme: CanvasTheme }) {
+    const { t } = useTranslation();
+    const counts = { image: 0, video: 0, audio: 0, text: 0 };
+    useEffect(() => {
+        generation.references.forEach((reference) => {
+            if (reference.kind === "image" && reference.storageKey) void ensureImagePreview(reference.storageKey);
+        });
+    }, [generation.references]);
+
+    return (
+        <div className="thin-scrollbar mt-3 flex gap-2 overflow-x-auto pb-1">
+            {generation.references.map((reference, index) => {
+                const number = counts[reference.kind]++;
+                const label = t(`canvas.composer.resources.${reference.kind}`, { index: number + 1 });
+                const src = referenceSource(reference);
+                return (
+                    <div
+                        key={`${reference.kind}:${reference.nodeId || reference.storageKey || reference.url || "reference"}:${index}`}
+                        className="w-28 shrink-0 overflow-hidden rounded-lg border"
+                        style={{ borderColor: theme.toolbar.border, background: theme.canvas.background }}
+                    >
+                        <div className="relative flex aspect-square items-center justify-center overflow-hidden">
+                            {reference.kind === "image" && src ? <img src={src} alt={reference.title || label} className="size-full object-cover" /> : null}
+                            {reference.kind === "video" ? <Video className="size-7" style={{ color: theme.node.muted }} /> : null}
+                            {reference.kind === "audio" ? <Music2 className="size-7" style={{ color: theme.node.muted }} /> : null}
+                            {reference.kind === "text" ? <Type className="size-7" style={{ color: theme.node.muted }} /> : null}
+                            {reference.kind === "image" && !src ? <ImageIcon className="size-7" style={{ color: theme.node.faint }} /> : null}
+                            <span className="absolute left-1.5 top-1.5 rounded bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white">{label}</span>
+                        </div>
+                        <p className="truncate px-2 py-1.5 text-[10px]" style={{ color: theme.node.muted }}>
+                            {reference.title || (src ? label : t("canvas.storyboard.referenceMissing"))}
+                        </p>
+                    </div>
+                );
+            })}
+        </div>
     );
 }
 

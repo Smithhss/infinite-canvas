@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 import { buildNodeGenerationContext } from "@/components/canvas/canvas-node-generation";
+import { buildGenerationReferences } from "@/lib/canvas/canvas-generation-reference";
 import { createCanvasNode, imageMetadata } from "@/lib/canvas/canvas-node-factory";
 import { buildGenerationConfig } from "@/lib/canvas/canvas-generation-helpers";
 import type { CanvasAgentOp, CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
@@ -317,11 +318,34 @@ function nextImagePosition(snapshot: CanvasAgentSnapshot, index: number) {
 
 function mediaResultToOps(media: BuiltinCanvasMediaResult, action: BuiltinCanvasMediaAction, snapshot: CanvasAgentSnapshot, offset: number): CanvasAgentOp[] {
     const images = media.images || media.imageUrls.map((url) => ({ url, width: 1024, height: 1024, bytes: 0, mimeType: "image/png" }));
+    const references =
+        action.name === "edit_image"
+            ? buildGenerationReferences({
+                  images: action.args.sourceNodeIds.flatMap((id) => {
+                      const source = snapshot.nodes.find((node) => node.id === id && node.type === CanvasNodeType.Image && node.metadata?.content);
+                      return source?.metadata?.content
+                          ? [
+                                {
+                                    id: source.id,
+                                    name: `${source.title || source.id}.png`,
+                                    type: source.metadata.mimeType || "image/png",
+                                    dataUrl: source.metadata.content,
+                                    url: source.metadata.content,
+                                    storageKey: source.metadata.storageKey,
+                                },
+                            ]
+                          : [];
+                  }),
+              })
+            : [];
     return images.slice(0, MAX_AGENT_IMAGES).map((image, index) => {
         const node = createCanvasNode(CanvasNodeType.Image, nextImagePosition(snapshot, offset + index), {
             ...imageMetadata(image),
             prompt: action.args.prompt,
             generationType: action.name === "edit_image" ? "edit" : "generation",
+            model: action.args.model,
+            count: Math.min(images.length, MAX_AGENT_IMAGES),
+            generationReferences: references,
         });
         return {
             type: "add_node",

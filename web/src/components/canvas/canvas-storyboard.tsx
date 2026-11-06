@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Empty, Input, Modal, Select } from "antd";
-import { Check, ChevronDown, Image as ImageIcon, LocateFixed, MousePointer2, Music2, Play, Search, Type, Video } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Image as ImageIcon, LocateFixed, MousePointer2, Music2, Play, Search, Type, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { ensureVideoPoster, getVideoPosterRevision, subscribeVideoPosters, videoPosterUrlFor } from "@/services/file-storage";
 import { ensureImagePreview, getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
-import type { CanvasGenerationReference, CanvasNodeData, CanvasNodeStatus } from "@/types/canvas";
+import type { CanvasGenerationReference, CanvasNodeData, CanvasNodeStatus, CanvasStoryboardCategory } from "@/types/canvas";
 
 type ModuleKey = "text" | "image" | "video";
 type StatusFilter = CanvasNodeStatus | "all";
@@ -20,9 +20,17 @@ type Props = {
     nodes: CanvasNodeData[];
     onLocateNode: (nodeId: string) => void;
     onSelectNodesInCanvas: (nodeIds: string[]) => void;
+    onUpdateNodeCategory: (nodeId: string, category: CanvasStoryboardCategory) => boolean;
 };
 
 const COLLAPSED_KEY_PREFIX = "canvas-storyboard-collapsed:";
+const LAYOUT_KEY_PREFIX = "canvas-storyboard-layout:";
+const TEXT_PANEL_MIN_WIDTH = 148;
+const TEXT_PANEL_MAX_WIDTH = 320;
+const TEXT_PANEL_COLLAPSED_WIDTH = 56;
+const DEFAULT_LAYOUT = { textRatio: 0.42, imageRatio: 0.5 };
+
+type StoryboardLayout = typeof DEFAULT_LAYOUT;
 
 function readCollapsed(projectId: string): Record<ModuleKey, boolean> {
     try {
@@ -30,6 +38,30 @@ function readCollapsed(projectId: string): Record<ModuleKey, boolean> {
         return { text: Boolean(saved.text), image: Boolean(saved.image), video: Boolean(saved.video) };
     } catch {
         return { text: false, image: false, video: false };
+    }
+}
+
+function savedRatio(value: unknown, fallback: number) {
+    return typeof value === "number" && Number.isFinite(value) ? Math.min(0.85, Math.max(0.1, value)) : fallback;
+}
+
+function readLayout(projectId: string): StoryboardLayout {
+    try {
+        const saved = JSON.parse(readAppStorageItem(`${LAYOUT_KEY_PREFIX}${projectId}`) || "{}") as Partial<StoryboardLayout>;
+        return {
+            textRatio: savedRatio(saved.textRatio, DEFAULT_LAYOUT.textRatio),
+            imageRatio: savedRatio(saved.imageRatio, DEFAULT_LAYOUT.imageRatio),
+        };
+    } catch {
+        return DEFAULT_LAYOUT;
+    }
+}
+
+function saveLayout(projectId: string, layout: StoryboardLayout) {
+    try {
+        writeAppStorageItem(`${LAYOUT_KEY_PREFIX}${projectId}`, JSON.stringify(layout));
+    } catch {
+        // Layout persistence must not block resizing.
     }
 }
 
@@ -50,7 +82,7 @@ function itemMeta(item: StoryboardItem) {
     return item.model || "";
 }
 
-export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodesInCanvas }: Props) {
+export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodesInCanvas, onUpdateNodeCategory }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
@@ -58,13 +90,23 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
     const projection = useMemo(() => buildStoryboardProjection(nodes), [nodes]);
     const [keyword, setKeyword] = useState("");
     const [collapsed, setCollapsed] = useState(() => readCollapsed(projectId));
+    const [layout, setLayout] = useState(() => readLayout(projectId));
     const [filters, setFilters] = useState<Record<ModuleKey, StatusFilter>>({ text: "all", image: "all", video: "all" });
     const [detail, setDetail] = useState<StoryboardItem | null>(null);
     const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+    const [resizing, setResizing] = useState<"text" | "media" | null>(null);
+    const layoutRef = useRef(layout);
+    const layoutAreaRef = useRef<HTMLDivElement>(null);
+    const dragCleanupRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
-        writeAppStorageItem(`${COLLAPSED_KEY_PREFIX}${projectId}`, JSON.stringify(collapsed));
+        try {
+            writeAppStorageItem(`${COLLAPSED_KEY_PREFIX}${projectId}`, JSON.stringify(collapsed));
+        } catch {
+            // Collapsed state is a convenience; keep the panel usable if storage is full.
+        }
     }, [collapsed, projectId]);
+    useEffect(() => () => dragCleanupRef.current?.(), []);
 
     const items = useMemo(
         () => ({
@@ -80,13 +122,30 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
         });
     }, [items.video]);
     const total = items.text.length + items.image.length + items.video.length;
+    const allTotal = projection.text.length + projection.image.length + projection.video.length;
     const visibleItems = useMemo(() => [...items.text, ...items.image, ...items.video], [items]);
     const selectedItems = useMemo(() => visibleItems.filter((item) => selectedItemIds.has(item.id)), [selectedItemIds, visibleItems]);
     const selectedNodeIds = useMemo(() => [...new Set(selectedItems.map((item) => item.nodeId))], [selectedItems]);
+    const detailId = detail?.id;
+    const detailIndex = detail ? visibleItems.findIndex((item) => item.id === detail.id) : -1;
+
+    useEffect(() => {
+        if (!detailId) return;
+        const next = visibleItems.find((item) => item.id === detailId);
+        if (!next) {
+            setDetail(null);
+            return;
+        }
+        setDetail((current) => (current?.id === next.id ? next : current));
+    }, [detailId, visibleItems]);
 
     const locate = (item: StoryboardItem) => {
         setDetail(null);
         onLocateNode(item.nodeId);
+    };
+    const navigateDetail = (offset: number) => {
+        const next = visibleItems[detailIndex + offset];
+        if (next) setDetail(next);
     };
     const toggleSelected = (itemId: string) => {
         setSelectedItemIds((current) => {
@@ -95,6 +154,105 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
             else next.add(itemId);
             return next;
         });
+    };
+    const updateLayout = (next: StoryboardLayout) => {
+        layoutRef.current = next;
+        setLayout(next);
+    };
+    const finishResize = (next: StoryboardLayout) => {
+        saveLayout(projectId, next);
+        setResizing(null);
+    };
+    const startTextResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragCleanupRef.current?.();
+        const areaWidth = layoutAreaRef.current?.getBoundingClientRect().width;
+        const panelWidth = event.currentTarget.parentElement?.getBoundingClientRect().width;
+        if (!areaWidth || !panelWidth) return;
+        const startX = event.clientX;
+        let next = layoutRef.current;
+        const onMove = (moveEvent: PointerEvent) => {
+            const width = Math.min(TEXT_PANEL_MAX_WIDTH, Math.max(TEXT_PANEL_MIN_WIDTH, panelWidth + moveEvent.clientX - startX));
+            next = { ...layoutRef.current, textRatio: width / areaWidth };
+            updateLayout(next);
+        };
+        const cleanup = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
+            dragCleanupRef.current = null;
+            setResizing(null);
+        };
+        const onUp = () => {
+            finishResize(next);
+            cleanup();
+        };
+        dragCleanupRef.current = cleanup;
+        setResizing("text");
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+    };
+    const startMediaResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragCleanupRef.current?.();
+        const areaHeight = event.currentTarget.parentElement?.getBoundingClientRect().height;
+        if (!areaHeight) return;
+        const startY = event.clientY;
+        const startHeight = areaHeight * layoutRef.current.imageRatio;
+        const minHeight = 112;
+        const maxHeight = Math.max(minHeight, areaHeight - 112);
+        let next = layoutRef.current;
+        const onMove = (moveEvent: PointerEvent) => {
+            const height = Math.min(maxHeight, Math.max(minHeight, startHeight + moveEvent.clientY - startY));
+            next = { ...layoutRef.current, imageRatio: height / areaHeight };
+            updateLayout(next);
+        };
+        const cleanup = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
+            dragCleanupRef.current = null;
+            setResizing(null);
+        };
+        const onUp = () => {
+            finishResize(next);
+            cleanup();
+        };
+        dragCleanupRef.current = cleanup;
+        setResizing("media");
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+    };
+    const resizeTextBy = (delta: number) => {
+        const areaWidth = layoutAreaRef.current?.getBoundingClientRect().width;
+        if (!areaWidth) return;
+        const width = Math.min(TEXT_PANEL_MAX_WIDTH, Math.max(TEXT_PANEL_MIN_WIDTH, layoutRef.current.textRatio * areaWidth + delta));
+        const next = { ...layoutRef.current, textRatio: width / areaWidth };
+        updateLayout(next);
+        saveLayout(projectId, next);
+    };
+    const resizeMediaBy = (delta: number) => {
+        const areaHeight = layoutAreaRef.current?.getBoundingClientRect().height;
+        if (!areaHeight) return;
+        const maxHeight = Math.max(112, areaHeight - 112);
+        const height = Math.min(maxHeight, Math.max(112, layoutRef.current.imageRatio * areaHeight + delta));
+        const next = { ...layoutRef.current, imageRatio: height / areaHeight };
+        updateLayout(next);
+        saveLayout(projectId, next);
+    };
+    const onTextResizeKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        resizeTextBy(event.key === "ArrowRight" ? 16 : -16);
+    };
+    const onMediaResizeKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+        event.preventDefault();
+        resizeMediaBy(event.key === "ArrowDown" ? 16 : -16);
     };
 
     return (
@@ -110,6 +268,11 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                     className="min-w-0 max-w-md flex-1 sm:flex-none"
                     aria-label={t("canvas.storyboard.search")}
                 />
+                {keyword.trim() ? (
+                    <span className="shrink-0 text-[11px] tabular-nums" style={{ color: theme.node.muted }} aria-live="polite">
+                        {t("canvas.storyboard.matches", { count: total, total: allTotal })}
+                    </span>
+                ) : null}
                 {selectedItems.length ? (
                     <div className="ml-auto flex shrink-0 items-center gap-1">
                         <span className="hidden text-xs tabular-nums sm:inline" style={{ color: theme.node.muted }}>
@@ -132,14 +295,14 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                             <span className="hidden sm:inline">{t("canvas.storyboard.processSelection")}</span>
                         </button>
                     </div>
-                ) : (
+                ) : keyword.trim() ? null : (
                     <span className="ml-auto shrink-0 text-xs tabular-nums" style={{ color: theme.node.muted }}>
                         {t("canvas.storyboard.total", { count: total })}
                     </span>
                 )}
             </div>
 
-            <div className="flex min-h-0 flex-1 overflow-hidden" style={{ background: theme.toolbar.border }}>
+            <div ref={layoutAreaRef} className="flex min-h-0 flex-1 overflow-hidden" style={{ background: theme.toolbar.border }}>
                 <StoryboardModule
                     title={t("canvas.storyboard.modules.text")}
                     icon={<Type className="size-4" />}
@@ -149,7 +312,22 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                     filter={filters.text}
                     onFilter={(filter) => setFilters((value) => ({ ...value, text: filter }))}
                     theme={theme}
-                    className="h-full w-[42%] min-w-[148px] max-w-[320px] shrink-0"
+                    className="h-full shrink-0"
+                    panelStyle={{ width: collapsed.text ? `${TEXT_PANEL_COLLAPSED_WIDTH}px` : `clamp(${TEXT_PANEL_MIN_WIDTH}px, ${layout.textRatio * 100}%, ${TEXT_PANEL_MAX_WIDTH}px)` }}
+                    resizeHandle={
+                        collapsed.text ? null : (
+                            <button
+                                type="button"
+                                className="absolute inset-y-0 right-0 z-30 w-4 cursor-col-resize touch-none"
+                                onPointerDown={startTextResize}
+                                onKeyDown={onTextResizeKeyDown}
+                                aria-label={t("canvas.storyboard.resizeText")}
+                                data-canvas-shortcuts-ignore
+                            >
+                                <span className="absolute inset-y-0 right-0 w-px transition-colors" style={{ background: resizing === "text" ? theme.node.activeStroke : theme.toolbar.border }} />
+                            </button>
+                        )
+                    }
                 >
                     {items.text.length ? (
                         <div className="space-y-1.5 p-2">
@@ -170,7 +348,7 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                     )}
                 </StoryboardModule>
 
-                <div className="flex min-w-0 flex-1 flex-col gap-px">
+                <div className="relative flex min-w-0 flex-1 flex-col gap-px">
                     <StoryboardModule
                         title={t("canvas.storyboard.modules.image")}
                         icon={<ImageIcon className="size-4" />}
@@ -182,6 +360,7 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                         theme={theme}
                         surface="panel"
                         className="min-h-0 flex-1"
+                        panelStyle={collapsed.image ? { flex: "0 0 2.5rem" } : collapsed.video ? { flex: "1 1 0", minHeight: 112 } : { flex: `0 0 ${layout.imageRatio * 100}%`, minHeight: 112 }}
                     >
                         {items.image.length ? (
                             <div className="grid gap-1.5 p-1.5 [grid-template-columns:repeat(auto-fill,minmax(88px,1fr))]">
@@ -219,6 +398,7 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                         theme={theme}
                         surface="panel"
                         className="min-h-0 flex-1"
+                        panelStyle={collapsed.video ? { flex: "0 0 2.5rem" } : { flex: "1 1 0", minHeight: 112 }}
                     >
                         {items.video.length ? (
                             <div className="grid gap-2 p-2 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
@@ -249,10 +429,36 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                             <StoryboardEmpty label={t("canvas.storyboard.noVideo")} />
                         )}
                     </StoryboardModule>
+                    {!collapsed.image && !collapsed.video ? (
+                        <button
+                            type="button"
+                            className="absolute inset-x-0 z-30 h-4 -translate-y-1/2 cursor-row-resize touch-none"
+                            style={{ top: `${layout.imageRatio * 100}%` }}
+                            onPointerDown={startMediaResize}
+                            onKeyDown={onMediaResizeKeyDown}
+                            aria-label={t("canvas.storyboard.resizeMedia")}
+                            data-canvas-shortcuts-ignore
+                        >
+                            <span className="absolute inset-x-0 top-1/2 h-px transition-colors" style={{ background: resizing === "media" ? theme.node.activeStroke : theme.toolbar.border }} />
+                        </button>
+                    ) : null}
                 </div>
             </div>
 
-            <StoryboardDetail item={detail} theme={theme} onClose={() => setDetail(null)} onLocate={locate} />
+            <StoryboardDetail
+                item={detail}
+                theme={theme}
+                index={detailIndex}
+                count={visibleItems.length}
+                onPrevious={() => navigateDetail(-1)}
+                onNext={() => navigateDetail(1)}
+                onClose={() => setDetail(null)}
+                onLocate={locate}
+                onCategoryChange={(category) => {
+                    if (!detail || category === detail.category || !onUpdateNodeCategory(detail.nodeId, category)) return;
+                    setDetail({ ...detail, category });
+                }}
+            />
         </div>
     );
 }
@@ -267,7 +473,9 @@ function StoryboardModule({
     onFilter,
     theme,
     className,
+    panelStyle,
     surface = "canvas",
+    resizeHandle,
     children,
 }: {
     title: string;
@@ -279,7 +487,9 @@ function StoryboardModule({
     onFilter: (filter: StatusFilter) => void;
     theme: CanvasTheme;
     className?: string;
+    panelStyle?: CSSProperties;
     surface?: "canvas" | "panel";
+    resizeHandle?: ReactNode;
     children: ReactNode;
 }) {
     const { t } = useTranslation();
@@ -291,7 +501,7 @@ function StoryboardModule({
     ];
 
     return (
-        <section className={cn("flex min-h-0 flex-col overflow-hidden", className)} style={{ background: surface === "panel" ? theme.node.panel : theme.canvas.background }}>
+        <section className={cn("relative flex min-h-0 flex-col overflow-hidden", className)} style={{ background: surface === "panel" ? theme.node.panel : theme.canvas.background, ...panelStyle }}>
             <div className="flex h-10 shrink-0 items-center gap-1.5 border-b px-2" style={{ borderColor: theme.toolbar.border }}>
                 <button
                     type="button"
@@ -311,14 +521,21 @@ function StoryboardModule({
                 {collapsed ? null : <Select size="small" variant="borderless" value={filter} onChange={onFilter} options={filterOptions} className="ml-auto w-14 sm:w-20" aria-label={t("canvas.storyboard.filter")} />}
             </div>
             {collapsed ? null : <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto">{children}</div>}
+            {resizeHandle}
         </section>
     );
 }
 
 function ItemHeading({ item, theme, compact = false }: { item: StoryboardItem; theme: CanvasTheme; compact?: boolean }) {
+    const { t } = useTranslation();
     return (
         <span className="flex min-w-0 items-center gap-1.5">
             <span className={cn("min-w-0 flex-1 truncate font-medium", compact ? "text-[11px] leading-4" : "text-sm")}>{item.title}</span>
+            {item.category !== "other" ? (
+                <span className="shrink-0 rounded border px-1 py-0.5 text-[9px]" style={{ borderColor: theme.node.stroke, color: theme.node.muted }}>
+                    {t(`canvas.storyboard.categories.${item.category}`)}
+                </span>
+            ) : null}
             {item.isPrimary ? (
                 <span className="shrink-0 rounded px-1 py-0.5 text-[9px]" style={{ background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}>
                     {item.kind === "image" ? <ImageIcon className="size-3" /> : null}
@@ -363,7 +580,27 @@ function StoryboardEmpty({ label }: { label: string }) {
     );
 }
 
-function StoryboardDetail({ item, theme, onClose, onLocate }: { item: StoryboardItem | null; theme: CanvasTheme; onClose: () => void; onLocate: (item: StoryboardItem) => void }) {
+function StoryboardDetail({
+    item,
+    theme,
+    index,
+    count,
+    onPrevious,
+    onNext,
+    onClose,
+    onLocate,
+    onCategoryChange,
+}: {
+    item: StoryboardItem | null;
+    theme: CanvasTheme;
+    index: number;
+    count: number;
+    onPrevious: () => void;
+    onNext: () => void;
+    onClose: () => void;
+    onLocate: (item: StoryboardItem) => void;
+    onCategoryChange: (category: CanvasStoryboardCategory) => void;
+}) {
     const { t } = useTranslation();
     const src = item ? mediaUrl(item) : "";
     const poster = item?.kind === "video" ? videoPosterUrlFor(item.storageKey) : undefined;
@@ -387,25 +624,59 @@ function StoryboardDetail({ item, theme, onClose, onLocate }: { item: Storyboard
             open={Boolean(item)}
             title={item?.title}
             onCancel={onClose}
-            width={1080}
+            width={1180}
+            styles={{ body: { maxHeight: "calc(100vh - 260px)", overflowY: "auto" } }}
             footer={
                 item ? (
-                    <button type="button" onClick={() => onLocate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium" style={{ background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}>
-                        <LocateFixed className="size-4" />
-                        {t("canvas.storyboard.locate")}
-                    </button>
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                disabled={index <= 0}
+                                onClick={onPrevious}
+                                className="grid size-8 place-items-center rounded-lg transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-white/10"
+                                aria-label={t("canvas.storyboard.previous")}
+                            >
+                                <ChevronLeft className="size-4" />
+                            </button>
+                            <span className="min-w-14 text-center text-xs tabular-nums" style={{ color: theme.node.muted }}>
+                                {t("canvas.storyboard.position", { current: Math.max(index + 1, 0), total: count })}
+                            </span>
+                            <button
+                                type="button"
+                                disabled={index < 0 || index >= count - 1}
+                                onClick={onNext}
+                                className="grid size-8 place-items-center rounded-lg transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-white/10"
+                                aria-label={t("canvas.storyboard.next")}
+                            >
+                                <ChevronRight className="size-4" />
+                            </button>
+                        </div>
+                        <button type="button" onClick={() => onLocate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium" style={{ background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}>
+                            <LocateFixed className="size-4" />
+                            {t("canvas.storyboard.locate")}
+                        </button>
+                    </div>
                 ) : null
             }
         >
             {item ? (
-                <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_250px]">
+                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_272px]">
                     <div className="min-w-0 space-y-4">
                         <div className="flex min-h-72 items-center justify-center overflow-hidden rounded-xl" style={{ background: theme.node.panel }}>
-                            {item.kind === "image" && src ? <img src={src} alt={item.title} className="max-h-[62vh] max-w-full object-contain" /> : null}
-                            {item.kind === "video" && src ? <video src={src} poster={poster} controls autoPlay className="max-h-[62vh] w-full object-contain" /> : null}
-                            {item.kind === "text" ? <div className="thin-scrollbar max-h-[62vh] w-full overflow-y-auto whitespace-pre-wrap p-5 text-sm leading-6">{item.content || item.prompt}</div> : null}
+                            {item.kind === "image" && src ? <img src={src} alt={item.title} className="max-h-[58vh] max-w-full object-contain" /> : null}
+                            {item.kind === "video" && src ? <video src={src} poster={poster} controls autoPlay className="max-h-[58vh] w-full object-contain" /> : null}
+                            {item.kind === "text" ? <div className="thin-scrollbar max-h-[58vh] w-full overflow-y-auto whitespace-pre-wrap p-5 text-sm leading-6">{item.content || item.prompt}</div> : null}
                             {item.kind !== "text" && !src ? <span className="text-sm opacity-45">{t("canvas.storyboard.noPreview")}</span> : null}
                         </div>
+                        {item.kind !== "text" && item.prompt ? (
+                            <section className="rounded-xl border p-4" style={{ borderColor: theme.toolbar.border, background: theme.node.panel }}>
+                                <h3 className="text-xs font-medium" style={{ color: theme.node.muted }}>
+                                    {t("canvas.storyboard.fields.prompt")}
+                                </h3>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{item.prompt}</p>
+                            </section>
+                        ) : null}
                         {generation?.references.length ? (
                             <section className="rounded-xl border p-4" style={{ borderColor: theme.toolbar.border, background: theme.node.panel }}>
                                 <div className="flex items-center justify-between gap-3">
@@ -420,7 +691,34 @@ function StoryboardDetail({ item, theme, onClose, onLocate }: { item: Storyboard
                             </section>
                         ) : null}
                     </div>
-                    <dl className="space-y-3 text-sm">
+                    <dl className="min-w-0 space-y-3 text-sm">
+                        <div>
+                            <dt className="flex items-center gap-2 text-xs opacity-45">
+                                {t("canvas.storyboard.fields.category")}
+                                {item.locked ? (
+                                    <span className="rounded border px-1 py-0.5 text-[9px] opacity-80" style={{ borderColor: theme.node.stroke }}>
+                                        {t("canvas.node.locked")}
+                                    </span>
+                                ) : null}
+                            </dt>
+                            <dd className="mt-1">
+                                <Select
+                                    size="small"
+                                    variant="borderless"
+                                    value={item.category}
+                                    disabled={item.locked}
+                                    onChange={(value) => onCategoryChange(value as CanvasStoryboardCategory)}
+                                    options={[
+                                        { value: "character", label: t("canvas.storyboard.categories.character") },
+                                        { value: "scene", label: t("canvas.storyboard.categories.scene") },
+                                        { value: "prop", label: t("canvas.storyboard.categories.prop") },
+                                        { value: "other", label: t("canvas.storyboard.categories.other") },
+                                    ]}
+                                    className="w-full"
+                                    aria-label={t("canvas.storyboard.category")}
+                                />
+                            </dd>
+                        </div>
                         <DetailRow label={t("canvas.storyboard.fields.group")} value={item.groupTitle || "-"} />
                         <DetailRow label={t("canvas.storyboard.fields.status")} value={t(`canvas.storyboard.status.${item.status}`)} />
                         <DetailRow label={t("canvas.storyboard.fields.model")} value={item.model || "-"} />
@@ -438,7 +736,6 @@ function StoryboardDetail({ item, theme, onClose, onLocate }: { item: Storyboard
                             </div>
                         ) : null}
                         <DetailRow label={t("canvas.storyboard.fields.node")} value={item.nodeId} mono />
-                        {item.prompt ? <DetailRow label={t("canvas.storyboard.fields.prompt")} value={item.prompt} /> : null}
                     </dl>
                 </div>
             ) : null}

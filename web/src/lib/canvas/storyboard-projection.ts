@@ -40,6 +40,7 @@ export type StoryboardItem = {
     height?: number;
     durationMs?: number;
     isPrimary?: boolean;
+    locked: boolean;
     category: CanvasStoryboardCategory;
     generation?: StoryboardGeneration;
     script?: CanvasScriptV2;
@@ -139,6 +140,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                 content,
                 prompt,
                 model: node.metadata?.model,
+                locked: Boolean(node.locked),
                 category,
                 script,
             });
@@ -158,6 +160,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                 content,
                 prompt,
                 model: node.metadata?.model,
+                locked: Boolean(node.locked),
                 category,
                 generation: generationDetails(node.metadata),
             });
@@ -182,6 +185,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                         width: image.naturalWidth || node.metadata?.naturalWidth,
                         height: image.naturalHeight || node.metadata?.naturalHeight,
                         isPrimary: image.id === node.metadata?.primaryImageId,
+                        locked: Boolean(node.locked),
                         category,
                         generation: generationDetails(node.metadata),
                     });
@@ -203,6 +207,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                     width: node.metadata?.naturalWidth,
                     height: node.metadata?.naturalHeight,
                     isPrimary: true,
+                    locked: Boolean(node.locked),
                     category,
                     generation: generationDetails(node.metadata),
                 });
@@ -227,6 +232,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                 width: node.metadata?.naturalWidth,
                 height: node.metadata?.naturalHeight,
                 durationMs: node.metadata?.durationMs,
+                locked: Boolean(node.locked),
                 category,
                 generation: generationDetails(node.metadata),
             });

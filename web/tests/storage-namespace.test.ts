@@ -75,6 +75,7 @@ test("managed preference detection excludes current keys and unrelated site data
     expect(isManagedLegacyStorageKey("infinite-canvas:theme_store")).toBe(true);
     expect(isManagedLegacyStorageKey("canvas-agent-provider")).toBe(true);
     expect(isManagedLegacyStorageKey("canvas-storyboard-collapsed:project")).toBe(true);
+    expect(isManagedLegacyStorageKey("canvas-storyboard-layout:project")).toBe(true);
     expect(isManagedLegacyStorageKey("libtv-sidebar-collapsed")).toBe(true);
     expect(isManagedLegacyStorageKey("infinite-canvas:v1:theme_store")).toBe(false);
     expect(isManagedLegacyStorageKey("unrelated")).toBe(false);

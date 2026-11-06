@@ -1,0 +1,185 @@
+import { expect, test } from "bun:test";
+
+import {
+    addDirectorCameraTrack,
+    clearDirectorCameraTargets,
+    createDirectorCameraTrack,
+    getDirectorEasingProgress,
+    getDirectorCameraTrack,
+    getDirectorCameraTrackSettings,
+    removeDirectorCameraTrack,
+    removeDirectorCameraKeyframe,
+    sampleDirectorCameraTrack,
+    sampleDirectorEasingCurve,
+    setDirectorActiveCameraTrack,
+    setDirectorAnimationDuration,
+    setDirectorCameraTrackClip,
+    setDirectorCameraTrackTarget,
+    updateDirectorCameraTrack,
+    updateDirectorCameraKeyframe,
+    upsertDirectorCameraKeyframe,
+} from "../src/lib/canvas/director-animation";
+import { createDirectorProject, type DirectorCameraKeyframe } from "../src/lib/canvas/director-project";
+
+function keyframe(time: number, x: number, fov = 50): DirectorCameraKeyframe {
+    return {
+        time,
+        position: { x, y: 2, z: 3 },
+        lookAt: { x: 0, y: 1, z: 0 },
+        fov,
+        easing: "linear",
+    };
+}
+
+test("creates one active camera track and keeps keyframes sorted by time", () => {
+    const project = upsertDirectorCameraKeyframe(upsertDirectorCameraKeyframe(createDirectorProject(), keyframe(6, 6)), keyframe(2, 2));
+    const track = getDirectorCameraTrack(project);
+
+    expect(project.animation.activeCameraTrackId).toBe(track?.id);
+    expect(project.animation.cameraTracks).toHaveLength(1);
+    expect(track?.keyframes.map((item) => item.time)).toEqual([2, 6]);
+});
+
+test("replaces a camera keyframe at the same rounded time", () => {
+    const project = upsertDirectorCameraKeyframe(upsertDirectorCameraKeyframe(createDirectorProject(), keyframe(2.001, 2)), keyframe(2.004, 5, 60));
+    const track = getDirectorCameraTrack(project);
+
+    expect(track?.keyframes).toHaveLength(1);
+    expect(track?.keyframes[0]).toMatchObject({ time: 2, position: { x: 5 }, fov: 60 });
+});
+
+test("samples camera position, target and FOV between keyframes", () => {
+    const project = upsertDirectorCameraKeyframe(upsertDirectorCameraKeyframe(createDirectorProject(), keyframe(0, 0, 40)), keyframe(10, 10, 80));
+    const sample = sampleDirectorCameraTrack(getDirectorCameraTrack(project), 5);
+
+    expect(sample?.time).toBe(5);
+    expect(sample?.position.x).toBe(5);
+    expect(sample?.lookAt).toEqual({ x: 0, y: 1, z: 0 });
+    expect(sample?.fov).toBe(60);
+});
+
+test("removes a keyframe and clamps the timeline duration", () => {
+    let project = upsertDirectorCameraKeyframe(createDirectorProject(), keyframe(12, 12));
+    project = upsertDirectorCameraKeyframe(project, keyframe(4, 4));
+    project = setDirectorAnimationDuration(project, 8);
+    project = removeDirectorCameraKeyframe(project, 4);
+
+    expect(project.animation.duration).toBe(8);
+    expect(getDirectorCameraTrack(project)?.keyframes.map((item) => item.time)).toEqual([8]);
+});
+
+test("retimes and changes the easing of an existing keyframe", () => {
+    let project = upsertDirectorCameraKeyframe(createDirectorProject(), keyframe(2, 2));
+    project = updateDirectorCameraKeyframe(project, 2, { time: 7, easing: "easeOut" });
+    const track = getDirectorCameraTrack(project);
+
+    expect(track?.keyframes).toHaveLength(1);
+    expect(track?.keyframes[0]).toMatchObject({ time: 7, easing: "easeOut", position: { x: 2 } });
+});
+
+test("uses custom cubic-bezier easing for camera interpolation", () => {
+    let project = upsertDirectorCameraKeyframe(createDirectorProject(), keyframe(0, 0));
+    project = upsertDirectorCameraKeyframe(project, {
+        ...keyframe(10, 10),
+        easing: "custom",
+        bezier: { x1: 0.9, y1: 0, x2: 1, y2: 0.1 },
+    });
+
+    const half = getDirectorEasingProgress(0.5, "custom", { x1: 0.9, y1: 0, x2: 1, y2: 0.1 });
+    const sample = sampleDirectorCameraTrack(getDirectorCameraTrack(project), 5);
+    const curve = sampleDirectorEasingCurve("custom", { x1: 0.9, y1: 0, x2: 1, y2: 0.1 }, 16);
+
+    expect(half).toBeLessThan(0.5);
+    expect(sample?.position.x).toBeLessThan(5);
+    expect(curve).toHaveLength(17);
+    expect(curve[0]).toEqual({ x: 0, y: 0 });
+    expect(curve[curve.length - 1]).toEqual({ x: 1, y: 1 });
+    expect(curve.every((point) => point.y >= 0 && point.y <= 1)).toBe(true);
+});
+
+test("adds, switches, renames and removes camera tracks", () => {
+    const firstTrack = createDirectorCameraTrack(0);
+    const secondTrack = createDirectorCameraTrack(1);
+    let project = addDirectorCameraTrack(createDirectorProject(), firstTrack);
+    project = addDirectorCameraTrack(project, secondTrack);
+
+    expect(project.animation.cameraTracks.map((track) => track.name)).toEqual(["Camera 1", "Camera 2"]);
+    expect(project.animation.activeCameraTrackId).toBe(secondTrack.id);
+
+    project = setDirectorActiveCameraTrack(project, firstTrack.id);
+    project = updateDirectorCameraTrack(project, firstTrack.id, { name: "Wide shot" });
+    expect(getDirectorCameraTrack(project)?.name).toBe("Wide shot");
+
+    project = removeDirectorCameraTrack(project, firstTrack.id);
+    expect(project.animation.cameraTracks.map((track) => track.id)).toEqual([secondTrack.id]);
+    expect(project.animation.activeCameraTrackId).toBe(secondTrack.id);
+    expect(removeDirectorCameraTrack(project, secondTrack.id)).toBe(project);
+});
+
+test("keeps per-track camera settings and clears deleted targets", () => {
+    const firstTrack = createDirectorCameraTrack(0, { fov: 62, lookAtTarget: "hero-box" });
+    const secondTrack = createDirectorCameraTrack(1, {
+        position: { x: 4, y: 3, z: 2 },
+        target: { x: 1, y: 0.5, z: 0 },
+        fov: 35,
+        zoom: 1.8,
+        followTargetId: "group-a",
+        motionPathId: "path-a",
+    });
+    let project = addDirectorCameraTrack(createDirectorProject(), firstTrack);
+    project = addDirectorCameraTrack(project, secondTrack);
+
+    expect(getDirectorCameraTrackSettings(project)).toMatchObject({
+        position: { x: 4, y: 3, z: 2 },
+        target: { x: 1, y: 0.5, z: 0 },
+        fov: 35,
+        zoom: 1.8,
+        followTargetId: "group-a",
+        motionPathId: "path-a",
+    });
+    project = setDirectorActiveCameraTrack(project, firstTrack.id);
+    expect(getDirectorCameraTrackSettings(project)).toMatchObject({ fov: 62, lookAtTarget: "hero-box" });
+
+    project = updateDirectorCameraTrack(project, firstTrack.id, {
+        position: { x: 9, y: 7, z: 5 },
+        target: { x: 2, y: 1, z: -1 },
+        zoom: 2.4,
+    });
+    expect(getDirectorCameraTrack(project)?.motionPathId).toBeNull();
+    expect(getDirectorCameraTrackSettings(project)).toMatchObject({
+        position: { x: 9, y: 7, z: 5 },
+        target: { x: 2, y: 1, z: -1 },
+        zoom: 2.4,
+    });
+
+    project = setDirectorCameraTrackTarget(project, firstTrack.id, "lookAtTarget", null);
+    expect(getDirectorCameraTrack(project)?.lookAtTarget).toBeNull();
+
+    project = {
+        ...project,
+        camera: { ...project.camera, lookAtTarget: "hero-box", followTargetId: "group-a" },
+    };
+    project = clearDirectorCameraTargets(project, new Set(["hero-box", "group-a"]));
+    expect(project.camera.lookAtTarget).toBeUndefined();
+    expect(project.camera.followTargetId).toBeUndefined();
+    expect(project.animation.cameraTracks.every((track) => track.lookAtTarget === null && track.followTargetId === null)).toBe(true);
+});
+
+test("clamps camera-track clips and follows timeline duration changes", () => {
+    const track = createDirectorCameraTrack(0, { clipStart: 2, clipEnd: 8 });
+    let project = addDirectorCameraTrack(createDirectorProject(), track);
+
+    expect(getDirectorCameraTrack(project)).toMatchObject({ clipStart: 2, clipEnd: 8 });
+    project = setDirectorCameraTrackClip(project, track.id, -2, 12);
+    expect(getDirectorCameraTrack(project)).toMatchObject({ clipStart: 0, clipEnd: 10 });
+
+    const invalid = setDirectorCameraTrackClip(project, track.id, 8, 2);
+    expect(invalid).toBe(project);
+
+    project = setDirectorCameraTrackClip(project, track.id, 2, 8);
+    project = setDirectorAnimationDuration(project, 6);
+    expect(getDirectorCameraTrack(project)).toMatchObject({ clipStart: 2, clipEnd: 6 });
+
+    project = setDirectorAnimationDuration(project, 1);
+    expect(getDirectorCameraTrack(project)).toMatchObject({ clipStart: 0, clipEnd: 1 });
+});

@@ -1,6 +1,6 @@
-import { CanvasNodeType, type CanvasNodeData, type CanvasNodeStatus } from "@/types/canvas";
+import { CanvasNodeType, type CanvasNodeData, type CanvasNodeStatus, type CanvasScriptV2, type CanvasStoryboardCategory } from "@/types/canvas";
 
-export type StoryboardItemKind = "text" | "image" | "video";
+export type StoryboardItemKind = "script" | "text" | "image" | "video";
 
 export type StoryboardItem = {
     id: string;
@@ -17,9 +17,12 @@ export type StoryboardItem = {
     height?: number;
     durationMs?: number;
     isPrimary?: boolean;
+    category: CanvasStoryboardCategory;
+    script?: CanvasScriptV2;
 };
 
 export type StoryboardProjection = {
+    script: StoryboardItem[];
     text: StoryboardItem[];
     image: StoryboardItem[];
     video: StoryboardItem[];
@@ -35,13 +38,52 @@ function isEmptyIdle(status: CanvasNodeStatus | undefined, content: string | und
 
 export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardProjection {
     const groups = new Map(nodes.filter((node) => node.type === CanvasNodeType.Group).map((node) => [node.id, node.title]));
-    const projection: StoryboardProjection = { text: [], image: [], video: [] };
+    const projection: StoryboardProjection = { script: [], text: [], image: [], video: [] };
 
     for (const node of nodes) {
         if (node.type === CanvasNodeType.Group) continue;
         const groupTitle = node.metadata?.groupId ? groups.get(node.metadata.groupId) : undefined;
         const prompt = node.metadata?.prompt || undefined;
         const status = node.metadata?.status || "idle";
+        const category = node.metadata?.storyboardCategory || "other";
+
+        if (node.type === CanvasNodeType.Script) {
+            const script = node.metadata?.scriptV2;
+            const content = [
+                script?.originalStoryText,
+                ...(script?.rows || []).flatMap((row) => [
+                    row.plotDescription,
+                    ...(row.characters || []),
+                    row.videoReference,
+                    row.shotSize,
+                    row.emotion,
+                    ...(row.propTags || []),
+                    row.cameraMovement,
+                    row.dialogue,
+                    row.lightingAndAtmosphere,
+                    row.audioEffects,
+                    row.imageGenerationPrompt,
+                    row.videoMotionPrompt,
+                    row.imageToVideoMotionPrompt,
+                ]),
+            ]
+                .filter(Boolean)
+                .join("\n");
+            projection.script.push({
+                id: node.id,
+                nodeId: node.id,
+                kind: "script",
+                title: node.title,
+                groupTitle,
+                status,
+                content,
+                prompt,
+                model: node.metadata?.model,
+                category,
+                script,
+            });
+            continue;
+        }
 
         if (node.type === CanvasNodeType.Text) {
             const content = primaryText(node);
@@ -56,6 +98,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                 content,
                 prompt,
                 model: node.metadata?.model,
+                category,
             });
             continue;
         }
@@ -78,6 +121,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                         width: image.naturalWidth || node.metadata?.naturalWidth,
                         height: image.naturalHeight || node.metadata?.naturalHeight,
                         isPrimary: image.id === node.metadata?.primaryImageId,
+                        category,
                     });
                 });
             } else {
@@ -97,6 +141,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                     width: node.metadata?.naturalWidth,
                     height: node.metadata?.naturalHeight,
                     isPrimary: true,
+                    category,
                 });
             }
             continue;
@@ -119,6 +164,7 @@ export function buildStoryboardProjection(nodes: CanvasNodeData[]): StoryboardPr
                 width: node.metadata?.naturalWidth,
                 height: node.metadata?.naturalHeight,
                 durationMs: node.metadata?.durationMs,
+                category,
             });
         }
     }
@@ -131,6 +177,6 @@ export function filterStoryboardItems(items: StoryboardItem[], keyword: string, 
     return items.filter((item) => {
         if (status !== "all" && item.status !== status) return false;
         if (!query) return true;
-        return [item.title, item.groupTitle, item.content, item.prompt, item.model].filter(Boolean).join(" ").toLowerCase().includes(query);
+        return [item.title, item.groupTitle, item.content, item.prompt, item.model, JSON.stringify(item.script?.rows || [])].filter(Boolean).join(" ").toLowerCase().includes(query);
     });
 }

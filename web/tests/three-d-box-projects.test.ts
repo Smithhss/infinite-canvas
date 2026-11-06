@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { createDirectorProject } from "../src/lib/canvas/director-project";
-import { getThreeDBoxProjectTitle, getThreeDBoxProjects } from "../src/lib/canvas/three-d-box-projects";
+import { getThreeDBoxProjectPreview, getThreeDBoxProjectTitle, getThreeDBoxProjects } from "../src/lib/canvas/three-d-box-projects";
 import type { CanvasProject } from "../src/stores/canvas/use-canvas-store";
 
 function project(id: string, updatedAt: string, withDirector: boolean): CanvasProject {
@@ -33,4 +33,22 @@ test("3D-BOX derives a bounded project title without changing the prompt", () =>
     expect(getThreeDBoxProjectTitle(prompt, "未命名 3D-BOX")).toBe("预演一段城市街头的警匪追车戏");
     expect(getThreeDBoxProjectTitle("   \n  ", "未命名 3D-BOX")).toBe("未命名 3D-BOX");
     expect(getThreeDBoxProjectTitle("场".repeat(60), "未命名 3D-BOX")).toHaveLength(47);
+});
+
+test("3D-BOX preview falls back safely for newer or malformed director data", () => {
+    expect(getThreeDBoxProjectPreview({ version: 3, background: "future-background" })).toEqual({
+        background: "studio",
+        objectCount: 0,
+        unsupportedVersion: 3,
+    });
+    expect(getThreeDBoxProjectPreview({ ...createDirectorProject(), background: "unknown", objects: "invalid" })).toEqual({
+        background: "studio",
+        objectCount: 0,
+        unsupportedVersion: null,
+    });
+    expect(getThreeDBoxProjectPreview({ version: 2, objects: [null, "invalid", {}, { id: "box-1", kind: "box" }] })).toEqual({
+        background: "studio",
+        objectCount: 2,
+        unsupportedVersion: null,
+    });
 });

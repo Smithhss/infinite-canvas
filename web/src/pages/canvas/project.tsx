@@ -45,6 +45,7 @@ import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasStoryboard } from "@/components/canvas/canvas-storyboard";
+import { CanvasStoryboardWorkbench } from "@/components/canvas/storyboard/canvas-storyboard-workbench";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { CanvasCommandDock } from "@/components/canvas/canvas-command-dock";
 import { CanvasEmptyQuickActions } from "@/components/canvas/canvas-empty-quick-actions";
@@ -98,6 +99,7 @@ import { CanvasRefreshShell } from "@/components/canvas/canvas-refresh-shell";
 import { CanvasSmartCutDialog, type SmartCutSourceVideo } from "@/components/canvas/canvas-smart-cut-dialog";
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
 import type { SmartCutRenderResult } from "@/lib/canvas/canvas-smart-cut-render";
+import { buildStoryboardGrid, collectStoryboardGridNodeIds, convertStoryboardGridToGroup, findStoryboardGridGroup, hasLockedStoryboardGridNodes, replaceStoryboardGridNodes, stripRemovedStoryboardGridMetadata, stripStoryboardGridMetadata, type CanvasStoryboardGridOptions } from "@/lib/canvas/storyboard-grid";
 import { BuiltinAgentPanel } from "@/components/canvas/builtin-agent-panel";
 import { ConnectionCreateMenu, NodeCreateMenu, type PendingConnectionCreate } from "@/components/canvas/canvas-create-menus";
 import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
@@ -112,6 +114,7 @@ import {
     type CanvasNodeText,
     type CanvasNodeMetadata,
     type CanvasNodeTypeId,
+    type CanvasScriptV2,
     type ConnectionHandle,
     type ContextMenuState,
     type Position,
@@ -979,6 +982,7 @@ function InfiniteCanvasPage() {
     const builtinAgentEnabled = isFeatureEnabled("builtinCanvasAgent");
     const directorEnabled = isFeatureEnabled("director3d");
     const panoramaEnabled = isFeatureEnabled("panorama");
+    const storyboardWorkbenchEnabled = isFeatureEnabled("storyboardWorkbench");
 
     useEffect(() => {
         if (projectLoaded && directorEnabled && searchParams.get("openDirector") === "1") setDirectorOpen(true);
@@ -1024,7 +1028,7 @@ function InfiniteCanvasPage() {
                   ? Boolean(definition.autoOpenPanel)
                   : definition?.useBuiltinPanel
                     ? true
-                    : isBuiltinType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
+                    : isBuiltinType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Script && type !== CanvasNodeType.Group;
             if (wantsPanel) setDialogNodeId(newNode.id);
             return newNode;
         },
@@ -1032,7 +1036,7 @@ function InfiniteCanvasPage() {
     );
 
     const createNodeFromEmptyAction = useCallback(
-        (type: CanvasNodeType.Image | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Text) => {
+        (type: CanvasNodeType.Image | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Text | CanvasNodeType.Script) => {
             const node = createNode(type);
             if (type === CanvasNodeType.Text || type === CanvasNodeType.Audio) setDialogNodeId(node.id);
         },
@@ -1083,13 +1087,15 @@ function InfiniteCanvasPage() {
                 return;
             }
             if (lockedCount) message.warning(t("canvas.node.lockedDeleteSkipped", { count: lockedCount }));
+            const removedNodes = nodesRef.current.filter((node) => allIds.has(node.id));
             setNodes((prev) => {
                 const next = prev.filter((node) => !allIds.has(node.id));
-                return next.map((node) => {
+                const ungrouped = next.map((node) => {
                     const groupId = node.metadata?.groupId;
                     if (groupId && allIds.has(groupId)) return { ...node, metadata: { ...node.metadata, groupId: undefined } };
                     return node;
                 });
+                return stripRemovedStoryboardGridMetadata(ungrouped, removedNodes);
             });
             setConnections((prev) => prev.filter((conn) => !allIds.has(conn.fromNodeId) && !allIds.has(conn.toNodeId)));
             setSelectedNodeIds(new Set());
@@ -1144,7 +1150,9 @@ function InfiniteCanvasPage() {
             }
             const result = applyUngroupSelection(targetIds, nodesRef.current, connectionsRef.current);
             if (!result) return;
-            setNodes(result.nodes);
+            const remainingIds = new Set(result.nodes.map((node) => node.id));
+            const removedNodes = nodesRef.current.filter((node) => !remainingIds.has(node.id));
+            setNodes(stripRemovedStoryboardGridMetadata(result.nodes, removedNodes));
             setConnections(result.connections);
             setSelectedNodeIds(new Set(result.selectedIds));
             setSelectedConnectionId(null);
@@ -1248,13 +1256,13 @@ function InfiniteCanvasPage() {
         if (!source) return;
 
         const id = `${source.type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        const next: CanvasNodeData = {
+        const next: CanvasNodeData = stripStoryboardGridMetadata({
             ...source,
             id,
             title: `${source.title} Copy`,
             position: { x: source.position.x + 36, y: source.position.y + 36 },
             locked: false,
-        };
+        });
         const referenceConnections = connectionsRef.current.filter((connection) => connection.toNodeId === nodeId).map((connection) => ({ ...connection, id: nanoid(), toNodeId: id }));
 
         setNodes((prev) => [...prev, next]);
@@ -1304,8 +1312,9 @@ function InfiniteCanvasPage() {
         const nextNodes = clipboard.nodes.map((node, index) => {
             const id = `${node.type}-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
             idMap.set(node.id, id);
+            const stripped = stripStoryboardGridMetadata(node);
             return {
-                ...node,
+                ...stripped,
                 id,
                 title: node.title.endsWith(" Copy") ? node.title : `${node.title} Copy`,
                 locked: false,
@@ -1313,7 +1322,6 @@ function InfiniteCanvasPage() {
                     x: node.position.x + dx,
                     y: node.position.y + dy,
                 },
-                metadata: node.metadata ? { ...node.metadata } : undefined,
             };
         });
 
@@ -1431,6 +1439,57 @@ function InfiniteCanvasPage() {
         setWorkspaceView("workflow");
     }, []);
 
+    const updateStoryboardScript = useCallback((nodeId: string, scriptV2: CanvasScriptV2) => {
+        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, scriptV2 } } : node)));
+    }, []);
+
+    const createStoryboardGrid = useCallback((scriptNodeId: string, scriptV2: CanvasScriptV2, options: CanvasStoryboardGridOptions, origin?: Position) => {
+        const scriptNode = nodesRef.current.find((node) => node.id === scriptNodeId);
+        if (!scriptNode) return;
+        const existingGroup = findStoryboardGridGroup(scriptNodeId, nodesRef.current);
+        const replacedIds = collectStoryboardGridNodeIds(scriptNodeId, nodesRef.current);
+        if (hasLockedStoryboardGridNodes(scriptNodeId, nodesRef.current)) {
+            message.warning(t("canvas.node.lockedAction"));
+            return;
+        }
+        const built = buildStoryboardGrid({
+            scriptNode,
+            script: scriptV2,
+            options,
+            groupId: existingGroup?.id,
+            origin,
+            titles: {
+                group: t("canvas.storyboard.workbench.storyboardGrid.groupTitle", { title: scriptNode.title }),
+                shot: (shotNumber) => t("canvas.storyboard.workbench.storyboardGrid.shotTitle", { number: shotNumber }),
+            },
+        });
+        if (!built) return;
+        const next = replaceStoryboardGridNodes(nodesRef.current, connectionsRef.current, replacedIds, built);
+        setNodes(next.nodes);
+        setConnections(next.connections);
+        setSelectedNodeIds(new Set([built.group.id]));
+        setSelectedConnectionId(null);
+        setPendingWorkspaceFocusNodeId(built.group.id);
+        setWorkspaceView("workflow");
+        cleanupCanvasFiles({ projectId, nodes: next.nodes, chatSessions });
+    }, [chatSessions, cleanupCanvasFiles, message, projectId, t]);
+
+    const clearStoryboardGrid = useCallback((scriptNodeId: string) => {
+        if (hasLockedStoryboardGridNodes(scriptNodeId, nodesRef.current)) {
+            message.warning(t("canvas.node.lockedAction"));
+            return;
+        }
+        deleteNodes(collectStoryboardGridNodeIds(scriptNodeId, nodesRef.current));
+    }, [deleteNodes, message, t]);
+
+    const convertStoryboardGrid = useCallback((scriptNodeId: string) => {
+        if (hasLockedStoryboardGridNodes(scriptNodeId, nodesRef.current)) {
+            message.warning(t("canvas.node.lockedAction"));
+            return;
+        }
+        setNodes((prev) => convertStoryboardGridToGroup(scriptNodeId, prev));
+    }, [message, t]);
+
     useEffect(() => {
         if (workspaceView !== "workflow" || !pendingWorkspaceFocusNodeId) return;
         const frame = requestAnimationFrame(() => {
@@ -1520,10 +1579,19 @@ function InfiniteCanvasPage() {
     }, [createProject, navigate, t]);
 
     const deleteCurrentProject = useCallback(() => {
-        deleteProjects([projectId]);
-        cleanupAssetImages();
-        navigate(projectLibraryPath);
-    }, [cleanupAssetImages, deleteProjects, navigate, projectId, projectLibraryPath]);
+        modal.confirm({
+            title: t("canvas.deleteCurrent"),
+            content: t("canvas.project.deleteCurrentDescription"),
+            okText: t("canvas.project.delete"),
+            cancelText: t("common.cancel"),
+            okButtonProps: { danger: true },
+            onOk: () => {
+                deleteProjects([projectId]);
+                cleanupAssetImages();
+                navigate(projectLibraryPath);
+            },
+        });
+    }, [cleanupAssetImages, deleteProjects, modal, navigate, projectId, projectLibraryPath, t]);
 
     const exportCurrentProject = useCallback(async () => {
         const project = useCanvasStore.getState().projects.find((item) => item.id === projectId);
@@ -3656,7 +3724,21 @@ function InfiniteCanvasPage() {
                 />
 
                 {workspaceView === "storyboard" ? (
-                    <CanvasStoryboard key={projectId} projectId={projectId} nodes={nodes} onLocateNode={locateStoryboardNode} onSelectNodesInCanvas={selectStoryboardNodesInCanvas} />
+                    storyboardWorkbenchEnabled ? (
+                        <CanvasStoryboardWorkbench
+                            key={projectId}
+                            nodes={nodes}
+                            onLocateNode={locateStoryboardNode}
+                            onSelectNodesInCanvas={selectStoryboardNodesInCanvas}
+                            onAddAsset={() => setAssetPickerOpen(true)}
+                            onUpdateScript={updateStoryboardScript}
+                            onCreateStoryboardGrid={createStoryboardGrid}
+                            onClearStoryboardGrid={clearStoryboardGrid}
+                            onConvertStoryboardGrid={convertStoryboardGrid}
+                        />
+                    ) : (
+                        <CanvasStoryboard key={projectId} projectId={projectId} nodes={nodes} onLocateNode={locateStoryboardNode} onSelectNodesInCanvas={selectStoryboardNodesInCanvas} />
+                    )
                 ) : (
                     <>
                         <InfiniteCanvas

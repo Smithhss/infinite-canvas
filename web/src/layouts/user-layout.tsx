@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopNav } from "@/components/layout/app-top-nav";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
+import { useKeepFocusedFieldVisible } from "@/hooks/use-keep-focused-field-visible";
 
 export default function UserLayout({ children }: { children: ReactNode }) {
     const navigate = useNavigate();
@@ -15,6 +16,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
     const shellEnabled = isFeatureEnabled("libtvShell");
     const pluginHubEnabled = isFeatureEnabled("pluginHub");
     const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
+    useKeepFocusedFieldVisible();
     const openPlugins = () => {
         if (pluginHubEnabled) navigate(withShellFeatureFlags("/plugins", search));
         else setPluginManagerOpen(true);

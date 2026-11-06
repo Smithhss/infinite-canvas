@@ -16,6 +16,7 @@ export const NODE_DEFAULT_SIZE = {
     [CanvasNodeType.Config]: { width: 340, height: 240, get title() { return i18n.t("canvas.nodeTypes.config"); } },
     [CanvasNodeType.Video]: { width: 420, height: 236, get title() { return i18n.t("canvas.nodeTypes.video"); } },
     [CanvasNodeType.Audio]: { width: 340, height: 120, get title() { return i18n.t("canvas.nodeTypes.audio"); } },
+    [CanvasNodeType.Script]: { width: 560, height: 420, get title() { return i18n.t("canvas.nodeTypes.script"); } },
     [CanvasNodeType.Group]: { width: 760, height: 480, get title() { return i18n.t("canvas.nodeTypes.group"); } },
 } satisfies Record<CanvasNodeType, { width: number; height: number; title: string }>;
 
@@ -39,6 +40,10 @@ export const NODE_SPECS = {
     [CanvasNodeType.Audio]: {
         width: 340, height: 120, get title() { return NODE_DEFAULT_SIZE[CanvasNodeType.Audio].title; },
         metadata: { content: "", status: "idle" },
+    },
+    [CanvasNodeType.Script]: {
+        width: 560, height: 420, get title() { return NODE_DEFAULT_SIZE[CanvasNodeType.Script].title; },
+        metadata: { status: "idle", scriptV2: { version: 1, rows: [] } },
     },
     [CanvasNodeType.Group]: {
         width: 760, height: 480, get title() { return NODE_DEFAULT_SIZE[CanvasNodeType.Group].title; },

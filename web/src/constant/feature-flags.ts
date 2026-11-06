@@ -12,6 +12,7 @@ export const FEATURE_FLAG_DEFAULTS = {
     agentPanelChrome: false,
     agentProviderSwitch: false,
     agentMemory: false,
+    storyboardWorkbench: false,
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAG_DEFAULTS;

@@ -2,8 +2,10 @@ import { buildScriptShotPrompt } from "@/lib/canvas/script-v2";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasScriptStoryboardGrid, type CanvasScriptV2, type Position } from "@/types/canvas";
 
 export const STORYBOARD_GRID_MAX_SHOTS = 25;
-export const STORYBOARD_GRID_MIN_COLUMNS = 2;
+export const STORYBOARD_GRID_MIN_COLUMNS = 1;
 export const STORYBOARD_GRID_MAX_COLUMNS = 5;
+export const STORYBOARD_GRID_MIN_ROWS = 1;
+export const STORYBOARD_GRID_MAX_ROWS = 5;
 export const STORYBOARD_GRID_ASPECT_RATIOS = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"] as const;
 const GRID_GAP = 28;
 const GRID_PADDING = 24;
@@ -12,6 +14,7 @@ const GRID_CELL_LONG_EDGE = 280;
 
 export type CanvasStoryboardGridOptions = {
     columns: number;
+    rows?: number;
     showShotNumbers: boolean;
     aspectRatio: string;
 };
@@ -52,8 +55,12 @@ export function storyboardGridSourceSignature(script: CanvasScriptV2) {
 export function normalizeStoryboardGridOptions(options: Partial<CanvasStoryboardGridOptions> = {}, fallbackAspectRatio = "16:9"): CanvasStoryboardGridOptions {
     const candidateAspectRatio = options.aspectRatio || fallbackAspectRatio;
     const aspectRatio = /^\d+(?:\.\d+)?\s*[:x]\s*\d+(?:\.\d+)?$/.test(candidateAspectRatio) ? candidateAspectRatio.replace(/\s+/g, "").replace("x", ":") : "16:9";
+    const rows = options.rows === undefined
+        ? undefined
+        : Math.max(STORYBOARD_GRID_MIN_ROWS, Math.min(STORYBOARD_GRID_MAX_ROWS, Math.trunc(options.rows || STORYBOARD_GRID_MIN_ROWS)));
     return {
         columns: Math.max(STORYBOARD_GRID_MIN_COLUMNS, Math.min(STORYBOARD_GRID_MAX_COLUMNS, Math.trunc(options.columns || 4))),
+        ...(rows === undefined ? {} : { rows }),
         showShotNumbers: options.showShotNumbers !== false,
         aspectRatio,
     };
@@ -150,6 +157,7 @@ export function storyboardGridOptionsMatch(
     if (!stored) return false;
     const normalized = normalizeStoryboardGridOptions(options, fallbackAspectRatio);
     return stored.columns === normalized.columns
+        && stored.rows === normalized.rows
         && stored.showShotNumbers === normalized.showShotNumbers
         && stored.aspectRatio === normalized.aspectRatio;
 }
@@ -159,11 +167,11 @@ function createStoryboardGridId(scriptNodeId: string) {
 }
 
 export function buildStoryboardGrid({ scriptNode, script, options: rawOptions, groupId: existingGroupId, titles, origin }: BuildStoryboardGridInput) {
-    const shots = script.rows.slice(0, STORYBOARD_GRID_MAX_SHOTS);
-    if (!shots.length) return null;
-
     const options = normalizeStoryboardGridOptions(rawOptions, script.aspectRatio);
-    const rowCount = Math.ceil(shots.length / options.columns);
+    const availableShots = script.rows.slice(0, STORYBOARD_GRID_MAX_SHOTS);
+    if (!availableShots.length) return null;
+    const rowCount = options.rows ?? Math.max(1, Math.ceil(availableShots.length / options.columns));
+    const shots = availableShots.slice(0, options.columns * rowCount);
     const cell = gridCellSize(options.aspectRatio);
     const groupPosition = origin || { x: scriptNode.position.x + scriptNode.width + 120, y: scriptNode.position.y };
     const groupWidth = GRID_PADDING * 2 + options.columns * cell.width + (options.columns - 1) * GRID_GAP;
@@ -176,6 +184,7 @@ export function buildStoryboardGrid({ scriptNode, script, options: rawOptions, g
         shotOrder: shots.map((shot) => shot.id),
         shotNodeIds,
         columns: options.columns,
+        ...(options.rows === undefined ? {} : { rows: options.rows }),
         showShotNumbers: options.showShotNumbers,
         aspectRatio: options.aspectRatio,
     };

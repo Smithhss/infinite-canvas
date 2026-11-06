@@ -85,6 +85,30 @@ test("caps the storyboard at 25 shots and clamps the column setting", () => {
     expect(result?.images[0].title).toBe("镜头");
 });
 
+test("supports an explicit custom grid and truncates shots to its capacity", () => {
+    const script = scriptWithShots(10);
+    const result = buildStoryboardGrid({
+        scriptNode: scriptNode(),
+        script,
+        options: { columns: 4, rows: 2, showShotNumbers: true, aspectRatio: "16:9" },
+        titles: titles(),
+    });
+
+    expect(normalizeStoryboardGridOptions({ columns: 4, rows: 2 })).toEqual({ columns: 4, rows: 2, showShotNumbers: true, aspectRatio: "16:9" });
+    expect(normalizeStoryboardGridOptions({ columns: 0, rows: 99 })).toEqual({ columns: 4, rows: 5, showShotNumbers: true, aspectRatio: "16:9" });
+    expect(result?.images).toHaveLength(8);
+    expect(result?.group.metadata?.storyboardGrid?.rows).toBe(2);
+    expect(result?.group.metadata?.storyboardGrid?.shotOrder).toEqual(script.rows.slice(0, 8).map((row) => row.id));
+    expect(result?.group.height).toBeLessThan(
+        buildStoryboardGrid({
+            scriptNode: scriptNode(),
+            script,
+            options: { columns: 4, rows: 3, showShotNumbers: true, aspectRatio: "16:9" },
+            titles: titles(),
+        })?.group.height ?? 0,
+    );
+});
+
 test("detects stale bindings after prompts or shot order change", () => {
     let script = scriptWithShots(2);
     const result = buildStoryboardGrid({
@@ -190,6 +214,7 @@ test("keeps node mappings stable when the same group is rebound", () => {
     expect(storyboardGridOptionsMatch(first.group, { columns: 2, showShotNumbers: true, aspectRatio: "16:9" })).toBe(true);
     expect(storyboardGridOptionsMatch(first.group, { columns: 3, showShotNumbers: true, aspectRatio: "16:9" })).toBe(false);
     expect(storyboardGridOptionsMatch(first.group, { columns: 2, showShotNumbers: true, aspectRatio: "9:16" })).toBe(false);
+    expect(storyboardGridOptionsMatch(second.group, { columns: 3, rows: 3, showShotNumbers: false, aspectRatio: "9:16" })).toBe(false);
 });
 
 test("rebinding preserves group connections and replaces child connections", () => {

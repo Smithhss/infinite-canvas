@@ -14,7 +14,7 @@ import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
-import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
+import { canvasThemes, DEFAULT_CANVAS_BACKGROUND_MODE, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { readAppStorageItem, writeAppStorageItem } from "@/lib/storage-namespace";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -296,7 +296,7 @@ function InfiniteCanvasPage() {
     const [workspaceView, setWorkspaceView] = useState<CanvasWorkspaceView>(initialWorkspaceView);
     const [pendingWorkspaceFocusNodeId, setPendingWorkspaceFocusNodeId] = useState<string | null>(null);
     const [pendingWorkspaceSelectionNodeIds, setPendingWorkspaceSelectionNodeIds] = useState<string[] | null>(null);
-    const [backgroundMode, setBackgroundMode] = useState<CanvasBackgroundMode>("blank");
+    const [backgroundMode, setBackgroundMode] = useState<CanvasBackgroundMode>(DEFAULT_CANVAS_BACKGROUND_MODE);
     const [showImageInfo, setShowImageInfo] = useState(false);
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);

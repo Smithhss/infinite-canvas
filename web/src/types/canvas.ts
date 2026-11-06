@@ -117,6 +117,7 @@ export type CanvasScriptStoryboardGrid = {
     shotOrder: string[];
     shotNodeIds: Record<string, string>;
     columns: number;
+    rows?: number;
     showShotNumbers: boolean;
     aspectRatio: string;
 };

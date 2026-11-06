@@ -53,6 +53,7 @@ type Props = {
     onCreateStoryboardGrid: (scriptNodeId: string, script: CanvasScriptV2, options: CanvasStoryboardGridOptions, origin?: CanvasNodeData["position"]) => void;
     onClearStoryboardGrid: (scriptNodeId: string) => void;
     onConvertStoryboardGrid: (scriptNodeId: string) => void;
+    onUngroupStoryboardGrid: (scriptNodeId: string) => void;
 };
 
 type SectionKey = "script" | "text" | "image" | "video";
@@ -73,7 +74,7 @@ function itemSize(item: StoryboardItem) {
     return `${item.width} × ${item.height}`;
 }
 
-export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesInCanvas, onAddAsset, onUpdateScript, onCreateStoryboardGrid, onClearStoryboardGrid, onConvertStoryboardGrid }: Props) {
+export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesInCanvas, onAddAsset, onUpdateScript, onCreateStoryboardGrid, onClearStoryboardGrid, onConvertStoryboardGrid, onUngroupStoryboardGrid }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);
@@ -236,6 +237,7 @@ export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesIn
                         onCreateStoryboardGrid={onCreateStoryboardGrid}
                         onClearStoryboardGrid={onClearStoryboardGrid}
                         onConvertStoryboardGrid={onConvertStoryboardGrid}
+                        onUngroupStoryboardGrid={onUngroupStoryboardGrid}
                     />
                 </section>
             </div>
@@ -420,6 +422,7 @@ function StoryboardDetail({
     onCreateStoryboardGrid,
     onClearStoryboardGrid,
     onConvertStoryboardGrid,
+    onUngroupStoryboardGrid,
 }: {
     item: StoryboardItem | null;
     nodes: CanvasNodeData[];
@@ -430,6 +433,7 @@ function StoryboardDetail({
     onCreateStoryboardGrid: (scriptNodeId: string, script: CanvasScriptV2, options: CanvasStoryboardGridOptions, origin?: CanvasNodeData["position"]) => void;
     onClearStoryboardGrid: (scriptNodeId: string) => void;
     onConvertStoryboardGrid: (scriptNodeId: string) => void;
+    onUngroupStoryboardGrid: (scriptNodeId: string) => void;
 }) {
     const { t } = useTranslation();
     const src = item ? mediaUrl(item) : "";
@@ -461,6 +465,7 @@ function StoryboardDetail({
                 onCreateStoryboardGrid={onCreateStoryboardGrid}
                 onClearStoryboardGrid={onClearStoryboardGrid}
                 onConvertStoryboardGrid={onConvertStoryboardGrid}
+                onUngroupStoryboardGrid={onUngroupStoryboardGrid}
             />
         );
     }
@@ -544,6 +549,7 @@ function ScriptDetail({
     onCreateStoryboardGrid,
     onClearStoryboardGrid,
     onConvertStoryboardGrid,
+    onUngroupStoryboardGrid,
 }: {
     item: StoryboardItem;
     nodes: CanvasNodeData[];
@@ -554,6 +560,7 @@ function ScriptDetail({
     onCreateStoryboardGrid: (scriptNodeId: string, script: CanvasScriptV2, options: CanvasStoryboardGridOptions, origin?: CanvasNodeData["position"]) => void;
     onClearStoryboardGrid: (scriptNodeId: string) => void;
     onConvertStoryboardGrid: (scriptNodeId: string) => void;
+    onUngroupStoryboardGrid: (scriptNodeId: string) => void;
 }) {
     const { t } = useTranslation();
     const { modal } = App.useApp();
@@ -825,6 +832,7 @@ function ScriptDetail({
                                 }}
                                 onClear={onClearStoryboardGrid}
                                 onConvert={onConvertStoryboardGrid}
+                                onUngroup={onUngroupStoryboardGrid}
                             />
                         </>
                     ) : (

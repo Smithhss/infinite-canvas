@@ -1490,6 +1490,12 @@ function InfiniteCanvasPage() {
         setNodes((prev) => convertStoryboardGridToGroup(scriptNodeId, prev));
     }, [message, t]);
 
+    const ungroupStoryboardGrid = useCallback((scriptNodeId: string) => {
+        const group = findStoryboardGridGroup(scriptNodeId, nodesRef.current);
+        if (!group) return;
+        ungroupSelection(new Set([group.id]));
+    }, [ungroupSelection]);
+
     useEffect(() => {
         if (workspaceView !== "workflow" || !pendingWorkspaceFocusNodeId) return;
         const frame = requestAnimationFrame(() => {
@@ -3735,6 +3741,7 @@ function InfiniteCanvasPage() {
                             onCreateStoryboardGrid={createStoryboardGrid}
                             onClearStoryboardGrid={clearStoryboardGrid}
                             onConvertStoryboardGrid={convertStoryboardGrid}
+                            onUngroupStoryboardGrid={ungroupStoryboardGrid}
                         />
                     ) : (
                         <CanvasStoryboard key={projectId} projectId={projectId} nodes={nodes} onLocateNode={locateStoryboardNode} onSelectNodesInCanvas={selectStoryboardNodesInCanvas} />

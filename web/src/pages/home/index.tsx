@@ -11,6 +11,7 @@ import { isFeatureEnabled } from "@/constant/feature-flags";
 import i18n from "@/i18n";
 import { buildQuickCreateUrl, storeQuickCreateDraft } from "@/lib/quick-create";
 import { cn } from "@/lib/utils";
+import { LibtvHome } from "@/pages/home/libtv/libtv-home";
 
 const heroFallbacks = [
     "linear-gradient(145deg, #a8edf1 0%, #3257a8 42%, #10111c 100%)",
@@ -133,6 +134,7 @@ export default function IndexPage() {
     const quickCreateEnabled = isFeatureEnabled("quickCreate");
     const workflowEnabled = isFeatureEnabled("creativeWorkflow");
     const showcaseItems = promptShowcase.length > 4 ? promptShowcase.slice(4, 16) : promptShowcase;
+    const libtvShellEnabled = isFeatureEnabled("libtvShell");
 
     useEffect(() => {
         void fetchPrompts({ pageSize: 18 })
@@ -153,6 +155,8 @@ export default function IndexPage() {
         }
         navigate(buildQuickCreateUrl(mode), { state: { quickCreate: true } });
     };
+
+    if (libtvShellEnabled) return <LibtvHome />;
 
     return (
         <main className="relative h-full overflow-y-auto bg-[#f3f0ea] text-stone-950 dark:bg-[#0c0d10] dark:text-stone-100">

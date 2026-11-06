@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Group, Video } from "lucide-react";
+import { Group, Video, X } from "lucide-react";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 
@@ -101,9 +101,11 @@ import { CanvasSmartCutDialog, type SmartCutSourceVideo } from "@/components/can
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
 import type { SmartCutRenderResult } from "@/lib/canvas/canvas-smart-cut-render";
 import { buildStoryboardGrid, collectStoryboardGridNodeIds, convertStoryboardGridToGroup, findStoryboardGridGroup, hasLockedStoryboardGridNodes, replaceStoryboardGridNodes, stripRemovedStoryboardGridMetadata, stripStoryboardGridMetadata, type CanvasStoryboardGridOptions } from "@/lib/canvas/storyboard-grid";
+import { selectStoryboardBatchItems, storyboardBatchItems, storyboardBatchNodeStatus, type StoryboardBatchMode } from "@/lib/canvas/storyboard-batch";
 import { BuiltinAgentPanel } from "@/components/canvas/builtin-agent-panel";
 import { ConnectionCreateMenu, NodeCreateMenu, type PendingConnectionCreate } from "@/components/canvas/canvas-create-menus";
 import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
+import { useCompactViewport } from "@/pages/canvas/use-compact-viewport";
 import { isFeatureEnabled } from "@/constant/feature-flags";
 import {
     CanvasNodeType,
@@ -306,6 +308,7 @@ function InfiniteCanvasPage() {
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
     const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
+    const compactViewport = useCompactViewport();
     const [infoNodeId, setInfoNodeId] = useState<string | null>(null);
     const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
     const [smartCutOpen, setSmartCutOpen] = useState(false);
@@ -329,6 +332,7 @@ function InfiniteCanvasPage() {
     const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
     const [referencePickerNodeId, setReferencePickerNodeId] = useState<string | null>(null);
     const [remoteProjectUpdate, setRemoteProjectUpdate] = useState<{ updatedAt: string } | null>(null);
+    const [storyboardBatchScriptNodeIds, setStoryboardBatchScriptNodeIds] = useState<Set<string>>(new Set());
 
     const nodesRef = useRef(nodes);
     const connectionsRef = useRef(connections);
@@ -348,6 +352,7 @@ function InfiniteCanvasPage() {
     const pendingConnectionCreateRef = useRef(pendingConnectionCreate);
     const generationRequestsRef = useRef(new Map<string, CanvasGenerationRequest>());
     const videoPollIdsRef = useRef(new Set<string>());
+    const storyboardBatchRunsRef = useRef(new Map<string, { canceled: boolean }>());
 
     const rejectLockedNode = useCallback(
         (nodeId?: string) => {
@@ -844,6 +849,8 @@ function InfiniteCanvasPage() {
     );
 
     const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+    const compactPanelNode = compactViewport && dialogNodeId ? nodeById.get(dialogNodeId) : undefined;
+    const showCompactPanel = Boolean(compactPanelNode && !compactPanelNode.locked && !getNodeDefinition(compactPanelNode.type)?.hidePanel);
 
     // Connections are culled like nodes; a cubic curve stays inside its control-point hull, so endpoint bounds widened by the curvature is a safe test.
     const visibleConnections = useMemo(
@@ -3248,6 +3255,62 @@ function InfiniteCanvasPage() {
         generateNodeRef.current = handleGenerateNode;
     }, [handleGenerateNode]);
 
+    const runStoryboardBatch = useCallback(
+        async (scriptNodeId: string, mode: StoryboardBatchMode) => {
+            const scriptNode = nodesRef.current.find((node) => node.id === scriptNodeId);
+            const script = scriptNode?.metadata?.scriptV2;
+            const group = findStoryboardGridGroup(scriptNodeId, nodesRef.current);
+            if (!script || !group) return;
+            if (hasLockedStoryboardGridNodes(scriptNodeId, nodesRef.current)) {
+                message.warning(t("canvas.node.lockedAction"));
+                return;
+            }
+            if (storyboardBatchRunsRef.current.has(group.id)) return;
+            const generationConfig = buildGenerationConfig(effectiveConfig, undefined, "image");
+            if (!isAiConfigReady(generationConfig, generationConfig.model)) {
+                openConfigDialog(true);
+                return;
+            }
+            const items = selectStoryboardBatchItems(storyboardBatchItems(script, group, nodesRef.current), mode);
+            if (!items.length) {
+                message.info(t("canvas.storyboard.workbench.storyboardGrid.batchEmpty"));
+                return;
+            }
+            const run = { canceled: false };
+            storyboardBatchRunsRef.current.set(group.id, run);
+            setStoryboardBatchScriptNodeIds((current) => new Set(current).add(scriptNodeId));
+            let done = 0;
+            let failed = 0;
+            try {
+                for (const item of items) {
+                    if (run.canceled) break;
+                    setNodes((prev) => prev.map((node) => (node.id === item.nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)));
+                    await handleGenerateNode(item.nodeId, "image", item.prompt);
+                    await new Promise((resolve) => setTimeout(resolve, 0));
+                    if (storyboardBatchNodeStatus(nodesRef.current.find((node) => node.id === item.nodeId)) === "done") done += 1;
+                    else failed += 1;
+                }
+            } finally {
+                storyboardBatchRunsRef.current.delete(group.id);
+                setStoryboardBatchScriptNodeIds((current) => {
+                    const next = new Set(current);
+                    next.delete(scriptNodeId);
+                    return next;
+                });
+            }
+            if (run.canceled) message.info(t("canvas.storyboard.workbench.storyboardGrid.batchCanceled", { done, failed }));
+            else if (failed) message.warning(t("canvas.storyboard.workbench.storyboardGrid.batchFinishedWithFailures", { done, failed }));
+            else message.success(t("canvas.storyboard.workbench.storyboardGrid.batchFinished", { done }));
+        },
+        [effectiveConfig, handleGenerateNode, isAiConfigReady, message, openConfigDialog, setNodes, t],
+    );
+
+    const cancelStoryboardBatch = useCallback((scriptNodeId: string) => {
+        const group = findStoryboardGridGroup(scriptNodeId, nodesRef.current);
+        const run = group ? storyboardBatchRunsRef.current.get(group.id) : undefined;
+        if (run) run.canceled = true;
+    }, []);
+
     const handleRetryNode = useCallback(
         async (node: CanvasNodeData, imageId?: string) => {
             if (rejectLockedNode(node.id)) return;
@@ -3758,6 +3821,9 @@ function InfiniteCanvasPage() {
                             onClearStoryboardGrid={clearStoryboardGrid}
                             onConvertStoryboardGrid={convertStoryboardGrid}
                             onUngroupStoryboardGrid={ungroupStoryboardGrid}
+                            onGenerateStoryboardGrid={runStoryboardBatch}
+                            onCancelStoryboardGrid={cancelStoryboardBatch}
+                            storyboardBatchScriptNodeIds={storyboardBatchScriptNodeIds}
                         />
                     ) : (
                         <CanvasStoryboard key={projectId} projectId={projectId} nodes={nodes} onLocateNode={locateStoryboardNode} onSelectNodesInCanvas={selectStoryboardNodesInCanvas} onUpdateNodeCategory={handleStoryboardCategoryChange} />
@@ -3823,7 +3889,7 @@ function InfiniteCanvasPage() {
                                     isConnectionTarget={connectionTargetNodeId === node.id}
                                     isConnecting={Boolean(connectingParams)}
                                     referenceSelectionState={!referencePickerNodeId ? undefined : node.id === referencePickerNodeId ? "target" : referenceConnectedNodeIds.has(node.id) || !isCanvasReferenceNode(node, nodes) ? "disabled" : "available"}
-                                    showPanel={!isNodeResizing && !node.locked && dialogNodeId === node.id && !selectionBox && !getNodeDefinition(node.type)?.hidePanel}
+                                    showPanel={!compactViewport && !isNodeResizing && !node.locked && dialogNodeId === node.id && !selectionBox && !getNodeDefinition(node.type)?.hidePanel}
                                     groupChildCount={groupChildCountById.get(node.id) || 0}
                                     isGroupDropTarget={dropTargetGroupId === node.id}
                                     batchExpanded={expandedBatchNodeIds.has(node.id)}
@@ -3950,6 +4016,29 @@ function InfiniteCanvasPage() {
                             onDelete={(node) => deleteNodes(new Set([node.id]))}
                             onUngroup={(node) => ungroupSelection(new Set([node.id]))}
                         />
+
+                        {showCompactPanel && compactPanelNode ? (
+                            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[75] px-2 pb-[max(8px,env(safe-area-inset-bottom))]" data-compact-node-panel>
+                                <div className="pointer-events-auto mb-1.5 flex h-10 items-center gap-2 rounded-full border px-3" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }}>
+                                    <span className="mr-auto min-w-0 truncate text-[11px] font-medium" style={{ color: theme.node.muted }}>
+                                        {compactPanelNode.title}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        aria-label={t("common.close")}
+                                        title={t("common.close")}
+                                        className="grid size-10 shrink-0 place-items-center rounded-full"
+                                        style={{ color: theme.node.text }}
+                                        onClick={() => setDialogNodeId(null)}
+                                    >
+                                        <X className="size-4" />
+                                    </button>
+                                </div>
+                                <div className="thin-scrollbar pointer-events-auto max-h-[68vh] overflow-y-auto">
+                                    {renderNodePanel(compactPanelNode)}
+                                </div>
+                            </div>
+                        ) : null}
 
                         {hasMultipleSelectedNodes && !selectionBox ? (
                             <CanvasSelectionToolbar

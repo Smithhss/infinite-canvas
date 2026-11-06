@@ -50,7 +50,7 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
             <span ref={buttonRef} className="inline-flex min-w-0">
                 <Button size="small" type="text" className={buttonClassName || "!h-8 !max-w-[220px] !justify-start !rounded-full !px-2.5"} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} onClick={() => setOpen((current) => !current)}>
                     <span className="truncate">
-                        {videoResolutionLabel(config.vquality)} · {videoSizeLabel(config.size)} · {videoSecondsLabel(config.videoSeconds)} · {videoModeLabel(config.videoMode)}
+                        {videoSizeLabel(config.size)} · {videoResolutionLabel(config.vquality)} · {videoSecondsLabel(config.videoSeconds)} · {videoModeLabel(config.videoMode)}
                     </span>
                 </Button>
             </span>
@@ -74,7 +74,7 @@ function VideoSettingsPortal({
     config: AiConfig;
     onConfigChange: (key: keyof AiConfig, value: string) => void;
 }) {
-    const width = 356;
+    const width = 336;
     const gap = 8;
     const margin = 12;
     const alignRight = placement?.endsWith("Right");
@@ -88,9 +88,9 @@ function VideoSettingsPortal({
         left: Math.max(margin, Math.min(window.innerWidth - width - margin, left)),
         ...(topPlacement ? { bottom: window.innerHeight - buttonRect.top + gap, maxHeight: Math.max(260, buttonRect.top - margin * 2) } : { top: buttonRect.bottom + gap, maxHeight: Math.max(260, window.innerHeight - buttonRect.bottom - margin * 2) }),
         background: theme.toolbar.panel,
-        borderRadius: 18,
+        borderRadius: 16,
         boxShadow: "0 18px 54px rgba(28, 25, 23, 0.16)",
-        padding: 18,
+        padding: 16,
         overflowY: "auto",
         color: theme.node.text,
     } as const;
@@ -104,7 +104,7 @@ function VideoSettingsPortal({
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
         >
-            <VideoSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
+            <VideoSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} showTitle={false} className="space-y-4" />
         </div>,
         document.body,
     );

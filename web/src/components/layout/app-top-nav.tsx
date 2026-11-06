@@ -72,7 +72,7 @@ export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolea
                             <button
                                 type="button"
                                 className={cn(
-                                    "-ml-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-stone-600 transition hover:bg-black/5 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white",
+                                    "-ml-1 inline-flex size-10 shrink-0 items-center justify-center rounded-md text-stone-600 transition hover:bg-black/5 hover:text-stone-950 sm:size-8 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white",
                                     compact ? "lg:hidden" : "md:hidden",
                                 )}
                                 onClick={() => setMobileNavOpen(true)}
@@ -137,7 +137,7 @@ export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolea
                                 <Button
                                     type="text"
                                     shape="circle"
-                                    className="!h-8 !w-8 !min-w-8 !text-stone-600 hover:!text-stone-950 dark:!text-stone-300 dark:hover:!text-white"
+                                    className="!h-10 !w-10 !min-w-10 !text-stone-600 hover:!text-stone-950 sm:!h-8 sm:!w-8 sm:!min-w-8 dark:!text-stone-300 dark:hover:!text-white"
                                     icon={<Bot className="size-4" />}
                                     onClick={handleOpenAgent}
                                     aria-label={t(!agentSkillHubEnabled && panelOpen ? "topNav.closeAgent" : "topNav.openAgent")}

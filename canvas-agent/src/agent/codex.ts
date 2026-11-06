@@ -6,11 +6,11 @@ import { z } from "zod";
 import type { CanvasSnapshot } from "../canvas/types.js";
 import { logger } from "../utils/logger.js";
 import { errorMessage, field, type JsonRecord } from "../utils/value.js";
-import { CodexAppClient, CodexReportedError } from "./codex-client.js";
+import { CodexAppClient, CodexReportedError, type UserInputResolution } from "./codex-client.js";
 import { codexEventHistory } from "./codex-event-history.js";
 import { settledTurnIds, summarizeCodexThread, threadMessages } from "./codex-history.js";
 import { messageMetadataStore } from "./message-metadata.js";
-import type { CodexReasoningEffort, CodexSkillMetadata, CodexSkillSelector, CodexSkillsListEntry } from "./codex-protocol.js";
+import type { CodexReasoningEffort, CodexSkillMetadata, CodexSkillSelector, CodexSkillsListEntry, CodexTurn } from "./codex-protocol.js";
 import type { AgentAttachment, AgentEmit, AgentPermissionMode } from "./types.js";
 
 type CodexRunOptions = { threadId?: string; cwd?: string; permissionMode?: AgentPermissionMode; model?: string; effort?: CodexReasoningEffort; skill?: CodexSkillSelector | CodexSkillSelector[]; messageText?: string; appEmit?: AgentEmit; onStart?: () => void; onThread?: (threadId: string) => void; onTurn?: (turnId: string) => void; onFinish?: () => void };
@@ -82,6 +82,11 @@ export async function interruptCodexTurn(threadId?: string) {
 /** 回复当前 app-server 的待处理权限请求。 */
 export async function resolveCodexApproval(requestId: string, decision: string) {
     return Boolean(codexApp?.resolveApproval(requestId, decision));
+}
+
+/** 回复当前 app-server 的结构化问题。 */
+export async function resolveCodexUserInput(requestId: string, answers: Record<string, string[]>): Promise<UserInputResolution> {
+    return codexApp?.resolveUserInput(requestId, answers) || { ok: false, code: "USER_INPUT_EXPIRED", error: "问题已失效或已提交" };
 }
 
 /** 创建新的 Codex 线程并记录当前线程 ID。 */
@@ -432,6 +437,7 @@ async function loadCodexHistory(emit: AgentEmit, threadId: string, cwd?: string)
     try {
         return { thread: await loadCodexThread(emit, threadId, cwd, true), historyReady: true };
     } catch (error) {
+        if (isPaginatedThreadReadError(error)) return await loadPaginatedCodexHistory(emit, threadId, cwd);
         if (/not materialized yet.*includeTurns/i.test(errorMessage(error))) return { thread: await loadCodexThread(emit, threadId, cwd, false), historyReady: false };
         if (!isRecoverableThreadError(error)) throw error;
         const app = await getCodexApp(emit);
@@ -439,10 +445,38 @@ async function loadCodexHistory(emit: AgentEmit, threadId: string, cwd?: string)
         try {
             return { thread: await loadCodexThread(emit, threadId, cwd, true), historyReady: true };
         } catch (historyError) {
+            if (isPaginatedThreadReadError(historyError)) return await loadPaginatedCodexHistory(emit, threadId, cwd);
             if (/not materialized yet.*includeTurns/i.test(errorMessage(historyError))) return { thread, historyReady: false };
             throw historyError;
         }
     }
+}
+
+/** 兼容只提供 thread/turns/list 的分页线程历史。 */
+async function loadPaginatedCodexHistory(emit: AgentEmit, threadId: string, cwd?: string) {
+    const app = await getCodexApp(emit);
+    const thread = await loadCodexThread(emit, threadId, cwd, false);
+    const turns: CodexTurn[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    do {
+        const page = await app.listThreadTurns(threadId, {
+            ...(cursor ? { cursor } : {}),
+            sortDirection: "desc",
+            itemsView: "full",
+        });
+        turns.push(...page.data);
+        const nextCursor = page.nextCursor || undefined;
+        if (nextCursor && seenCursors.has(nextCursor)) throw new Error("Codex 分页线程历史返回了重复游标");
+        if (nextCursor) seenCursors.add(nextCursor);
+        cursor = nextCursor;
+    } while (cursor);
+    turns.reverse();
+    return { thread: { ...thread, turns }, historyReady: true };
+}
+
+function isPaginatedThreadReadError(error: unknown) {
+    return /paginated threads do not support thread\/read\(includeTurns=true\)/i.test(errorMessage(error));
 }
 
 /** 恢复线程并统一校验工作空间与进程内活动线程。 */

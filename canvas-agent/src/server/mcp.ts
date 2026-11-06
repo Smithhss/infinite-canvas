@@ -3,11 +3,17 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { toolDescriptions, toolInputSchemas, toolNames, type ToolName } from "../canvas/schemas.js";
 import { AGENT_PROMPT, loadConfig, type CanvasAgentConfig, VERSION } from "../config.js";
+import { ensureCanvasAgentService } from "./daemon.js";
 
 type CanvasAgentToolResponse = { ok?: boolean; result?: unknown; error?: string };
 
 /** 启动通过标准输入输出通信的 MCP 服务。 */
 export async function startMcpServer() {
+    const service = await ensureCanvasAgentService();
+    if (!service.runningBeforeStart) {
+        const state = service.started ? "started" : "unavailable";
+        process.stderr.write(`Canvas Agent web service ${state}: ${service.url}\n`);
+    }
     const config = loadConfig(true);
     const server = new McpServer({ name: "canvas-agent", version: VERSION }, { instructions: AGENT_PROMPT });
     toolNames.forEach((name) => registerCanvasTool(server, config, name));

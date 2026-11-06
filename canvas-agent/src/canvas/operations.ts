@@ -5,6 +5,7 @@ import { nextCanvasX } from "./tools.js";
 import type { CanvasNode, CanvasNodeType, CanvasSnapshot } from "./types.js";
 
 export type CanvasToolRequest = { name: "canvas_apply_ops"; input: Record<string, unknown> };
+const NODE_MENTION_PATTERN = /@\[node:([\w-]+)\]|\{\{\s*(?:image|video|audio|text):([\w-]+)\s*\}\}/g;
 
 /** 将上层画布工具调用转换为前端可执行的批量操作。 */
 export function buildCanvasToolRequest(name: ToolName, input: Record<string, unknown>, state: CanvasSnapshot | null): CanvasToolRequest {
@@ -129,11 +130,11 @@ function generationFlowOps(input: Record<string, unknown>, state: CanvasSnapshot
     const textId = `text-${crypto.randomUUID()}`;
     const configId = `config-${crypto.randomUUID()}`;
     const referenceNodeIds = Array.isArray(input.referenceNodeIds) ? input.referenceNodeIds.filter((id): id is string => typeof id === "string") : [];
-    // When the prompt only @-mentions nodes already passed as references, reuse them instead of minting a duplicate text node.
-    const mentionedIds = [...prompt.matchAll(/@\[node:([\w-]+)\]/g)].map((match) => match[1]);
+    // Reuse exposed media tokens and legacy @ mentions instead of minting a duplicate prompt node.
+    const mentionedIds = [...prompt.matchAll(NODE_MENTION_PATTERN)].map((match) => match[1] || match[2]);
     const reuseReferences = referenceNodeIds.length > 0 && mentionedIds.length > 0
         && mentionedIds.every((id) => referenceNodeIds.includes(id))
-        && prompt.replace(/@\[node:[\w-]+\]/g, "").trim() === "";
+        && prompt.replace(NODE_MENTION_PATTERN, "").trim() === "";
     const tokens = reuseReferences ? referenceNodeIds.map((id) => `@[node:${id}]`) : [`@[node:${textId}]`, ...referenceNodeIds.map((id) => `@[node:${id}]`)];
     return [
         ...(reuseReferences ? [] : [textNodeOp({ id: textId, text: prompt, title: String(input.title || "提示词") }, x, y)]),

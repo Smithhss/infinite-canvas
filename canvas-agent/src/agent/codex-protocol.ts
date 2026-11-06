@@ -92,6 +92,14 @@ type CodexRequestSpec = {
         params: { threadId: string; includeTurns: boolean };
         result: { thread: CodexThread };
     };
+    "thread/turns/list": {
+        params: { threadId: string; cursor?: string | null; limit?: number | null; sortDirection?: "asc" | "desc" | null; itemsView?: "notLoaded" | "summary" | "full" | null };
+        result: { data: CodexTurn[]; nextCursor: string | null; backwardsCursor: string | null };
+    };
+    "thread/items/list": {
+        params: { threadId: string; turnId?: string | null; cursor?: string | null; limit?: number | null; sortDirection?: "asc" | "desc" | null };
+        result: { data: Array<{ turnId: string; item: CodexItem }>; nextCursor: string | null; backwardsCursor: string | null };
+    };
     "thread/archive": {
         params: { threadId: string };
         result: Record<string, never>;

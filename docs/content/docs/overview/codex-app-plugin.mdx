@@ -154,6 +154,6 @@ There are two processes when troubleshooting:
 | Process | Start command | Purpose |
 | --- | --- | --- |
 | Plugin MCP | `npx -y @smithhsiiiii/canvas-agent@latest mcp` | Exposes canvas tools to Codex |
-| Web connection service | `npx -y @smithhsiiiii/canvas-agent@latest` | Receives canvas state and provides the Local URL / Connect token |
+| Web connection service | Started automatically by the plugin MCP; run `npx -y @smithhsiiiii/canvas-agent@latest` only as a manual fallback | Receives canvas state; loopback pages can discover the connection token automatically |
 
-The plugin Skill handles both during normal use. Check the web connection service only when MCP is ready but the page remains disconnected.
+The plugin MCP keeps the web connection service running during normal use. Check the web connection service only when MCP is ready but the page remains disconnected.

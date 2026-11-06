@@ -26,19 +26,82 @@ test("审批只在 app-server 确认 resolved 后清除", () => {
     const client = Reflect.construct(CodexAppClient, [child, (type: string, payload: unknown) => events.push({ type, payload }), emptyEventHistory]) as CodexAppClient;
     const testClient = client as unknown as TestClient;
 
-    testClient.answerServerRequest({ id: 17, method: "item/commandExecution/requestApproval", params: { threadId: "thread-1", turnId: "turn-1" } });
+    testClient.answerServerRequest({ id: "req_approval", method: "item/commandExecution/requestApproval", params: { threadId: "thread-1", turnId: "turn-1" } });
     assert.equal(events.filter((item) => item.type === "codex_approval").length, 1);
 
-    assert.equal(client.resolveApproval("17", "accept"), true);
+    assert.equal(client.resolveApproval("req_approval", "accept"), true);
     assert.equal(writes.length, 1);
+    assert.equal(writes[0].id, "req_approval");
     assert.equal(events.some((item) => item.type === "codex_approval_resolved"), false);
-    assert.equal(client.resolveApproval("17", "accept"), true);
+    assert.equal(client.resolveApproval("req_approval", "accept"), true);
     assert.equal(writes.length, 1);
 
-    testClient.handleNotification("serverRequest/resolved", { requestId: "17" });
+    testClient.handleNotification("serverRequest/resolved", { requestId: "req_approval" });
     const resolved = events.find((item) => item.type === "codex_approval_resolved");
-    assert.deepEqual(resolved?.payload, { threadId: "thread-1", turnId: "turn-1", requestId: "17", decision: "accept" });
-    assert.equal(client.resolveApproval("17", "accept"), false);
+    assert.deepEqual(resolved?.payload, { threadId: "thread-1", turnId: "turn-1", requestId: "req_approval", decision: "accept" });
+    assert.equal(client.resolveApproval("req_approval", "accept"), false);
+});
+
+test("结构化追问等待用户回答并通过 answers 回传", () => {
+    const writes: Array<Record<string, unknown>> = [];
+    const events: Array<{ type: string; payload: unknown }> = [];
+    const child = { stdin: { write: (line: string) => (writes.push(JSON.parse(line)), true) } };
+    const client = Reflect.construct(CodexAppClient, [child, (type: string, payload: unknown) => events.push({ type, payload }), emptyEventHistory]) as CodexAppClient;
+    const testClient = client as unknown as TestClient;
+
+    testClient.answerServerRequest({
+        id: "req_21",
+        method: "item/tool/requestUserInput",
+        params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            itemId: "question-1",
+            questions: [{ id: "style", header: "风格", question: "选择画面风格", options: [{ label: "电影感", description: "更强调光影" }, { label: "纪录片", description: "更自然" }] }],
+        },
+    });
+    const requested = events.find((item) => item.type === "codex_user_input");
+    assert.equal((requested?.payload as Record<string, unknown>).requestId, "req_21");
+    assert.equal(writes.length, 0);
+
+    assert.deepEqual(client.resolveUserInput("req_21", { other: ["电影感"] }), { ok: false, code: "INVALID_USER_INPUT", error: "包含未知问题：other" });
+    assert.deepEqual(client.resolveUserInput("req_21", {}), { ok: false, code: "INVALID_USER_INPUT", error: "请回答全部问题" });
+    assert.deepEqual(client.resolveUserInput("req_21", { style: ["电影感"] }), { ok: true });
+    assert.deepEqual(writes[0], { id: "req_21", result: { answers: { style: { answers: ["电影感"] } } } });
+    assert.deepEqual(client.resolveUserInput("req_21", { style: ["电影感"] }), { ok: true, duplicate: true });
+    assert.deepEqual(client.resolveUserInput("req_21", { style: ["纪录片"] }), { ok: false, code: "USER_INPUT_CONFLICT", error: "问题已由其他窗口提交，当前回答未采用" });
+    assert.deepEqual(client.resolveUserInput("req_21", { style: ["不存在"] }), { ok: false, code: "INVALID_USER_INPUT", error: "回答不在可选项中" });
+    assert.equal(writes.length, 1);
+
+    testClient.handleNotification("serverRequest/resolved", { requestId: "req_21" });
+    assert.equal(events.some((item) => item.type === "codex_user_input_resolved"), true);
+    assert.deepEqual(client.resolveUserInput("req_21", { style: ["电影感"] }), { ok: false, code: "USER_INPUT_EXPIRED", error: "问题已失效或已提交" });
+});
+
+test("结构化追问超时后自动清空并释放 turn", async () => {
+    const writes: Array<Record<string, unknown>> = [];
+    const events: Array<{ type: string; payload: unknown }> = [];
+    const child = { stdin: { write: (line: string) => (writes.push(JSON.parse(line)), true) } };
+    const client = Reflect.construct(CodexAppClient, [child, (type: string, payload: unknown) => events.push({ type, payload }), emptyEventHistory]) as CodexAppClient;
+    const testClient = client as unknown as TestClient;
+
+    testClient.answerServerRequest({
+        id: "req_timeout",
+        method: "item/tool/requestUserInput",
+        params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            itemId: "question-timeout",
+            autoResolutionMs: 10,
+            questions: [{ id: "style", header: "风格", question: "选择画面风格", options: [{ label: "电影感", description: "更强调光影" }] }],
+        },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assert.deepEqual(writes[0], { id: "req_timeout", result: { answers: {} } });
+    const resolved = events.find((item) => item.type === "codex_user_input_resolved");
+    assert.equal((resolved?.payload as Record<string, unknown>).timedOut, true);
+    assert.equal((resolved?.payload as Record<string, unknown>).cancelled, true);
+    assert.deepEqual(client.resolveUserInput("req_timeout", { style: ["电影感"] }), { ok: false, code: "USER_INPUT_EXPIRED", error: "问题已失效或已提交" });
 });
 
 test("中断请求只作用于当前运行线程", async () => {
@@ -84,6 +147,33 @@ test("Skill 列表与启用配置使用 app-server 原生协议", async () => {
     assert.deepEqual(configRequest, { id: 2, method: "skills/config/write", params: { path: "D:\\site\\.agents\\skills\\demo\\SKILL.md", enabled: false } });
     testClient.handle({ id: configRequest?.id, result: { effectiveEnabled: false } });
     assert.equal((await configuring).effectiveEnabled, false);
+});
+
+test("分页线程历史使用 turns/list 与 items/list 协议", async () => {
+    const writes: Array<Record<string, unknown>> = [];
+    const child = { stdin: { write: (line: string) => (writes.push(JSON.parse(line)), true) } };
+    const client = Reflect.construct(CodexAppClient, [child, () => undefined, emptyEventHistory]) as CodexAppClient;
+    const testClient = client as unknown as TestClient;
+
+    const turns = client.listThreadTurns("thread-1", { sortDirection: "desc", itemsView: "full", cursor: "next" });
+    const turnsRequest = writes.at(-1);
+    assert.deepEqual(turnsRequest, {
+        id: 1,
+        method: "thread/turns/list",
+        params: { threadId: "thread-1", sortDirection: "desc", itemsView: "full", cursor: "next" },
+    });
+    testClient.handle({ id: turnsRequest?.id, result: { data: [{ id: "turn-1", items: [], itemsView: "full", status: "completed", error: null }], nextCursor: null, backwardsCursor: "back" } });
+    assert.equal((await turns).data[0]?.id, "turn-1");
+
+    const items = client.listThreadItems("thread-1", { turnId: "turn-1" });
+    const itemsRequest = writes.at(-1);
+    assert.deepEqual(itemsRequest, {
+        id: 2,
+        method: "thread/items/list",
+        params: { threadId: "thread-1", turnId: "turn-1" },
+    });
+    testClient.handle({ id: itemsRequest?.id, result: { data: [{ turnId: "turn-1", item: { id: "item-1", type: "agentMessage", text: "完成" } }], nextCursor: null, backwardsCursor: null } });
+    assert.equal((await items).data[0]?.item.id, "item-1");
 });
 
 test("并发强制刷新同一工作空间时只扫描一次 Skill", async () => {

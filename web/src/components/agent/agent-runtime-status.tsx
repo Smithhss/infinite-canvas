@@ -1,9 +1,9 @@
-import { LoaderCircle, ShieldAlert, Wrench } from "lucide-react";
+import { CircleHelp, LoaderCircle, ShieldAlert, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { summarizeAgentRuntime } from "@/lib/agent/agent-runtime-status";
 import { canvasThemes } from "@/lib/canvas-theme";
-import type { AgentPendingApproval, AgentPendingToolCall } from "@/stores/use-agent-store";
+import type { AgentPendingApproval, AgentPendingToolCall, AgentPendingUserInput } from "@/stores/use-agent-store";
 
 export function AgentRuntimeStatus({
     activity,
@@ -11,6 +11,7 @@ export function AgentRuntimeStatus({
     waiting,
     pendingTools,
     pendingApprovals,
+    pendingUserInputs,
     theme,
 }: {
     activity: string;
@@ -18,12 +19,13 @@ export function AgentRuntimeStatus({
     waiting: boolean;
     pendingTools: AgentPendingToolCall[];
     pendingApprovals: AgentPendingApproval[];
+    pendingUserInputs: AgentPendingUserInput[];
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
 }) {
     const { t } = useTranslation();
-    const runtime = summarizeAgentRuntime({ sending, waiting, pendingTools, pendingApprovals });
+    const runtime = summarizeAgentRuntime({ sending, waiting, pendingTools, pendingApprovals, pendingUserInputs });
     const active = runtime.phase !== "idle";
-    const color = runtime.phase === "approval" ? "#d97706" : runtime.phase === "tool" ? "#ea580c" : active ? "#16a34a" : theme.node.muted;
+    const color = runtime.phase === "approval" ? "#d97706" : runtime.phase === "user-input" ? "#2563eb" : runtime.phase === "tool" ? "#ea580c" : active ? "#16a34a" : theme.node.muted;
 
     return (
         <div className="flex min-h-10 shrink-0 items-center gap-2 border-b px-4 py-2 text-[11px]" role="status" aria-live="polite" aria-label={t("agent.runtimeStatus.label", { activity })} style={{ borderColor: theme.node.stroke, color: theme.node.muted }}>
@@ -44,6 +46,12 @@ export function AgentRuntimeStatus({
                 <span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5" style={{ borderColor: theme.node.stroke, color: "#d97706" }}>
                     <ShieldAlert className="size-3" />
                     {t("agent.runtimeStatus.approval", { count: runtime.pendingApprovalCount })}
+                </span>
+            ) : null}
+            {runtime.pendingUserInputCount ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5" style={{ borderColor: theme.node.stroke, color: "#2563eb" }}>
+                    <CircleHelp className="size-3" />
+                    {t("agent.runtimeStatus.userInput", { count: runtime.pendingUserInputCount })}
                 </span>
             ) : null}
             {active && !runtime.queueCount ? <LoaderCircle className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none" /> : null}

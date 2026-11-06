@@ -9,7 +9,8 @@ import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useAgentAutoConnect } from "@/hooks/use-agent-auto-connect";
 import { useAgentStore } from "@/stores/use-agent-store";
 
 export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolean; onOpenPlugins: () => void }) {
@@ -18,11 +19,6 @@ export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolea
     const navigate = useNavigate();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [createMenuOpen, setCreateMenuOpen] = useState(false);
-    const autoConnectRef = useRef(false);
-    const agentToken = useAgentStore((state) => state.token);
-    const agentEnabled = useAgentStore((state) => state.enabled);
-    const agentConnected = useAgentStore((state) => state.connected);
-    const connectAgent = useAgentStore((state) => state.connectAgent);
     const togglePanel = useAgentStore((state) => state.togglePanel);
     const panelOpen = useAgentStore((state) => state.panelOpen);
     const agentSkillHubEnabled = isFeatureEnabled("agentSkillHub");
@@ -52,11 +48,7 @@ export function AppTopNav({ compact = false, onOpenPlugins }: { compact?: boolea
         else togglePanel();
     };
 
-    useEffect(() => {
-        if (autoConnectRef.current || agentEnabled || agentConnected || !agentToken.trim()) return;
-        autoConnectRef.current = true;
-        connectAgent({ silent: true });
-    }, [agentConnected, agentEnabled, agentToken, connectAgent]);
+    useAgentAutoConnect();
 
     return (
         <>

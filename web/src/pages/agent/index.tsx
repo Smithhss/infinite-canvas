@@ -1,22 +1,64 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { App, Button, Input, Switch, Tooltip } from "antd";
-import { ArrowRight, Bot, CheckCircle2, FolderGit2, LoaderCircle, MonitorCog, RefreshCw, Search, ShieldCheck, Sparkles, Star, UserRound, WandSparkles } from "lucide-react";
+import { Input } from "antd";
+import { motion } from "motion/react";
+import {
+    ArrowRight,
+    Bot,
+    Check,
+    CheckCircle2,
+    ChevronRight,
+    Clapperboard,
+    Compass,
+    Cpu,
+    FileText,
+    FolderGit2,
+    Gamepad2,
+    Hand,
+    ImagePlus,
+    LoaderCircle,
+    Megaphone,
+    MonitorCog,
+    MousePointerClick,
+    Music2,
+    RefreshCw,
+    Search,
+    ShieldCheck,
+    Sparkles,
+    Star,
+    UserRound,
+    WandSparkles,
+    X,
+    Zap,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
 import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
 import { isFeatureEnabled } from "@/constant/feature-flags";
+import { reconnectAgentWithDiscovery } from "@/hooks/use-agent-auto-connect";
 import { useAgentSkillFavorites } from "@/hooks/use-agent-skill-favorites";
-import { useCopyText } from "@/hooks/use-copy-text";
 import { activeAgentProvider } from "@/lib/agent/agent-provider";
-import { agentSkillDescription, agentSkillDisplayName, agentSkillKey, agentSkillMarker, filterAgentSkills, type AgentSkillCollection, type AgentSkillScopeFilter } from "@/lib/agent/agent-skill-catalog";
-import { AGENT_PLUGIN_INSTALL_COMMAND } from "@/lib/agent/plugin-commands";
-import type { AgentSkillScope, AgentSkillSummary } from "@/services/api/canvas-agent";
+import {
+    agentSkillDescription,
+    agentSkillDisplayName,
+    agentSkillKey,
+    agentSkillMarker,
+    filterAgentSkills,
+    type AgentSkillCollection,
+    type AgentSkillScopeFilter,
+} from "@/lib/agent/agent-skill-catalog";
+import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
+import { writeAppStorageItem } from "@/lib/storage-namespace";
+import { fetchCodexSkill, type AgentSkillDetail, type AgentSkillSummary } from "@/services/api/canvas-agent";
 import { useAgentSkillFavoriteStore } from "@/stores/use-agent-skill-favorite-store";
 import { useAgentSkillStore } from "@/stores/use-agent-skill-store";
-import { useAgentStore } from "@/stores/use-agent-store";
+import { useAgentStore, type AgentModel } from "@/stores/use-agent-store";
+import { useThemeStore } from "@/stores/use-theme-store";
 
-const scopeFilters: AgentSkillScope[] = ["repo", "user", "system", "admin"];
+type AgentScopeOption = { value: AgentSkillScopeFilter; label: string; icon: ReactNode };
+type AgentCategory = "recommended" | "film" | "commercial" | "drama" | "anime" | "music" | "creator" | "general" | "discover";
+type AgentCategoryOption = { value: AgentCategory; label: string; icon: ReactNode };
+const EMPTY_SKILLS: AgentSkillSummary[] = [];
 
 export default function AgentPage() {
     const { search } = useLocation();
@@ -26,10 +68,7 @@ export default function AgentPage() {
 
 function AgentSkillHubPage() {
     const { t } = useTranslation();
-    const { message } = App.useApp();
-    const navigate = useNavigate();
-    const { search } = useLocation();
-    const copyText = useCopyText();
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const favoritesLoaded = useAgentSkillFavorites();
     const connected = useAgentStore((state) => state.connected);
     const enabled = useAgentStore((state) => state.enabled);
@@ -37,6 +76,12 @@ function AgentSkillHubPage() {
     const token = useAgentStore((state) => state.token);
     const provider = activeAgentProvider(useAgentStore((state) => state.agentProvider));
     const connectError = useAgentStore((state) => state.connectError);
+    const prompt = useAgentStore((state) => state.prompt);
+    const confirmTools = useAgentStore((state) => state.confirmTools);
+    const models = useAgentStore((state) => state.models);
+    const model = useAgentStore((state) => state.model);
+    const setAgentState = useAgentStore((state) => state.setAgentState);
+    const openPanel = useAgentStore((state) => state.openPanel);
     const skills = useAgentSkillStore((state) => state.skills);
     const selectedSkills = useAgentSkillStore((state) => state.selectedSkills);
     const loading = useAgentSkillStore((state) => state.loading);
@@ -47,45 +92,97 @@ function AgentSkillHubPage() {
     const toggleFavorite = useAgentSkillFavoriteStore((state) => state.toggleFavorite);
     const [query, setQuery] = useState("");
     const [collection, setCollection] = useState<AgentSkillCollection>("all");
+    const [category, setCategory] = useState<AgentCategory>("recommended");
     const [scope, setScope] = useState<AgentSkillScopeFilter>("all");
     const [enabledOnly, setEnabledOnly] = useState(false);
-
+    const [selectedSkill, setSelectedSkill] = useState<AgentSkillSummary | null>(null);
+    const [modelPickerOpen, setModelPickerOpen] = useState(false);
+    const [modePickerOpen, setModePickerOpen] = useState(false);
     useEffect(() => {
         if (connected && !loaded && !loading) void loadSkills(endpoint, token);
     }, [connected, endpoint, loadSkills, loaded, loading, provider, token]);
 
-    const availableSkills = connected ? skills : [];
-    const visibleSkills = useMemo(() => filterAgentSkills({ skills: availableSkills, query, scope, collection, enabledOnly, favoriteKeys }), [availableSkills, collection, enabledOnly, favoriteKeys, query, scope]);
-    const enabledCount = availableSkills.filter((skill) => skill.enabled).length;
+    const availableSkills = connected ? skills : EMPTY_SKILLS;
+    const categorySkills = useMemo(
+        () => filterAgentSkills({ skills: availableSkills, query: "", scope: "all", collection, enabledOnly: false, favoriteKeys }),
+        [availableSkills, collection, favoriteKeys],
+    );
+    const visibleSkills = useMemo(
+        () =>
+            filterAgentSkills({ skills: availableSkills, query, scope, collection, enabledOnly, favoriteKeys }).filter((skill) =>
+                matchesAgentCategory(skill, category),
+            ),
+        [availableSkills, category, collection, enabledOnly, favoriteKeys, query, scope],
+    );
     const managedCount = availableSkills.filter((skill) => skill.managed).length;
     const favoriteCount = availableSkills.filter((skill) => favoriteKeys.includes(agentSkillKey(skill))).length;
-    const hasFilter = Boolean(query.trim()) || scope !== "all" || enabledOnly;
-    const collectionEmpty = !filterAgentSkills({ skills: availableSkills, query: "", scope: "all", collection, enabledOnly: false, favoriteKeys }).length;
-    const pluginHubEnabled = isFeatureEnabled("pluginHub");
+    const hasFilter = Boolean(query.trim()) || category !== "recommended" || scope !== "all" || enabledOnly;
+    const collectionEmpty = !categorySkills.length;
+    const selectedKeys = new Set(selectedSkills.map(agentSkillKey));
+    const currentModel = models.find((item) => item.model === model) || models[0];
+    const canSubmit = Boolean(prompt.trim() || selectedSkills.length);
 
-    const openAgent = () => {
-        useAgentStore.getState().setAgentState({ activeTab: connected ? "chat" : "setup" });
-        useAgentStore.getState().openPanel();
+    const scopeOptions: AgentScopeOption[] = [
+        { value: "all", label: t("agentHub.allSources"), icon: <Sparkles className="size-3.5" /> },
+        { value: "repo", label: t("agent.skillManager.scopes.repo"), icon: <FolderGit2 className="size-3.5" /> },
+        { value: "user", label: t("agent.skillManager.scopes.user"), icon: <UserRound className="size-3.5" /> },
+        { value: "system", label: t("agent.skillManager.scopes.system"), icon: <MonitorCog className="size-3.5" /> },
+        { value: "admin", label: t("agent.skillManager.scopes.admin"), icon: <ShieldCheck className="size-3.5" /> },
+    ];
+    const categoryOptions: AgentCategoryOption[] = [
+        { value: "recommended", label: t("agentHub.categories.recommended"), icon: <Sparkles className="size-3.5" /> },
+        { value: "film", label: t("agentHub.categories.film"), icon: <Clapperboard className="size-3.5" /> },
+        { value: "commercial", label: t("agentHub.categories.commercial"), icon: <Megaphone className="size-3.5" /> },
+        { value: "drama", label: t("agentHub.categories.drama"), icon: <FileText className="size-3.5" /> },
+        { value: "anime", label: t("agentHub.categories.anime"), icon: <Gamepad2 className="size-3.5" /> },
+        { value: "music", label: t("agentHub.categories.music"), icon: <Music2 className="size-3.5" /> },
+        { value: "creator", label: t("agentHub.categories.creator"), icon: <MousePointerClick className="size-3.5" /> },
+        { value: "general", label: t("agentHub.categories.general"), icon: <WandSparkles className="size-3.5" /> },
+        { value: "discover", label: t("agentHub.categories.discover"), icon: <Compass className="size-3.5" /> },
+    ];
+    const collectionItems: Array<{ key: AgentSkillCollection; label: string; count: number }> = [
+        { key: "all", label: t("agentHub.tabs.all"), count: availableSkills.length },
+        { key: "favorites", label: t("agentHub.tabs.favorites"), count: favoriteCount },
+        { key: "mine", label: t("agentHub.tabs.mine"), count: managedCount },
+    ];
+
+    const openAgent = (tab: "chat" | "setup" = connected ? "chat" : "setup") => {
+        setAgentState({ activeTab: tab });
+        openPanel();
     };
-    const openPlugins = () => {
-        if (pluginHubEnabled) navigate(withShellFeatureFlags("/plugins", search));
-        else copyText(AGENT_PLUGIN_INSTALL_COMMAND, t("agentHub.installCopied"));
+    const selectSkill = (skill: AgentSkillSummary) => {
+        const current = useAgentSkillStore.getState().skills.find((item) => agentSkillKey(item) === agentSkillKey(skill));
+        if (!current?.enabled) return;
+        const skillState = useAgentSkillStore.getState();
+        if (skillState.selectedSkills.some((item) => agentSkillKey(item) === agentSkillKey(current))) skillState.removeSkill(current);
+        else skillState.selectSkill(current);
     };
     const useSkill = (skill: AgentSkillSummary) => {
         const current = useAgentSkillStore.getState().skills.find((item) => agentSkillKey(item) === agentSkillKey(skill));
-        if (!current?.enabled) {
-            message.warning(t("agentHub.skillUnavailable"));
-            return;
-        }
-        const skillState = useAgentSkillStore.getState();
-        const selected = skillState.selectedSkills.some((item) => agentSkillKey(item) === agentSkillKey(current));
-        if (selected) skillState.removeSkill(current);
-        else skillState.selectSkill(current);
-        useAgentStore.getState().setAgentState({ activeTab: "chat" });
-        useAgentStore.getState().openPanel();
+        if (!current?.enabled) return;
+        if (!useAgentSkillStore.getState().selectedSkills.some((item) => agentSkillKey(item) === agentSkillKey(current))) useAgentSkillStore.getState().selectSkill(current);
+        requestAnimationFrame(() => {
+            const composer = document.getElementById("agent-skill-composer");
+            composer?.scrollIntoView({ behavior: "smooth", block: "center" });
+            composer?.focus();
+        });
+    };
+    const openComposerTarget = () => {
+        if (!prompt.trim() && !selectedSkills.length) return;
+        setAgentState({ activeTab: connected ? "chat" : "setup" });
+        openPanel();
+    };
+    const changeModel = (nextModel: string) => {
+        const selected = models.find((item) => item.model === nextModel);
+        if (!selected) return;
+        const effort = selected.defaultReasoningEffort || selected.supportedReasoningEfforts[0]?.reasoningEffort;
+        writeAppStorageItem(`canvas-agent-model-${provider}`, nextModel);
+        if (effort) writeAppStorageItem("canvas-agent-reasoning-effort-codex", effort);
+        setAgentState({ model: nextModel, ...(effort ? { reasoningEffort: effort } : {}) });
     };
     const resetFilters = () => {
         setQuery("");
+        setCategory("recommended");
         setScope("all");
         setEnabledOnly(false);
     };
@@ -94,96 +191,122 @@ function AgentSkillHubPage() {
         resetFilters();
     };
 
-    const collectionItems: Array<{ key: AgentSkillCollection; label: string; count: number; icon: ReactNode }> = [
-        { key: "all", label: t("agentHub.tabs.all"), count: availableSkills.length, icon: <Sparkles className="size-3.5" /> },
-        { key: "favorites", label: t("agentHub.tabs.favorites"), count: favoriteCount, icon: <Star className="size-3.5" /> },
-        { key: "mine", label: t("agentHub.tabs.mine"), count: managedCount, icon: <UserRound className="size-3.5" /> },
-    ];
-
     return (
-        <main className="h-full overflow-y-auto bg-[radial-gradient(circle_at_4%_0%,rgba(245,158,11,.1),transparent_28%),radial-gradient(circle_at_94%_12%,rgba(20,184,166,.09),transparent_30%),linear-gradient(180deg,rgba(250,250,249,.65),rgba(255,255,255,0))] dark:bg-[radial-gradient(circle_at_4%_0%,rgba(245,158,11,.08),transparent_28%),radial-gradient(circle_at_94%_12%,rgba(20,184,166,.08),transparent_30%)]">
-            <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-7 lg:px-10 lg:py-9">
-                <section className="relative overflow-hidden rounded-[30px] border border-stone-200/80 bg-white/75 shadow-[0_28px_90px_-54px_rgba(28,25,23,.6)] dark:border-stone-800/80 dark:bg-stone-950/70">
-                    <div className="pointer-events-none absolute -right-24 -top-28 size-80 rounded-full bg-amber-400/10 blur-3xl" />
-                    <div className="pointer-events-none absolute -bottom-36 left-1/4 size-80 rounded-full bg-teal-400/10 blur-3xl" />
-                    <div className="relative grid gap-8 px-5 py-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_310px] lg:px-10 lg:py-10">
-                        <div className="min-w-0">
-                            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-stone-200 px-3 py-1 text-[11px] font-medium text-stone-500 dark:border-stone-700 dark:text-stone-400">
-                                <WandSparkles className="size-3.5 text-amber-500" />
-                                {t("agentHub.eyebrow")}
-                            </div>
-                            <h1 className="max-w-3xl text-3xl font-semibold tracking-[-0.045em] text-stone-950 sm:text-4xl dark:text-stone-100">{t("agentHub.title")}</h1>
-                            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500 dark:text-stone-400">{t("agentHub.description")}</p>
+        <main className="relative h-full overflow-y-auto" style={{ background: theme.canvas.background, color: theme.node.text }}>
+            <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 opacity-80"
+                style={{
+                    backgroundImage: `radial-gradient(circle at 50% -12%, color-mix(in srgb, ${theme.node.text} 7%, transparent), transparent 38%), linear-gradient(color-mix(in srgb, ${theme.node.stroke} 20%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, ${theme.node.stroke} 16%, transparent) 1px, transparent 1px)`,
+                    backgroundSize: "auto, 48px 48px, 48px 48px",
+                    maskImage: "linear-gradient(to bottom, rgba(0,0,0,.78), transparent 62%)",
+                }}
+            />
 
-                            <div className="mt-6 rounded-2xl border border-stone-200/90 bg-white p-2 shadow-[0_14px_40px_-30px_rgba(28,25,23,.55)] dark:border-stone-800 dark:bg-stone-900">
-                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                                    <Input
-                                        size="large"
-                                        variant="borderless"
-                                        aria-label={t("agentHub.searchPlaceholder")}
-                                        className="!h-11 min-w-0 flex-1 !px-3 !text-base"
-                                        prefix={<Search className="mr-1 size-4 text-stone-400" />}
-                                        placeholder={t("agentHub.searchPlaceholder")}
-                                        value={query}
-                                        onChange={(event) => setQuery(event.target.value)}
-                                        allowClear
-                                    />
-                                    <Button type="primary" size="large" className="!h-11 !shrink-0 !rounded-xl !px-5" icon={<Bot className="size-4" />} onClick={openAgent}>
-                                        {connected ? t("agentHub.openChat") : t("agentHub.connectAgent")}
-                                    </Button>
+            <div className="relative mx-auto max-w-[1400px] px-4 pb-12 sm:px-6 lg:px-10">
+                <motion.section
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                    className="relative flex min-h-[330px] flex-col items-center justify-center pb-8 pt-9 text-center"
+                >
+                    <button
+                        type="button"
+                        className="absolute right-0 top-5 hidden h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition hover:bg-white/5 sm:flex"
+                        style={{ borderColor: theme.node.stroke, color: theme.node.muted }}
+                        onClick={() => openAgent(connected ? "chat" : "setup")}
+                    >
+                        <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-400" : enabled ? "bg-amber-400" : "bg-stone-500"}`} />
+                        {connected ? t("agentHub.connected") : enabled ? t("agentHub.connecting") : t("agentHub.disconnected")}
+                        <ChevronRight className="size-3" />
+                    </button>
+
+                    <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: theme.node.faint }}>
+                        <WandSparkles className="size-3.5" />
+                        LibTV Agent
+                        <span className="rounded border px-1.5 py-0.5 text-[9px] tracking-[0.12em]" style={{ borderColor: theme.node.stroke }}>BETA</span>
+                    </div>
+                    <h1 className="text-[28px] font-semibold tracking-[-0.04em] sm:text-[34px]">{t("agentHub.heroTitle")}</h1>
+
+                    <div
+                        className="mt-7 w-full max-w-[860px] overflow-hidden rounded-[18px] border text-left shadow-[0_24px_80px_-58px_rgba(0,0,0,.95)]"
+                        style={{ background: theme.node.panel, borderColor: theme.node.stroke }}
+                    >
+                        <div className="px-4 pb-1 pt-4">
+                            {selectedSkills.length ? (
+                                <div className="mb-2 flex flex-wrap gap-1.5">
+                                    {selectedSkills.map((skill) => (
+                                        <button
+                                            key={agentSkillKey(skill)}
+                                            type="button"
+                                            className="inline-flex h-7 items-center gap-1.5 rounded-lg border px-2 text-[11px] transition hover:bg-white/5"
+                                            style={{ borderColor: theme.node.stroke, background: theme.toolbar.activeBg, color: theme.node.text }}
+                                            onClick={() => selectSkill(skill)}
+                                        >
+                                            <Sparkles className="size-3" />
+                                            {agentSkillDisplayName(skill)}
+                                            <X className="size-3 opacity-50" />
+                                        </button>
+                                    ))}
                                 </div>
-                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 pb-1.5 pt-1 text-[11px] text-stone-400 dark:text-stone-500">
-                                    <span>{t("agentHub.searchHint")}</span>
-                                    <span>{t("agentHub.resultCount", { count: visibleSkills.length })}</span>
-                                </div>
-                            </div>
+                            ) : null}
+                            <Input.TextArea
+                                id="agent-skill-composer"
+                                variant="borderless"
+                                autoSize={{ minRows: 2, maxRows: 5 }}
+                                className="!resize-none !border-0 !bg-transparent !px-0 !py-0 !text-sm !leading-6 !shadow-none"
+                                style={{ color: theme.node.text }}
+                                placeholder={t("agentHub.composerPlaceholder")}
+                                value={prompt}
+                                onChange={(event) => setAgentState({ prompt: event.target.value })}
+                                onKeyDown={(event) => {
+                                    if (event.key === "Enter" && !event.shiftKey) {
+                                        event.preventDefault();
+                                        openComposerTarget();
+                                    }
+                                }}
+                            />
                         </div>
 
-                        <div className="grid content-start gap-3">
-                            <div className="rounded-2xl border border-stone-200/90 bg-stone-50/80 p-4 dark:border-stone-800 dark:bg-stone-900/55">
-                                <div className="flex items-center justify-between gap-3">
-                                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-stone-400 dark:text-stone-500">{t("agentHub.agentStatus")}</span>
-                                    <span className={`size-2 rounded-full ${connected ? "bg-teal-500" : enabled ? "bg-amber-500" : "bg-stone-300 dark:bg-stone-600"}`} />
-                                </div>
-                                <div className="mt-3 flex items-start gap-3">
-                                    <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${connected ? "bg-teal-500/10 text-teal-700 dark:text-teal-400" : "bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400"}`}>
-                                        {connected ? <CheckCircle2 className="size-5" /> : enabled ? <LoaderCircle className="size-5 animate-spin" /> : <Bot className="size-5" />}
-                                    </span>
-                                    <div className="min-w-0">
-                                        <div className="text-sm font-semibold text-stone-950 dark:text-stone-100">{t(connected ? "agentHub.connected" : enabled ? "agentHub.connecting" : "agentHub.disconnected")}</div>
-                                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500 dark:text-stone-400">{connectError || t(connected ? "agentHub.connectedHint" : "agentHub.disconnectedHint")}</div>
-                                    </div>
-                                </div>
-                                <div className="mt-4 grid grid-cols-3 gap-2">
-                                    <Metric label={t("agentHub.metrics.skills")} value={availableSkills.length} />
-                                    <Metric label={t("agentHub.metrics.enabled")} value={enabledCount} />
-                                    <Metric label={t("agentHub.metrics.favorites")} value={favoriteCount} />
-                                </div>
-                                <Button className="mt-3 !h-9 !rounded-xl" block icon={connected ? <ArrowRight className="size-3.5" /> : <Bot className="size-3.5" />} onClick={openAgent}>
-                                    {connected ? t("agentHub.openChat") : t("agentHub.openSetup")}
-                                </Button>
-                            </div>
+                        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-3 pt-2">
+                            <ComposerButton theme={theme} icon={<ImagePlus className="size-3.5" />} label={t("agentHub.addAttachment")} onClick={() => openAgent(connected ? "chat" : "setup")} />
+                            <ComposerButton
+                                theme={theme}
+                                icon={<Cpu className="size-3.5" />}
+                                label={currentModel?.displayName || currentModel?.model || t("agentHub.selectModel")}
+                                onClick={() => setModelPickerOpen(true)}
+                            />
+                            <ComposerButton
+                                theme={theme}
+                                icon={<Sparkles className="size-3.5" />}
+                                label={`${t("agentHub.selectSkill")}${selectedSkills.length ? ` · ${selectedSkills.length}` : ""}`}
+                                onClick={() => document.getElementById("agent-skill-library")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                            />
+                            {provider === "codex" ? (
+                                <ComposerButton
+                                    theme={theme}
+                                    icon={confirmTools ? <Hand className="size-3.5" /> : <Zap className="size-3.5" />}
+                                    label={t(confirmTools ? "agentHub.manualMode" : "agentHub.automaticMode")}
+                                    onClick={() => setModePickerOpen(true)}
+                                />
+                            ) : null}
                             <button
                                 type="button"
-                                className="flex items-center gap-3 rounded-2xl border border-dashed border-stone-300 bg-white/55 px-3.5 py-3 text-left transition hover:border-stone-400 hover:bg-white dark:border-stone-700 dark:bg-stone-950/40 dark:hover:border-stone-600 dark:hover:bg-stone-900/60"
-                                onClick={openPlugins}
+                                className="ml-auto grid size-9 shrink-0 place-items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-30"
+                                style={{ background: theme.node.text, color: theme.node.panel }}
+                                disabled={!canSubmit}
+                                aria-label={t("agentHub.openConversation")}
+                                onClick={openComposerTarget}
                             >
-                                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400">
-                                    <ShieldCheck className="size-4" />
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                    <span className="block text-xs font-medium text-stone-900 dark:text-stone-100">{t(pluginHubEnabled ? "agentHub.pluginHub" : "agentHub.installPlugin")}</span>
-                                    <span className="mt-0.5 block text-[11px] leading-4 text-stone-500 dark:text-stone-400">{t(pluginHubEnabled ? "agentHub.pluginHubHint" : "agentHub.installPluginHint")}</span>
-                                </span>
-                                <ArrowRight className="size-3.5 shrink-0 text-stone-400" />
+                                <ArrowRight className="size-4" />
                             </button>
                         </div>
                     </div>
-                </section>
+                </motion.section>
 
-                <section className="mt-6 rounded-[24px] border border-stone-200/80 bg-white/65 p-4 sm:p-5 dark:border-stone-800/80 dark:bg-stone-950/45">
+                <section id="agent-skill-library" className="scroll-mt-5 border-t pt-6" style={{ borderColor: theme.node.stroke }}>
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="tablist" aria-label={t("agentHub.libraryLabel")}>
+                        <div className="flex items-center gap-5" role="tablist" aria-label={t("agentHub.libraryLabel")}>
                             {collectionItems.map((item) => {
                                 const active = collection === item.key;
                                 return (
@@ -192,14 +315,72 @@ function AgentSkillHubPage() {
                                         type="button"
                                         role="tab"
                                         aria-selected={active}
-                                        className={`inline-flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium transition ${active ? "bg-stone-950 !text-white shadow-sm dark:bg-stone-100 dark:!text-stone-950" : "!text-stone-500 hover:bg-stone-100 hover:!text-stone-950 dark:!text-stone-400 dark:hover:bg-white/[0.06] dark:hover:!text-stone-100"}`}
+                                        className="relative h-9 text-[15px] font-medium transition"
+                                        style={{ color: active ? theme.node.text : theme.node.muted }}
                                         onClick={() => setCollection(item.key)}
+                                    >
+                                        <span className={active ? "font-semibold" : ""}>{item.label}</span>
+                                        <span className="ml-1.5 text-[11px] tabular-nums opacity-45">{item.count}</span>
+                                        {active ? <span className="absolute inset-x-0 -bottom-[1px] h-0.5 rounded-full" style={{ background: theme.node.text }} /> : null}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <Input
+                            allowClear
+                            variant="borderless"
+                            prefix={<Search className="size-3.5 opacity-45" />}
+                            placeholder={t("agentHub.searchPlaceholder")}
+                            className="!h-9 !w-full !rounded-lg !border !px-3 xl:!w-[280px]"
+                            style={{ borderColor: theme.node.stroke, background: theme.node.panel, color: theme.node.text }}
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                        />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-1.5">
+                        {categoryOptions.map((item) => {
+                            const active = category === item.value;
+                            return (
+                                <button
+                                    key={item.value}
+                                    type="button"
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[12px] transition"
+                                    style={{
+                                        background: active ? theme.toolbar.activeBg : "transparent",
+                                        borderColor: active ? theme.node.stroke : "transparent",
+                                        color: active ? theme.node.text : theme.node.muted,
+                                    }}
+                                    onClick={() => setCategory(item.value)}
+                                >
+                                    {item.icon}
+                                    {item.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="mr-1 text-[10px] font-medium uppercase tracking-[0.12em]" style={{ color: theme.node.faint }}>
+                                {t("agentHub.source")}
+                            </span>
+                            {scopeOptions.map((item) => {
+                                const active = scope === item.value;
+                                return (
+                                    <button
+                                        key={item.value}
+                                        type="button"
+                                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[12px] transition"
+                                        style={{
+                                            background: active ? theme.toolbar.activeBg : "transparent",
+                                            borderColor: active ? theme.node.stroke : "transparent",
+                                            color: active ? theme.node.text : theme.node.muted,
+                                        }}
+                                        onClick={() => setScope(item.value)}
                                     >
                                         {item.icon}
                                         {item.label}
-                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/15 text-white dark:bg-stone-950/10 dark:text-stone-700" : "bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400"}`}>
-                                            {item.count}
-                                        </span>
                                     </button>
                                 );
                             })}
@@ -207,193 +388,711 @@ function AgentSkillHubPage() {
                         <div className="flex flex-wrap items-center gap-2">
                             <button
                                 type="button"
-                                className={`h-8 rounded-lg px-2.5 text-[11px] font-medium transition ${scope === "all" ? "bg-stone-200/80 !text-stone-950 dark:bg-stone-800 dark:!text-stone-100" : "!text-stone-500 hover:bg-stone-100 dark:!text-stone-400 dark:hover:bg-white/[0.06]"}`}
-                                onClick={() => setScope("all")}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[11px] transition"
+                                style={{ borderColor: enabledOnly ? theme.node.stroke : "transparent", background: enabledOnly ? theme.toolbar.activeBg : "transparent", color: enabledOnly ? theme.node.text : theme.node.muted }}
+                                onClick={() => setEnabledOnly((value) => !value)}
                             >
-                                {t("agent.skillManager.scopes.all")}
-                            </button>
-                            {scopeFilters.map((item) => (
-                                <button
-                                    key={item}
-                                    type="button"
-                                    className={`h-8 rounded-lg px-2.5 text-[11px] font-medium transition ${scope === item ? "bg-stone-200/80 !text-stone-950 dark:bg-stone-800 dark:!text-stone-100" : "!text-stone-500 hover:bg-stone-100 dark:!text-stone-400 dark:hover:bg-white/[0.06]"}`}
-                                    onClick={() => setScope(item)}
-                                >
-                                    {t(`agent.skillManager.scopes.${item}`)}
-                                </button>
-                            ))}
-                            <span className="mx-1 hidden h-4 w-px bg-stone-200 sm:block dark:bg-stone-800" />
-                            <label className="inline-flex items-center gap-2 text-[11px] text-stone-500 dark:text-stone-400">
-                                <Switch size="small" checked={enabledOnly} onChange={setEnabledOnly} />
+                                {enabledOnly ? <Check className="size-3.5" /> : <MousePointerClick className="size-3.5" />}
                                 {t("agentHub.enabledOnly")}
-                            </label>
-                            <Button type="text" size="small" className="!h-8 !px-2" disabled={!connected || loading} icon={<RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />} onClick={() => void loadSkills(endpoint, token, true)}>
+                            </button>
+                            <button
+                                type="button"
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] transition hover:bg-white/5 disabled:opacity-40"
+                                style={{ color: theme.node.muted }}
+                                disabled={!connected || loading}
+                                onClick={() => void loadSkills(endpoint, token, true)}
+                            >
+                                <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
                                 {t("agentHub.refresh")}
-                            </Button>
+                            </button>
                         </div>
                     </div>
 
                     {errors.length ? (
-                        <details className="mt-4 rounded-xl border border-amber-200/80 bg-amber-50/70 px-3.5 py-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+                        <details className="mt-4 rounded-xl border px-3.5 py-3 text-xs" style={{ borderColor: theme.node.stroke, background: theme.node.panel }}>
                             <summary className="cursor-pointer font-medium">{t("agentHub.errors", { count: errors.length })}</summary>
-                            <div className="thin-scrollbar mt-2 max-h-32 space-y-1 overflow-y-auto pr-2 font-mono text-[11px] leading-5">
-                                {errors.map((error, index) => (
-                                    <div key={`${index}:${error}`}>{error}</div>
-                                ))}
+                            <div className="thin-scrollbar mt-2 max-h-32 space-y-1 overflow-y-auto pr-2 font-mono text-[11px] leading-5" style={{ color: theme.node.muted }}>
+                                {errors.map((error, index) => <div key={`${index}:${error}`}>{error}</div>)}
                             </div>
                         </details>
                     ) : null}
 
                     <div className="mt-5">
                         {!connected ? (
-                            <ConnectionGate connecting={enabled} error={connectError} onOpenAgent={openAgent} onOpenPlugins={openPlugins} pluginHubEnabled={pluginHubEnabled} />
+                            <ConnectionGate
+                                connecting={enabled}
+                                error={connectError}
+                                onOpenAgent={() => openAgent("setup")}
+                                onReconnect={reconnectAgentWithDiscovery}
+                                theme={theme}
+                            />
                         ) : loading && !loaded ? (
-                            <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-stone-500 dark:text-stone-400">
+                            <div className="flex min-h-52 items-center justify-center gap-2 text-sm" style={{ color: theme.node.muted }}>
                                 <LoaderCircle className="size-4 animate-spin" />
                                 {t("agentHub.loading")}
                             </div>
                         ) : visibleSkills.length ? (
-                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                {visibleSkills.map((skill) => (
+                            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+                                {visibleSkills.map((skill, index) => (
                                     <SkillCard
                                         key={agentSkillKey(skill)}
                                         skill={skill}
                                         provider={provider}
-                                        selected={selectedSkills.some((item) => agentSkillKey(item) === agentSkillKey(skill))}
+                                        theme={theme}
+                                        index={index}
+                                        selected={selectedKeys.has(agentSkillKey(skill))}
                                         favorite={favoriteKeys.includes(agentSkillKey(skill))}
                                         favoriteReady={favoritesLoaded}
+                                        onOpen={() => setSelectedSkill(skill)}
+                                        onSelect={() => selectSkill(skill)}
                                         onToggleFavorite={() => toggleFavorite(skill)}
                                         onUse={() => useSkill(skill)}
                                     />
                                 ))}
                             </div>
                         ) : (
-                            <LibraryEmpty collection={collection} collectionEmpty={collectionEmpty} filtered={hasFilter} onReset={resetFilters} onBrowseAll={browseAllSkills} />
+                            <LibraryEmpty
+                                collection={collection}
+                                collectionEmpty={collectionEmpty}
+                                filtered={hasFilter}
+                                onReset={resetFilters}
+                                onBrowseAll={browseAllSkills}
+                                theme={theme}
+                            />
                         )}
                     </div>
                 </section>
             </div>
+
+            {selectedSkill ? (
+                <SkillDetailsDialog
+                    skill={selectedSkill}
+                    provider={provider}
+                    theme={theme}
+                    connected={connected}
+                    endpoint={endpoint}
+                    token={token}
+                    selected={selectedKeys.has(agentSkillKey(selectedSkill))}
+                    favorite={favoriteKeys.includes(agentSkillKey(selectedSkill))}
+                    onFavorite={() => toggleFavorite(selectedSkill)}
+                    onUse={() => {
+                        useSkill(selectedSkill);
+                        setSelectedSkill(null);
+                    }}
+                    onClose={() => setSelectedSkill(null)}
+                />
+            ) : null}
+            {modelPickerOpen ? (
+                <ModelPickerDialog
+                    theme={theme}
+                    models={models}
+                    model={model}
+                    provider={provider}
+                    connected={connected}
+                    onSelect={(nextModel) => {
+                        changeModel(nextModel);
+                        setModelPickerOpen(false);
+                    }}
+                    onOpenAgent={() => {
+                        setModelPickerOpen(false);
+                        openAgent(connected ? "chat" : "setup");
+                    }}
+                    onClose={() => setModelPickerOpen(false)}
+                />
+            ) : null}
+            {modePickerOpen ? (
+                <GenerationModeDialog
+                    theme={theme}
+                    manual={confirmTools}
+                    onSelect={(manual) => {
+                        setAgentState({ confirmTools: manual });
+                        setModePickerOpen(false);
+                    }}
+                    onClose={() => setModePickerOpen(false)}
+                />
+            ) : null}
         </main>
     );
 }
 
-function SkillCard({ skill, provider, selected, favorite, favoriteReady, onToggleFavorite, onUse }: { skill: AgentSkillSummary; provider: "codex" | "claude"; selected: boolean; favorite: boolean; favoriteReady: boolean; onToggleFavorite: () => void; onUse: () => void }) {
-    const { t } = useTranslation();
-    const Icon = scopeIcon(skill.scope);
-    const description = agentSkillDescription(skill);
+function ComposerButton({ theme, icon, label, onClick }: { theme: CanvasTheme; icon: ReactNode; label: string; onClick: () => void }) {
     return (
-        <article
-            className={`group relative flex min-h-56 flex-col overflow-hidden rounded-2xl border bg-white/75 p-4 transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-[0_18px_50px_-36px_rgba(28,25,23,.55)] dark:bg-stone-950/55 dark:hover:border-stone-700 ${selected ? "border-teal-300 dark:border-teal-800" : "border-stone-200/80 dark:border-stone-800"}`}
+        <button
+            type="button"
+            className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition hover:bg-white/5"
+            style={{ color: theme.node.muted }}
+            onClick={onClick}
         >
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-[radial-gradient(circle_at_15%_0%,rgba(245,158,11,.1),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(20,184,166,.08),transparent_50%)]" />
-            <div className="relative flex items-start justify-between gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-stone-200/80 bg-white text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">
-                    <Icon className="size-4.5" />
-                </span>
-                <Tooltip title={t(favorite ? "agentHub.unfavorite" : "agentHub.favorite")}>
-                    <button
-                        type="button"
-                        className={`grid size-8 place-items-center rounded-lg transition ${favorite ? "!text-amber-500 hover:bg-amber-500/10" : "!text-stone-400 hover:bg-stone-100 hover:!text-stone-700 dark:hover:bg-white/[0.06] dark:hover:!text-stone-200"} disabled:cursor-not-allowed disabled:opacity-40`}
-                        disabled={!favoriteReady}
-                        aria-label={t(favorite ? "agentHub.unfavorite" : "agentHub.favorite")}
-                        aria-pressed={favorite}
-                        onClick={onToggleFavorite}
-                    >
-                        <Star className={`size-4 ${favorite ? "fill-current" : ""}`} />
-                    </button>
-                </Tooltip>
-            </div>
-            <div className="relative mt-4 min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
-                    <h3 className="truncate text-sm font-semibold text-stone-950 dark:text-stone-100">{agentSkillDisplayName(skill)}</h3>
-                    {selected ? <CheckCircle2 className="size-3.5 shrink-0 text-teal-600 dark:text-teal-400" /> : null}
-                </div>
-                <div className="mt-1 truncate font-mono text-[10px] text-stone-400 dark:text-stone-500" title={skill.path}>
-                    {agentSkillMarker(skill, provider)}
-                </div>
-                <p className="mt-3 line-clamp-3 min-h-[60px] text-xs leading-5 text-stone-500 dark:text-stone-400">{description || t("agentHub.noDescription")}</p>
-            </div>
-            <div className="relative mt-auto flex items-end justify-between gap-3 pt-4">
-                <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] text-stone-500 dark:bg-stone-800 dark:text-stone-400">{t(`agent.skillManager.scopes.${skill.scope}`)}</span>
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] ${skill.enabled ? "bg-teal-500/10 text-teal-700 dark:text-teal-400" : "bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400"}`}>
-                            <span className={`size-1 rounded-full ${skill.enabled ? "bg-teal-500" : "bg-stone-400"}`} />
-                            {t(skill.enabled ? "agent.skillManager.enabled" : "agent.skillManager.disabled")}
-                        </span>
-                        {skill.managed ? <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">{t("agentHub.managed")}</span> : null}
-                    </div>
-                </div>
-                <Button type="primary" size="small" className="!h-8 !shrink-0 !rounded-lg" disabled={!skill.enabled} icon={selected ? <CheckCircle2 className="size-3.5" /> : <ArrowRight className="size-3.5" />} onClick={onUse}>
-                    {t(selected ? "agentHub.selected" : "agentHub.use")}
-                </Button>
-            </div>
-        </article>
+            {icon}
+            <span className="max-w-40 truncate">{label}</span>
+        </button>
     );
 }
 
-function ConnectionGate({ connecting, error, onOpenAgent, onOpenPlugins, pluginHubEnabled }: { connecting: boolean; error: string; onOpenAgent: () => void; onOpenPlugins: () => void; pluginHubEnabled: boolean }) {
+function SkillCard({
+    skill,
+    provider,
+    theme,
+    index,
+    selected,
+    favorite,
+    favoriteReady,
+    onOpen,
+    onSelect,
+    onToggleFavorite,
+    onUse,
+}: {
+    skill: AgentSkillSummary;
+    provider: "codex" | "claude";
+    theme: CanvasTheme;
+    index: number;
+    selected: boolean;
+    favorite: boolean;
+    favoriteReady: boolean;
+    onOpen: () => void;
+    onSelect: () => void;
+    onToggleFavorite: () => void;
+    onUse: () => void;
+}) {
+    const { t } = useTranslation();
+    const Icon = skillIcon(skill);
+    const accent = skillAccent(skill);
+    const description = agentSkillDescription(skill);
+
+    return (
+        <motion.article
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: Math.min(index * 0.025, 0.18), duration: 0.28 }}
+            role="button"
+            tabIndex={0}
+            className="group flex min-h-[132px] cursor-pointer gap-3 rounded-2xl border p-3 text-left transition hover:-translate-y-0.5"
+            style={{
+                borderColor: selected ? accent : theme.node.stroke,
+                background: theme.node.panel,
+                color: theme.node.text,
+                boxShadow: selected ? `0 0 0 1px ${accent}55` : undefined,
+            }}
+            onClick={onOpen}
+            onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpen();
+                }
+            }}
+        >
+            <div
+                className="relative hidden w-[112px] shrink-0 overflow-hidden rounded-xl border sm:block"
+                style={{
+                    borderColor: theme.node.stroke,
+                    background: `radial-gradient(circle at 70% 18%, ${accent}66, transparent 36%), linear-gradient(145deg, color-mix(in srgb, ${accent} 36%, ${theme.node.fill}), ${theme.node.fill})`,
+                }}
+            >
+                <div className="absolute inset-0 opacity-30" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,.16) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.12) 1px, transparent 1px)", backgroundSize: "18px 18px" }} />
+                <span className="absolute left-2.5 top-2.5 rounded bg-black/35 px-1.5 py-0.5 text-[9px] font-medium text-white backdrop-blur">SKILL</span>
+                <span className="absolute bottom-2.5 left-2.5 grid size-9 place-items-center rounded-xl border border-white/20 bg-black/25 text-white backdrop-blur">
+                    <Icon className="size-4" />
+                </span>
+                <span className="absolute bottom-3 right-2 max-w-[66px] truncate font-mono text-[9px] text-white/60" title={skill.path}>
+                    {shortSkillPath(skill.path)}
+                </span>
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex min-w-0 items-start gap-2">
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={onOpen}>
+                        <h3 className="truncate text-[14px] font-semibold leading-5">{agentSkillDisplayName(skill)}</h3>
+                        <p className="mt-1 line-clamp-2 min-h-8 text-[11px] leading-4" style={{ color: theme.node.muted }}>
+                            {description || t("agentHub.noDescription")}
+                        </p>
+                    </button>
+                    <button
+                        type="button"
+                        className="grid size-8 shrink-0 place-items-center rounded-lg transition hover:bg-white/5 disabled:opacity-40"
+                        style={{ color: favorite ? "#f59e0b" : theme.node.faint }}
+                        disabled={!favoriteReady}
+                        aria-label={t(favorite ? "agentHub.unfavorite" : "agentHub.favorite")}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onToggleFavorite();
+                        }}
+                    >
+                        <Star className={`size-4 ${favorite ? "fill-current" : ""}`} />
+                    </button>
+                </div>
+
+                <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                    <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[10px]" style={{ color: theme.node.muted }}>
+                            <span className="min-w-0 truncate font-mono">{agentSkillMarker(skill, provider)}</span>
+                            <span className="size-0.5 rounded-full bg-current opacity-40" />
+                            <span className="shrink-0">{t(`agent.skillManager.scopes.${skill.scope}`)}</span>
+                            {skill.enabled ? <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" title={t("agent.skillManager.enabled")} /> : null}
+                        </div>
+                        {selected ? (
+                            <div className="mt-1 flex items-center gap-1 text-[10px]" style={{ color: accent }}>
+                                <CheckCircle2 className="size-3" />
+                                {t("agentHub.selected")}
+                            </div>
+                        ) : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <button
+                            type="button"
+                            className="hidden h-7 items-center rounded-lg px-2 text-[10px] transition hover:bg-white/5 sm:inline-flex"
+                            style={{ color: theme.node.muted }}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onSelect();
+                            }}
+                        >
+                            {t(selected ? "agentHub.remove" : "agentHub.select")}
+                        </button>
+                        <button
+                            type="button"
+                            className="inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[10px] font-semibold transition disabled:opacity-40"
+                            style={{ background: accent, color: "#ffffff" }}
+                            disabled={!skill.enabled}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onUse();
+                            }}
+                        >
+                            {t("agentHub.use")}
+                            <ChevronRight className="size-3" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </motion.article>
+    );
+}
+
+function ConnectionGate({
+    connecting,
+    error,
+    onOpenAgent,
+    onReconnect,
+    theme,
+}: {
+    connecting: boolean;
+    error: string;
+    onOpenAgent: () => void;
+    onReconnect: () => void;
+    theme: CanvasTheme;
+}) {
     const { t } = useTranslation();
     return (
-        <div className="relative overflow-hidden rounded-2xl border border-dashed border-stone-300 bg-stone-50/55 px-5 py-8 text-center dark:border-stone-700 dark:bg-stone-900/35">
-            <div className="pointer-events-none absolute left-1/2 top-0 size-48 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-400/10 blur-3xl" />
-            <span className="relative mx-auto grid size-12 place-items-center rounded-2xl border border-stone-200 bg-white text-stone-500 shadow-sm dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">
+        <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed px-5 text-center" style={{ borderColor: theme.node.stroke }}>
+            <span className="grid size-12 place-items-center rounded-2xl border" style={{ borderColor: theme.node.stroke, background: theme.node.panel, color: theme.node.muted }}>
                 {connecting ? <LoaderCircle className="size-5 animate-spin" /> : <Bot className="size-5" />}
             </span>
-            <h2 className="relative mt-4 text-base font-semibold text-stone-950 dark:text-stone-100">{t(connecting ? "agentHub.connectingTitle" : "agentHub.connectTitle")}</h2>
-            <p className="relative mx-auto mt-2 max-w-xl text-xs leading-5 text-stone-500 dark:text-stone-400">{error || t(connecting ? "agentHub.connectingDescription" : "agentHub.connectDescription")}</p>
-            <div className="relative mt-5 flex flex-wrap items-center justify-center gap-2">
-                <Button type="primary" icon={<ArrowRight className="size-3.5" />} onClick={onOpenAgent}>
+            <h2 className="mt-4 text-base font-semibold">{t(connecting ? "agentHub.connectingTitle" : "agentHub.connectTitle")}</h2>
+            <p className="mt-2 max-w-xl text-xs leading-5" style={{ color: theme.node.muted }}>{error || t(connecting ? "agentHub.connectingDescription" : "agentHub.connectDescription")}</p>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                <button type="button" className="inline-flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-semibold" style={{ background: theme.node.text, color: theme.node.panel }} onClick={onOpenAgent}>
                     {t("agentHub.openSetup")}
-                </Button>
-                <Button icon={<ShieldCheck className="size-3.5" />} onClick={onOpenPlugins}>
-                    {t(pluginHubEnabled ? "agentHub.pluginHub" : "agentHub.installPlugin")}
-                </Button>
-            </div>
-            <div className="relative mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-stone-400 dark:text-stone-500">
-                <span>{t("agentHub.noOldSkills")}</span>
-                <span>{t("agentHub.noModelRequest")}</span>
+                    <ArrowRight className="size-3.5" />
+                </button>
+                {error && !connecting ? (
+                    <button type="button" className="inline-flex h-9 items-center gap-2 rounded-xl border px-4 text-xs font-medium" style={{ borderColor: theme.node.stroke }} onClick={onReconnect}>
+                        <RefreshCw className="size-3.5" />
+                        {t("agentHub.reconnect")}
+                    </button>
+                ) : null}
             </div>
         </div>
     );
 }
 
-function LibraryEmpty({ collection, collectionEmpty, filtered, onReset, onBrowseAll }: { collection: AgentSkillCollection; collectionEmpty: boolean; filtered: boolean; onReset: () => void; onBrowseAll: () => void }) {
+function LibraryEmpty({
+    collection,
+    collectionEmpty,
+    filtered,
+    onReset,
+    onBrowseAll,
+    theme,
+}: {
+    collection: AgentSkillCollection;
+    collectionEmpty: boolean;
+    filtered: boolean;
+    onReset: () => void;
+    onBrowseAll: () => void;
+    theme: CanvasTheme;
+}) {
     const { t } = useTranslation();
     const noMatch = filtered && !collectionEmpty;
     const title = noMatch ? "agentHub.emptyNoMatch" : collection === "favorites" ? "agentHub.emptyFavorites" : collection === "mine" ? "agentHub.emptyMine" : "agentHub.emptyTitle";
     return (
-        <div className="flex min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-stone-300 px-4 text-center dark:border-stone-700">
-            <span className="grid size-10 place-items-center rounded-xl bg-stone-100 text-stone-400 dark:bg-stone-800 dark:text-stone-500">
+        <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed px-4 text-center" style={{ borderColor: theme.node.stroke }}>
+            <span className="grid size-10 place-items-center rounded-xl" style={{ background: theme.node.panel, color: theme.node.muted }}>
                 <Sparkles className="size-4" />
             </span>
-            <div className="mt-3 text-sm font-medium text-stone-800 dark:text-stone-200">{t(title)}</div>
-            <div className="mt-1 max-w-md text-xs leading-5 text-stone-500 dark:text-stone-400">{t(noMatch ? "agentHub.emptyNoMatchHint" : "agentHub.emptyHint")}</div>
+            <div className="mt-3 text-sm font-medium">{t(title)}</div>
+            <div className="mt-1 max-w-md text-xs leading-5" style={{ color: theme.node.muted }}>{t(noMatch ? "agentHub.emptyNoMatchHint" : "agentHub.emptyHint")}</div>
             {collectionEmpty && collection !== "all" ? (
-                <Button size="small" className="mt-4" onClick={onBrowseAll}>
-                    {t("agentHub.browseAll")}
-                </Button>
+                <button type="button" className="mt-4 h-8 rounded-lg border px-3 text-xs" style={{ borderColor: theme.node.stroke }} onClick={onBrowseAll}>{t("agentHub.browseAll")}</button>
             ) : noMatch ? (
-                <Button size="small" className="mt-4" onClick={onReset}>
-                    {t("agentHub.resetFilter")}
-                </Button>
+                <button type="button" className="mt-4 h-8 rounded-lg border px-3 text-xs" style={{ borderColor: theme.node.stroke }} onClick={onReset}>{t("agentHub.resetFilter")}</button>
             ) : null}
         </div>
     );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function SkillDetailsDialog({
+    skill,
+    provider,
+    theme,
+    connected,
+    endpoint,
+    token,
+    selected,
+    favorite,
+    onFavorite,
+    onUse,
+    onClose,
+}: {
+    skill: AgentSkillSummary;
+    provider: "codex" | "claude";
+    theme: CanvasTheme;
+    connected: boolean;
+    endpoint: string;
+    token: string;
+    selected: boolean;
+    favorite: boolean;
+    onFavorite: () => void;
+    onUse: () => void;
+    onClose: () => void;
+}) {
+    const { t } = useTranslation();
+    const [detail, setDetail] = useState<AgentSkillDetail | null>(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState("");
+    const Icon = skillIcon(skill);
+    const accent = skillAccent(skill);
+
+    useEffect(() => {
+        setDetail(null);
+        setDetailError("");
+        if (!connected || provider !== "codex" || !skill.managed) return;
+        let cancelled = false;
+        setDetailLoading(true);
+        void fetchCodexSkill(endpoint, token, skill.name)
+            .then((response) => {
+                if (!cancelled) setDetail(response.data || null);
+            })
+            .catch((error: unknown) => {
+                if (!cancelled) setDetailError(error instanceof Error ? error.message : String(error));
+            })
+            .finally(() => {
+                if (!cancelled) setDetailLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [connected, endpoint, provider, skill.managed, skill.name, token]);
+
     return (
-        <div className="rounded-xl bg-white/75 px-2 py-2 text-center dark:bg-stone-950/55">
-            <div className="text-sm font-semibold text-stone-900 dark:text-stone-100">{value}</div>
-            <div className="mt-0.5 truncate text-[9px] text-stone-400 dark:text-stone-500">{label}</div>
+        <DialogFrame
+            theme={theme}
+            width="max-w-[860px]"
+            title={agentSkillDisplayName(skill)}
+            subtitle={agentSkillDescription(skill)}
+            icon={<span className="grid size-11 place-items-center rounded-2xl" style={{ background: `${accent}22`, color: accent }}><Icon className="size-5" /></span>}
+            onClose={onClose}
+            footer={
+                <>
+                    <button type="button" className="inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs" style={{ borderColor: theme.node.stroke, color: favorite ? "#f59e0b" : theme.node.muted }} onClick={onFavorite}>
+                        <Star className={`size-3.5 ${favorite ? "fill-current" : ""}`} />
+                        {t(favorite ? "agentHub.unfavorite" : "agentHub.favorite")}
+                    </button>
+                    <button type="button" className="inline-flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-semibold disabled:opacity-40" style={{ background: accent, color: "#ffffff" }} disabled={!skill.enabled} onClick={onUse}>
+                        {t(selected ? "agentHub.openConversation" : "agentHub.use")}
+                        <ArrowRight className="size-3.5" />
+                    </button>
+                </>
+            }
+        >
+            <div className="p-5 pb-0">
+                <div
+                    className="relative aspect-[16/6] min-h-36 overflow-hidden rounded-xl border"
+                    style={{
+                        borderColor: theme.node.stroke,
+                        background: `radial-gradient(circle at 78% 18%, ${accent}66, transparent 34%), linear-gradient(135deg, color-mix(in srgb, ${accent} 32%, ${theme.node.fill}), ${theme.node.fill})`,
+                    }}
+                >
+                    <div
+                        className="absolute inset-0 opacity-25"
+                        style={{
+                            backgroundImage: "linear-gradient(rgba(255,255,255,.14) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.12) 1px, transparent 1px)",
+                            backgroundSize: "22px 22px",
+                        }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="grid size-16 place-items-center rounded-2xl border border-white/20 bg-black/20 text-white backdrop-blur">
+                            <Icon className="size-7" />
+                        </span>
+                    </div>
+                    <div className="absolute inset-x-4 bottom-3 flex items-end justify-between gap-3 text-white">
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-white/65">LOCAL SKILL</div>
+                            <div className="mt-1 truncate text-lg font-semibold">{agentSkillDisplayName(skill)}</div>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-white/20 bg-black/25 px-2.5 py-1 text-[10px] text-white/80 backdrop-blur">
+                            {provider === "codex" ? "Codex" : "Claude"}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div className="grid gap-5 p-5 sm:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="min-w-0">
+                    <DetailLabel theme={theme}>{t("agentHub.detailDescription")}</DetailLabel>
+                    <p className="mt-2 text-sm leading-6" style={{ color: theme.node.muted }}>{skill.description || agentSkillDescription(skill) || t("agentHub.noDescription")}</p>
+
+                    <DetailLabel theme={theme} className="mt-6">{t("agentHub.howToUse")}</DetailLabel>
+                    {detailLoading ? (
+                        <div className="mt-2 flex items-center gap-2 text-xs" style={{ color: theme.node.muted }}><LoaderCircle className="size-3.5 animate-spin" />{t("agentHub.detailLoading")}</div>
+                    ) : detail?.instructions ? (
+                        <pre className="thin-scrollbar mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl border p-3 font-mono text-[11px] leading-5" style={{ borderColor: theme.node.stroke, background: theme.canvas.background, color: theme.node.muted }}>{detail.instructions}</pre>
+                    ) : (
+                        <p className="mt-2 text-xs leading-5" style={{ color: theme.node.muted }}>{detailError || t("agentHub.detailHint")}</p>
+                    )}
+                </div>
+                <aside className="space-y-2">
+                    <InfoRow theme={theme} label={t("agentHub.source")} value={t(`agent.skillManager.scopes.${skill.scope}`)} />
+                    <InfoRow theme={theme} label={t("agentHub.provider")} value={provider === "codex" ? "Codex" : "Claude"} />
+                    <InfoRow theme={theme} label={t("agentHub.path")} value={skill.path} mono />
+                    <InfoRow theme={theme} label={t("agentHub.status")} value={t(skill.enabled ? "agent.skillManager.enabled" : "agent.skillManager.disabled")} />
+                </aside>
+            </div>
+        </DialogFrame>
+    );
+}
+
+function ModelPickerDialog({
+    theme,
+    models,
+    model,
+    provider,
+    connected,
+    onSelect,
+    onOpenAgent,
+    onClose,
+}: {
+    theme: CanvasTheme;
+    models: AgentModel[];
+    model: string;
+    provider: "codex" | "claude";
+    connected: boolean;
+    onSelect: (model: string) => void;
+    onOpenAgent: () => void;
+    onClose: () => void;
+}) {
+    const { t } = useTranslation();
+    return (
+        <DialogFrame
+            theme={theme}
+            width="max-w-[560px]"
+            title={t("agentHub.modelTitle")}
+            subtitle={t("agentHub.modelDescription")}
+            icon={<span className="grid size-11 place-items-center rounded-2xl" style={{ background: `${theme.node.text}10`, color: theme.node.text }}><Cpu className="size-5" /></span>}
+            onClose={onClose}
+        >
+            <div className="p-4">
+                <div className="mb-3 inline-flex rounded-lg border p-0.5" style={{ borderColor: theme.node.stroke, background: theme.canvas.background }}>
+                    <span className="rounded-md px-3 py-1.5 text-xs font-medium" style={{ background: theme.toolbar.activeBg, color: theme.node.text }}>{provider === "codex" ? "Codex" : "Claude"}</span>
+                </div>
+                {models.length ? (
+                    <div className="space-y-1.5">
+                        {models.map((item) => {
+                            const active = item.model === (model || models[0]?.model);
+                            return (
+                                <button
+                                    key={item.model}
+                                    type="button"
+                                    className="flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition hover:bg-white/5"
+                                    style={{ borderColor: active ? theme.node.text : theme.node.stroke, background: active ? theme.toolbar.activeBg : "transparent" }}
+                                    onClick={() => onSelect(item.model)}
+                                >
+                                    <span className="grid size-8 shrink-0 place-items-center rounded-lg border" style={{ borderColor: theme.node.stroke }}><Bot className="size-4" /></span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-sm font-medium">{item.displayName || item.model}</span>
+                                        <span className="mt-0.5 block truncate text-[11px]" style={{ color: theme.node.muted }}>{item.description || item.model}</span>
+                                    </span>
+                                    {active ? <CheckCircle2 className="size-4 shrink-0" /> : null}
+                                </button>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="rounded-xl border border-dashed px-4 py-8 text-center" style={{ borderColor: theme.node.stroke }}>
+                        <Cpu className="mx-auto size-5" style={{ color: theme.node.muted }} />
+                        <div className="mt-3 text-sm font-medium">{t("agentHub.noModels")}</div>
+                        <p className="mt-1 text-xs leading-5" style={{ color: theme.node.muted }}>{t("agentHub.noModelsHint")}</p>
+                        {!connected ? <button type="button" className="mt-4 h-8 rounded-lg px-3 text-xs font-medium" style={{ background: theme.node.text, color: theme.node.panel }} onClick={onOpenAgent}>{t("agentHub.openSetup")}</button> : null}
+                    </div>
+                )}
+            </div>
+        </DialogFrame>
+    );
+}
+
+function GenerationModeDialog({ theme, manual, onSelect, onClose }: { theme: CanvasTheme; manual: boolean; onSelect: (manual: boolean) => void; onClose: () => void }) {
+    const { t } = useTranslation();
+    return (
+        <DialogFrame
+            theme={theme}
+            width="max-w-[520px]"
+            title={t("agentHub.modeTitle")}
+            subtitle={t("agentHub.modeDescription")}
+            icon={<span className="grid size-11 place-items-center rounded-2xl" style={{ background: `${theme.node.text}10`, color: theme.node.text }}><Zap className="size-5" /></span>}
+            onClose={onClose}
+        >
+            <div className="space-y-2 p-4">
+                <ModeOption
+                    theme={theme}
+                    active={manual}
+                    icon={<Hand className="size-4" />}
+                    title={t("agentHub.manualMode")}
+                    description={t("agentHub.manualModeDescription")}
+                    onClick={() => onSelect(true)}
+                />
+                <ModeOption
+                    theme={theme}
+                    active={!manual}
+                    icon={<Zap className="size-4" />}
+                    title={t("agentHub.automaticMode")}
+                    description={t("agentHub.automaticModeDescription")}
+                    onClick={() => onSelect(false)}
+                />
+            </div>
+        </DialogFrame>
+    );
+}
+
+function ModeOption({ theme, active, icon, title, description, onClick }: { theme: CanvasTheme; active: boolean; icon: ReactNode; title: string; description: string; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            className="flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition hover:bg-white/5"
+            style={{ borderColor: active ? theme.node.text : theme.node.stroke }}
+            onClick={onClick}
+        >
+            <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border" style={{ borderColor: theme.node.stroke }}>{icon}</span>
+            <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">{title}</span>
+                <span className="mt-1 block text-xs leading-5" style={{ color: theme.node.muted }}>{description}</span>
+            </span>
+            {active ? <Check className="mt-1 size-4 shrink-0" /> : null}
+        </button>
+    );
+}
+
+function DialogFrame({
+    theme,
+    width,
+    title,
+    subtitle,
+    icon,
+    children,
+    footer,
+    onClose,
+}: {
+    theme: CanvasTheme;
+    width: string;
+    title: string;
+    subtitle?: string;
+    icon?: ReactNode;
+    children: ReactNode;
+    footer?: ReactNode;
+    onClose: () => void;
+}) {
+    return (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="presentation" onMouseDown={onClose}>
+            <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" />
+            <motion.div
+                role="dialog"
+                aria-modal="true"
+                aria-label={title}
+                initial={{ opacity: 0, y: 10, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className={`relative flex max-h-[86vh] w-full ${width} flex-col overflow-hidden rounded-2xl border shadow-2xl`}
+                style={{ background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+                onMouseDown={(event) => event.stopPropagation()}
+            >
+                <header className="flex items-start gap-3 border-b px-5 py-4" style={{ borderColor: theme.node.stroke }}>
+                    {icon}
+                    <div className="min-w-0 flex-1">
+                        <h2 className="truncate text-lg font-semibold tracking-[-0.02em]">{title}</h2>
+                        {subtitle ? <p className="mt-1 line-clamp-2 text-xs leading-5" style={{ color: theme.node.muted }}>{subtitle}</p> : null}
+                    </div>
+                    <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg transition hover:bg-white/5" style={{ color: theme.node.muted }} aria-label="Close" onClick={onClose}>
+                        <X className="size-4" />
+                    </button>
+                </header>
+                <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto">{children}</div>
+                {footer ? <footer className="flex items-center justify-end gap-2 border-t px-4 py-3" style={{ borderColor: theme.node.stroke }}>{footer}</footer> : null}
+            </motion.div>
         </div>
     );
 }
 
-function scopeIcon(scope: AgentSkillScope) {
-    if (scope === "repo") return FolderGit2;
-    if (scope === "user") return UserRound;
-    if (scope === "system") return MonitorCog;
-    return ShieldCheck;
+function DetailLabel({ theme, children, className = "" }: { theme: CanvasTheme; children: ReactNode; className?: string }) {
+    return <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${className}`} style={{ color: theme.node.faint }}>{children}</div>;
+}
+
+function InfoRow({ theme, label, value, mono = false }: { theme: CanvasTheme; label: string; value: string; mono?: boolean }) {
+    return (
+        <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: theme.node.stroke, background: theme.canvas.background }}>
+            <div className="text-[10px]" style={{ color: theme.node.faint }}>{label}</div>
+            <div className={`mt-1 break-words text-xs ${mono ? "font-mono" : ""}`} style={{ color: theme.node.text }}>{value}</div>
+        </div>
+    );
+}
+
+function shortSkillPath(path: string) {
+    const parts = path.split("/").filter(Boolean);
+    return parts.at(-2) || parts.at(-1) || path;
+}
+
+const agentCategoryPatterns: Record<Exclude<AgentCategory, "recommended" | "general" | "discover">, RegExp> = {
+    film: /film|video|storyboard|shot|camera|director|cinema|影视|电影|分镜|镜头|导演|视频/i,
+    commercial: /commercial|marketing|product|brand|advert|image|design|商业|广告|营销|产品|电商|图片|海报/i,
+    drama: /drama|comic|script|story|storyboard|shot|短剧|漫剧|漫画|剧本|分镜/i,
+    anime: /anime|manga|game|character|illustration|动漫|动画|游戏|角色|插画/i,
+    music: /music|audio|voice|song|mv|音乐|音频|配音|歌曲/i,
+    creator: /browser|social|creator|notion|docs|writing|publish|自媒体|浏览器|写作|发布|文档|办公/i,
+};
+
+function matchesAgentCategory(skill: AgentSkillSummary, category: AgentCategory) {
+    if (category === "recommended" || category === "general" || category === "discover") return true;
+    const text = [
+        skill.name,
+        skill.shortDescription,
+        skill.interface?.displayName,
+        skill.interface?.shortDescription,
+        skill.path,
+    ]
+        .filter(Boolean)
+        .join(" ");
+    return agentCategoryPatterns[category].test(text);
+}
+
+function skillAccent(skill: Pick<AgentSkillSummary, "path" | "scope">) {
+    const palette = ["#f59e0b", "#38bdf8", "#34d399", "#fb7185", "#84cc16", "#f97316"];
+    const source = `${skill.scope}:${skill.path}`;
+    let hash = 0;
+    for (let index = 0; index < source.length; index++) hash = (hash * 31 + source.charCodeAt(index)) >>> 0;
+    return palette[hash % palette.length];
+}
+
+function skillIcon(skill: Pick<AgentSkillSummary, "path" | "scope">) {
+    const value = `${skill.path} ${skill.scope}`.toLowerCase();
+    if (value.includes("storyboard") || value.includes("shot") || value.includes("video")) return Clapperboard;
+    if (value.includes("browser")) return MousePointerClick;
+    if (value.includes("doc") || value.includes("pdf")) return FileText;
+    if (value.includes("image") || value.includes("design")) return ImagePlus;
+    if (value.includes("repo") || value.includes("git")) return FolderGit2;
+    return Sparkles;
 }

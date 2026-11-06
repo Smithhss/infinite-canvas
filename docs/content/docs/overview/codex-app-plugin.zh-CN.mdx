@@ -154,6 +154,6 @@ codex plugin add infinite-canvas@infinite-canvas-local
 | 进程 | 启动方式 | 作用 |
 | --- | --- | --- |
 | 插件 MCP | `npx -y @smithhsiiiii/canvas-agent@latest mcp` | 把画布工具提供给 Codex |
-| 网页连接服务 | `npx -y @smithhsiiiii/canvas-agent@latest` | 接收网页画布状态并提供 Local URL / Connect token |
+| 网页连接服务 | 由插件 MCP 自动拉起；也可运行 `npx -y @smithhsiiiii/canvas-agent@latest` 手动启动 | 接收网页画布状态；本机页面可自动发现连接 token |
 
-正常使用时不需要手动启动或复制这两个进程的信息，插件 Skill 会处理。只有在 MCP ready 但网页仍显示未连接时，才需要检查网页连接服务。
+正常使用时不需要手动启动或复制这两个进程的信息，插件 MCP 会确保网页连接服务运行。只有在 MCP ready 但网页仍显示未连接时，才需要检查网页连接服务。

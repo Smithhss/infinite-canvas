@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { App, Popover } from "antd";
-import { CircleX, Grid2X2, LoaderCircle, Play, RefreshCw, RotateCcw, Trash2, Ungroup } from "lucide-react";
+import { ChevronDown, CircleX, Combine, Grid2X2, LoaderCircle, Play, RefreshCw, RotateCcw, Trash2, Ungroup } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { CanvasTheme } from "@/lib/canvas-theme";
 import { selectStoryboardBatchItems, storyboardBatchCounts, storyboardBatchItems, type StoryboardBatchMode } from "@/lib/canvas/storyboard-batch";
+import { storyboardStitchBlockedReason, type StoryboardStitchResolution } from "@/lib/canvas/storyboard-stitch";
 import {
     findStoryboardGridGroup,
     hasLockedStoryboardGridNodes,
@@ -33,10 +34,11 @@ type Props = {
     onUngroup: (scriptNodeId: string) => void;
     onGenerate: (scriptNodeId: string, mode: StoryboardBatchMode) => void;
     onCancelGeneration: (scriptNodeId: string) => void;
+    onStitch: (scriptNodeId: string, resolution: StoryboardStitchResolution) => void;
     batchRunning: boolean;
 };
 
-export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme, onCreate, onClear, onConvert, onUngroup, onGenerate, onCancelGeneration, batchRunning }: Props) {
+export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme, onCreate, onClear, onConvert, onUngroup, onGenerate, onCancelGeneration, onStitch, batchRunning }: Props) {
     const { t } = useTranslation();
     const { modal, message } = App.useApp();
     const group = findStoryboardGridGroup(scriptNodeId, nodes);
@@ -48,6 +50,7 @@ export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme,
     const [showShotNumbers, setShowShotNumbers] = useState(stored?.showShotNumbers !== false);
     const [aspectRatio, setAspectRatio] = useState(stored?.aspectRatio || script.aspectRatio || "16:9");
     const [customGridOpen, setCustomGridOpen] = useState(false);
+    const [stitchOpen, setStitchOpen] = useState(false);
     const [hoveredGrid, setHoveredGrid] = useState<{ rows: number; columns: number } | null>(null);
     const shotCount = Math.min(script.rows.length, STORYBOARD_GRID_MAX_SHOTS);
     const layoutRows = rows ?? Math.max(1, Math.ceil(shotCount / columns));
@@ -60,6 +63,8 @@ export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme,
     const batchItems = group && state === "ready" ? storyboardBatchItems(script, group, nodes) : [];
     const batchCounts = storyboardBatchCounts(batchItems);
     const unfinishedCount = batchItems.filter((item) => item.status === "pending" || item.status === "failed").length;
+    const stitchBlocked = state === "ready" ? storyboardStitchBlockedReason(batchItems) : "grid";
+    const stitchReady = !stitchBlocked && !locked && !batchRunning;
 
     useEffect(() => {
         if (!stored) return;
@@ -137,6 +142,25 @@ export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme,
             onOk: () => onGenerate(scriptNodeId, mode),
         });
     };
+
+    const stitchMenu = (
+        <div className="flex flex-col gap-0.5 p-0.5">
+            {(["2k", "4k"] as const).map((resolution) => (
+                <button
+                    key={resolution}
+                    type="button"
+                    className="inline-flex h-10 min-w-24 items-center rounded-md px-3 text-left text-[11px] font-medium transition hover:bg-black/5 sm:h-8 dark:hover:bg-white/10"
+                    style={{ color: theme.node.text }}
+                    onClick={() => {
+                        setStitchOpen(false);
+                        onStitch(scriptNodeId, resolution);
+                    }}
+                >
+                    {t(`canvas.storyboard.workbench.storyboardGrid.stitchMenu${resolution}`)}
+                </button>
+            ))}
+        </div>
+    );
 
     const selectPreset = (size: number) => {
         setColumns(size);
@@ -321,6 +345,26 @@ export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme,
                             </span>
                         ) : null}
                         <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                            <Popover trigger="click" open={stitchOpen} onOpenChange={(open) => setStitchOpen(stitchReady && open)} content={stitchMenu} placement="bottomRight">
+                                <button
+                                    type="button"
+                                    disabled={!stitchReady}
+                                    aria-label={t("canvas.storyboard.workbench.storyboardGrid.stitch")}
+                                    title={
+                                        stitchBlocked === "unfinished"
+                                            ? t("canvas.storyboard.workbench.storyboardGrid.stitchNeedImages", { count: batchItems.filter((item) => item.status !== "done").length })
+                                            : stitchBlocked === "grid"
+                                              ? t("canvas.storyboard.workbench.storyboardGrid.stitchNeedGrid")
+                                              : t("canvas.storyboard.workbench.storyboardGrid.stitchHint")
+                                    }
+                                    className="inline-flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-medium transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-35 sm:h-8 dark:hover:bg-white/10"
+                                    style={{ color: theme.node.text, border: `0.5px solid ${theme.toolbar.border}` }}
+                                >
+                                    <Combine className="size-3.5" />
+                                    {t("canvas.storyboard.workbench.storyboardGrid.stitch")}
+                                    <ChevronDown className="size-3" />
+                                </button>
+                            </Popover>
                             {batchRunning ? (
                                 <button
                                     type="button"
@@ -362,6 +406,11 @@ export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme,
                     <p className="mt-1.5 text-[10px] leading-5" style={{ color: theme.node.muted }}>
                         {t("canvas.storyboard.workbench.storyboardGrid.batchHint")}
                     </p>
+                    {stitchBlocked === "unfinished" ? (
+                        <p className="mt-0.5 text-[10px] leading-5" style={{ color: "#d97706" }}>
+                            {t("canvas.storyboard.workbench.storyboardGrid.stitchNeedImages", { count: batchItems.filter((item) => item.status !== "done").length })}
+                        </p>
+                    ) : null}
                 </div>
             ) : null}
         </section>

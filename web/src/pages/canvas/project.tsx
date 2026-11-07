@@ -9,7 +9,7 @@ import { requestEdit, requestGeneration, requestImageQuestion } from "@/services
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { createVideoGenerationTask, isVideoTaskFailed, storeGeneratedVideo, waitForVideoGenerationTask } from "@/services/api/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
-import { ensureImagePreview, uploadImage } from "@/services/image-storage";
+import { ensureImagePreview, resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
@@ -102,6 +102,8 @@ import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
 import type { SmartCutRenderResult } from "@/lib/canvas/canvas-smart-cut-render";
 import { buildStoryboardGrid, collectStoryboardGridNodeIds, convertStoryboardGridToGroup, findStoryboardGridGroup, hasLockedStoryboardGridNodes, replaceStoryboardGridNodes, stripRemovedStoryboardGridMetadata, stripStoryboardGridMetadata, type CanvasStoryboardGridOptions } from "@/lib/canvas/storyboard-grid";
 import { selectStoryboardBatchItems, storyboardBatchItems, storyboardBatchNodeStatus, type StoryboardBatchMode } from "@/lib/canvas/storyboard-batch";
+import { renderStoryboardStitch } from "@/lib/canvas/storyboard-stitch-render";
+import { storyboardStitchBlockedReason, storyboardStitchPlan, type StoryboardStitchResolution } from "@/lib/canvas/storyboard-stitch";
 import { BuiltinAgentPanel } from "@/components/canvas/builtin-agent-panel";
 import { ConnectionCreateMenu, NodeCreateMenu, type PendingConnectionCreate } from "@/components/canvas/canvas-create-menus";
 import { withShellFeatureFlags } from "@/components/layout/navigation-groups";
@@ -3311,6 +3313,80 @@ function InfiniteCanvasPage() {
         if (run) run.canceled = true;
     }, []);
 
+    const stitchStoryboardGrid = useCallback(
+        async (scriptNodeId: string, resolution: StoryboardStitchResolution) => {
+            const scriptNode = nodesRef.current.find((node) => node.id === scriptNodeId);
+            const script = scriptNode?.metadata?.scriptV2;
+            const group = findStoryboardGridGroup(scriptNodeId, nodesRef.current);
+            if (!script || !group || !group.metadata?.storyboardGrid) {
+                message.warning(t("canvas.storyboard.workbench.storyboardGrid.stitchNeedGrid"));
+                return;
+            }
+            if (hasLockedStoryboardGridNodes(scriptNodeId, nodesRef.current)) {
+                message.warning(t("canvas.node.lockedAction"));
+                return;
+            }
+
+            const items = storyboardBatchItems(script, group, nodesRef.current);
+            const blocked = storyboardStitchBlockedReason(items);
+            if (blocked === "empty") {
+                message.warning(t("canvas.storyboard.workbench.storyboardGrid.stitchNeedGrid"));
+                return;
+            }
+            if (blocked === "unfinished") {
+                message.warning(t("canvas.storyboard.workbench.storyboardGrid.stitchNeedImages", { count: items.filter((item) => item.status !== "done").length }));
+                return;
+            }
+
+            const stored = group.metadata.storyboardGrid;
+            const plan = storyboardStitchPlan({ count: items.length, columns: stored.columns, rows: stored.rows, aspectRatio: stored.aspectRatio, resolution });
+            if (!plan) {
+                message.error(t("canvas.storyboard.workbench.storyboardGrid.stitchNeedGrid"));
+                return;
+            }
+
+            const sources = await Promise.all(
+                items.map((item) => {
+                    const node = nodesRef.current.find((entry) => entry.id === item.nodeId);
+                    const image = node?.metadata?.images?.[0];
+                    return resolveImageUrl(image?.storageKey || node?.metadata?.storageKey, image?.content || node?.metadata?.content || "");
+                }),
+            );
+            if (sources.some((source) => !source)) {
+                message.error(t("canvas.storyboard.workbench.storyboardGrid.stitchFailed", { error: t("canvas.storyboard.workbench.storyboardGrid.stitchNeedImages", { count: 1 }) }));
+                return;
+            }
+
+            const resolutionLabel = resolution === "4k" ? "4K" : "2K";
+            const stitchTitle = t("canvas.storyboard.workbench.storyboardGrid.stitchTitle", { resolution: resolutionLabel, count: items.length });
+            message.loading({ content: t("canvas.storyboard.workbench.storyboardGrid.stitchRunning"), key: `stitch-${group.id}`, duration: 0 });
+            try {
+                const blob = await renderStoryboardStitch(sources, plan);
+                const image = await uploadImage(blob);
+                const size = fitNodeSize(image.width, image.height, 720, 720);
+                const id = nanoid();
+                const node: CanvasNodeData = {
+                    id,
+                    type: CanvasNodeType.Image,
+                    title: stitchTitle,
+                    position: { x: group.position.x + group.width + 48, y: group.position.y },
+                    ...size,
+                    metadata: { ...imageMetadata(image), generationType: "edit", prompt: stitchTitle },
+                };
+                setNodes((prev) => [...prev, node]);
+                setSelectedNodeIds(new Set([id]));
+                setSelectedConnectionId(null);
+                message.success({ content: t("canvas.storyboard.workbench.storyboardGrid.stitchDone", { resolution: resolutionLabel, count: items.length }), key: `stitch-${group.id}` });
+            } catch (error) {
+                message.error({
+                    content: t("canvas.storyboard.workbench.storyboardGrid.stitchFailed", { error: error instanceof Error ? error.message : String(error) }),
+                    key: `stitch-${group.id}`,
+                });
+            }
+        },
+        [message, setNodes, t],
+    );
+
     const handleRetryNode = useCallback(
         async (node: CanvasNodeData, imageId?: string) => {
             if (rejectLockedNode(node.id)) return;
@@ -3823,6 +3899,7 @@ function InfiniteCanvasPage() {
                             onUngroupStoryboardGrid={ungroupStoryboardGrid}
                             onGenerateStoryboardGrid={runStoryboardBatch}
                             onCancelStoryboardGrid={cancelStoryboardBatch}
+                            onStitchStoryboardGrid={stitchStoryboardGrid}
                             storyboardBatchScriptNodeIds={storyboardBatchScriptNodeIds}
                         />
                     ) : (

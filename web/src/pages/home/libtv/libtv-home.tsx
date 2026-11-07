@@ -28,8 +28,8 @@ export function LibtvHome() {
     const projects = useCanvasStore((state) => state.projects);
     const assets = useAssetStore((state) => state.assets);
     const recent = recentCanvasProjects(projects);
-    const latest = latestCoverAssets(assets, 4);
-    const featured = latestCoverAssets(assets, 8).slice(4);
+    const latest = latestCoverAssets(assets, 5);
+    const featured = latestCoverAssets(assets, 13).slice(5);
     const locale = i18n.language;
 
     return (
@@ -114,25 +114,26 @@ export function LibtvHome() {
                     <EmptyLine text={t("home.libtv.sections.recentEmpty")} />
                 )}
 
-                <SectionHeader title={t("home.libtv.sections.latest")} action={t("home.libtv.sections.viewAll")} onAction={() => navigate("/assets")} />
+                <SectionHeader title={t("home.libtv.sections.latest")} />
                 {latest.length ? (
-                    <div className="flex gap-3 overflow-x-auto pb-1">
+                    <div className="flex gap-4 overflow-x-auto pb-1">
                         {latest.map((asset) => (
-                            <button key={asset.id} type="button" onClick={() => navigate("/assets")} className="group min-w-[160px] flex-1 overflow-hidden rounded-2xl text-left transition hover:opacity-90 lg:min-w-0">
-                                <span className="relative block aspect-video overflow-hidden rounded-2xl bg-black/[0.06] dark:bg-white/[0.06]">
+                            <button key={asset.id} type="button" onClick={() => navigate("/assets")} className="group min-w-[160px] flex-1 text-left transition hover:opacity-90 lg:min-w-0">
+                                <span className="relative block aspect-video overflow-hidden rounded-[16px] bg-black/[0.06] dark:bg-white/[0.06]">
                                     <img src={assetCoverUrl(asset)} alt="" className="size-full object-cover" draggable={false} />
-                                    <span className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent p-3 text-[12px] text-white">
-                                        <span className="truncate">{asset.title}</span>
-                                    </span>
+                                </span>
+                                <span className="mt-2 flex items-center gap-2">
+                                    <span className="block truncate text-[13px] text-stone-700 dark:text-stone-300">{asset.title}</span>
+                                    {asset.tags[0] ? <span className="shrink-0 rounded bg-black/[0.05] px-1.5 py-0.5 text-[11px] text-stone-500 dark:bg-white/[0.08] dark:text-stone-400">{asset.tags[0]}</span> : null}
                                 </span>
                             </button>
                         ))}
                     </div>
                 ) : (
-                    <div className="flex gap-3 overflow-x-auto pb-1">
+                    <div className="flex gap-4 overflow-x-auto pb-1">
                         {quickActions.map(({ key, icon: Icon, target }) => (
                             <button key={key} type="button" onClick={() => navigate(target)} className="group min-w-[160px] flex-1 overflow-hidden rounded-2xl text-left lg:min-w-0">
-                                <span className="relative flex aspect-video items-end overflow-hidden rounded-2xl border border-black/10 bg-[linear-gradient(140deg,rgba(56,189,248,0.16),rgba(244,114,182,0.14),rgba(0,0,0,0.02))] p-4 dark:border-white/10">
+                                <span className="relative flex aspect-video items-end overflow-hidden rounded-[16px] border border-black/10 bg-[linear-gradient(140deg,rgba(56,189,248,0.16),rgba(244,114,182,0.14),rgba(0,0,0,0.02))] p-4 dark:border-white/10">
                                     <Icon className="absolute right-4 top-4 size-5 text-stone-500 dark:text-white/50" />
                                     <span className="text-[13px] font-medium">{t(`home.libtv.quick.${key}`)}</span>
                                 </span>
@@ -143,11 +144,11 @@ export function LibtvHome() {
 
                 {featured.length ? (
                     <>
-                        <SectionHeader title={t("home.libtv.sections.featured")} action={t("home.libtv.sections.viewAll")} onAction={() => navigate("/assets")} />
-                        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                        <SectionHeader title={t("home.libtv.sections.featured")} />
+                        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:gap-6">
                             {featured.map((asset) => (
                                 <button key={asset.id} type="button" onClick={() => navigate("/assets")} className="min-w-0 overflow-hidden rounded-xl text-left transition hover:opacity-90">
-                                    <span className="block aspect-[16/10] overflow-hidden rounded-xl bg-black/[0.06] dark:bg-white/[0.06]">
+                                    <span className="block aspect-video overflow-hidden rounded-[16px] bg-black/[0.06] dark:bg-white/[0.06]">
                                         <img src={assetCoverUrl(asset)} alt="" className="size-full object-cover" draggable={false} />
                                     </span>
                                     <span className="mt-2 block truncate text-[13px] text-stone-600 dark:text-stone-300">{asset.title}</span>
@@ -161,13 +162,15 @@ export function LibtvHome() {
     );
 }
 
-function SectionHeader({ title, action, onAction }: { title: string; action: string; onAction: () => void }) {
+function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
     return (
         <div className="mt-7 mb-3 flex h-8 items-center gap-2 pl-2 max-sm:h-10">
             <h2 className="text-[16px] font-medium">{title}</h2>
-            <button type="button" onClick={onAction} className={cn("ml-auto text-[12px] text-stone-500 transition hover:text-stone-900 max-sm:inline-flex max-sm:h-10 max-sm:items-center max-sm:px-2 dark:text-stone-400 dark:hover:text-white")}>
-                {action}
-            </button>
+            {action ? (
+                <button type="button" onClick={onAction} className={cn("ml-auto text-[12px] text-stone-500 transition hover:text-stone-900 max-sm:inline-flex max-sm:h-10 max-sm:items-center max-sm:px-2 dark:text-stone-400 dark:hover:text-white")}>
+                    {action}
+                </button>
+            ) : null}
         </div>
     );
 }

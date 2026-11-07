@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { App, Popover } from "antd";
-import { Grid2X2, RefreshCw, Trash2, Ungroup } from "lucide-react";
+import { CircleX, Grid2X2, LoaderCircle, Play, RefreshCw, RotateCcw, Trash2, Ungroup } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { CanvasTheme } from "@/lib/canvas-theme";
+import { selectStoryboardBatchItems, storyboardBatchCounts, storyboardBatchItems, type StoryboardBatchMode } from "@/lib/canvas/storyboard-batch";
 import {
     findStoryboardGridGroup,
     hasLockedStoryboardGridNodes,
@@ -30,9 +31,12 @@ type Props = {
     onClear: (scriptNodeId: string) => void;
     onConvert: (scriptNodeId: string) => void;
     onUngroup: (scriptNodeId: string) => void;
+    onGenerate: (scriptNodeId: string, mode: StoryboardBatchMode) => void;
+    onCancelGeneration: (scriptNodeId: string) => void;
+    batchRunning: boolean;
 };
 
-export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme, onCreate, onClear, onConvert, onUngroup }: Props) {
+export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme, onCreate, onClear, onConvert, onUngroup, onGenerate, onCancelGeneration, batchRunning }: Props) {
     const { t } = useTranslation();
     const { modal, message } = App.useApp();
     const group = findStoryboardGridGroup(scriptNodeId, nodes);
@@ -53,6 +57,9 @@ export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme,
     const stateLabel = !group ? "missing" : state === "stale" ? "stale" : optionsChanged ? "settings" : state;
     const stateColor = stateLabel === "ready" ? "#16a34a" : stateLabel === "stale" || stateLabel === "settings" ? "#d97706" : theme.node.muted;
     const locked = hasLockedStoryboardGridNodes(scriptNodeId, nodes);
+    const batchItems = group && state === "ready" ? storyboardBatchItems(script, group, nodes) : [];
+    const batchCounts = storyboardBatchCounts(batchItems);
+    const unfinishedCount = batchItems.filter((item) => item.status === "pending" || item.status === "failed").length;
 
     useEffect(() => {
         if (!stored) return;
@@ -113,6 +120,21 @@ export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme,
             okText: t("canvas.storyboard.workbench.storyboardGrid.ungroup"),
             cancelText: t("common.cancel"),
             onOk: () => onUngroup(scriptNodeId),
+        });
+    };
+
+    const generate = (mode: StoryboardBatchMode) => {
+        const target = selectStoryboardBatchItems(batchItems, mode);
+        if (!target.length) {
+            message.info(t("canvas.storyboard.workbench.storyboardGrid.batchEmpty"));
+            return;
+        }
+        modal.confirm({
+            title: t(mode === "failed" ? "canvas.storyboard.workbench.storyboardGrid.batchRetryTitle" : "canvas.storyboard.workbench.storyboardGrid.batchTitle"),
+            content: t("canvas.storyboard.workbench.storyboardGrid.batchDescription", { count: target.length }),
+            okText: t("canvas.storyboard.workbench.storyboardGrid.batchConfirm"),
+            cancelText: t("common.cancel"),
+            onOk: () => onGenerate(scriptNodeId, mode),
         });
     };
 
@@ -281,6 +303,67 @@ export function CanvasScriptStoryboardGrid({ script, scriptNodeId, nodes, theme,
                     </>
                 ) : null}
             </div>
+            {group && state === "ready" ? (
+                <div className="mt-3 border-t pt-3" style={{ borderColor: theme.toolbar.border }}>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] tabular-nums" style={{ color: theme.node.muted }}>
+                            {t("canvas.storyboard.workbench.storyboardGrid.batchProgress", { done: batchCounts.done, total: batchCounts.total })}
+                        </span>
+                        {batchCounts.failed ? (
+                            <span className="text-[10px] tabular-nums" style={{ color: "#dc2626" }}>
+                                {t("canvas.storyboard.workbench.storyboardGrid.batchFailed", { count: batchCounts.failed })}
+                            </span>
+                        ) : null}
+                        {batchRunning ? (
+                            <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: theme.node.muted }}>
+                                <LoaderCircle className="size-3 animate-spin" />
+                                {t("canvas.storyboard.workbench.storyboardGrid.batchRunning")}
+                            </span>
+                        ) : null}
+                        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                            {batchRunning ? (
+                                <button
+                                    type="button"
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-medium transition hover:bg-red-500/10"
+                                    style={{ color: "#dc2626" }}
+                                    onClick={() => onCancelGeneration(scriptNodeId)}
+                                >
+                                    <CircleX className="size-3.5" />
+                                    {t("canvas.storyboard.workbench.storyboardGrid.batchCancel")}
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        disabled={!unfinishedCount || locked}
+                                        className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-medium transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-white/10"
+                                        style={{ color: theme.node.text }}
+                                        onClick={() => generate("unfinished")}
+                                    >
+                                        <Play className="size-3.5" />
+                                        {t("canvas.storyboard.workbench.storyboardGrid.batchGenerate", { count: unfinishedCount })}
+                                    </button>
+                                    {batchCounts.failed ? (
+                                        <button
+                                            type="button"
+                                            disabled={locked}
+                                            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[10px] transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-white/10"
+                                            style={{ color: theme.node.muted }}
+                                            onClick={() => generate("failed")}
+                                        >
+                                            <RotateCcw className="size-3.5" />
+                                            {t("canvas.storyboard.workbench.storyboardGrid.batchRetry", { count: batchCounts.failed })}
+                                        </button>
+                                    ) : null}
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    <p className="mt-1.5 text-[10px] leading-5" style={{ color: theme.node.muted }}>
+                        {t("canvas.storyboard.workbench.storyboardGrid.batchHint")}
+                    </p>
+                </div>
+            ) : null}
         </section>
     );
 }

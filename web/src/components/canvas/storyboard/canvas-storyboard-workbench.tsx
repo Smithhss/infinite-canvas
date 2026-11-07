@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { getImagePreviewRevision, previewUrlFor, subscribeImagePreviews } from "@/services/image-storage";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { CanvasNodeData, CanvasScriptColumnKey, CanvasScriptViewMode, CanvasScriptV2 } from "@/types/canvas";
+import type { StoryboardBatchMode } from "@/lib/canvas/storyboard-batch";
 
 type Props = {
     nodes: CanvasNodeData[];
@@ -55,6 +56,9 @@ type Props = {
     onClearStoryboardGrid: (scriptNodeId: string) => void;
     onConvertStoryboardGrid: (scriptNodeId: string) => void;
     onUngroupStoryboardGrid: (scriptNodeId: string) => void;
+    onGenerateStoryboardGrid: (scriptNodeId: string, mode: StoryboardBatchMode) => void;
+    onCancelStoryboardGrid: (scriptNodeId: string) => void;
+    storyboardBatchScriptNodeIds: Set<string>;
 };
 
 type SectionKey = "script" | "text" | "image" | "video";
@@ -75,7 +79,7 @@ function itemSize(item: StoryboardItem) {
     return `${item.width} × ${item.height}`;
 }
 
-export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesInCanvas, onAddAsset, onUpdateScript, onCreateStoryboardGrid, onClearStoryboardGrid, onConvertStoryboardGrid, onUngroupStoryboardGrid }: Props) {
+export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesInCanvas, onAddAsset, onUpdateScript, onCreateStoryboardGrid, onClearStoryboardGrid, onConvertStoryboardGrid, onUngroupStoryboardGrid, onGenerateStoryboardGrid, onCancelStoryboardGrid, storyboardBatchScriptNodeIds }: Props) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const { addToAgent, addingToAgent, exportItems, exporting } = useStoryboardTransferActions(nodes);
@@ -248,6 +252,9 @@ export function CanvasStoryboardWorkbench({ nodes, onLocateNode, onSelectNodesIn
                         onClearStoryboardGrid={onClearStoryboardGrid}
                         onConvertStoryboardGrid={onConvertStoryboardGrid}
                         onUngroupStoryboardGrid={onUngroupStoryboardGrid}
+                        onGenerateStoryboardGrid={onGenerateStoryboardGrid}
+                        onCancelStoryboardGrid={onCancelStoryboardGrid}
+                        storyboardBatchRunning={storyboardBatchScriptNodeIds.has(selectedItem?.kind === "script" ? selectedItem.nodeId : "")}
                     />
                 </section>
             </div>
@@ -433,6 +440,9 @@ function StoryboardDetail({
     onClearStoryboardGrid,
     onConvertStoryboardGrid,
     onUngroupStoryboardGrid,
+    onGenerateStoryboardGrid,
+    onCancelStoryboardGrid,
+    storyboardBatchRunning,
 }: {
     item: StoryboardItem | null;
     nodes: CanvasNodeData[];
@@ -444,6 +454,9 @@ function StoryboardDetail({
     onClearStoryboardGrid: (scriptNodeId: string) => void;
     onConvertStoryboardGrid: (scriptNodeId: string) => void;
     onUngroupStoryboardGrid: (scriptNodeId: string) => void;
+    onGenerateStoryboardGrid: (scriptNodeId: string, mode: StoryboardBatchMode) => void;
+    onCancelStoryboardGrid: (scriptNodeId: string) => void;
+    storyboardBatchRunning: boolean;
 }) {
     const { t } = useTranslation();
     const src = item ? mediaUrl(item) : "";
@@ -476,6 +489,9 @@ function StoryboardDetail({
                 onClearStoryboardGrid={onClearStoryboardGrid}
                 onConvertStoryboardGrid={onConvertStoryboardGrid}
                 onUngroupStoryboardGrid={onUngroupStoryboardGrid}
+                onGenerateStoryboardGrid={onGenerateStoryboardGrid}
+                onCancelStoryboardGrid={onCancelStoryboardGrid}
+                storyboardBatchRunning={storyboardBatchRunning}
             />
         );
     }
@@ -560,6 +576,9 @@ function ScriptDetail({
     onClearStoryboardGrid,
     onConvertStoryboardGrid,
     onUngroupStoryboardGrid,
+    onGenerateStoryboardGrid,
+    onCancelStoryboardGrid,
+    storyboardBatchRunning,
 }: {
     item: StoryboardItem;
     nodes: CanvasNodeData[];
@@ -571,6 +590,9 @@ function ScriptDetail({
     onClearStoryboardGrid: (scriptNodeId: string) => void;
     onConvertStoryboardGrid: (scriptNodeId: string) => void;
     onUngroupStoryboardGrid: (scriptNodeId: string) => void;
+    onGenerateStoryboardGrid: (scriptNodeId: string, mode: StoryboardBatchMode) => void;
+    onCancelStoryboardGrid: (scriptNodeId: string) => void;
+    storyboardBatchRunning: boolean;
 }) {
     const { t } = useTranslation();
     const { modal } = App.useApp();
@@ -843,6 +865,9 @@ function ScriptDetail({
                                 onClear={onClearStoryboardGrid}
                                 onConvert={onConvertStoryboardGrid}
                                 onUngroup={onUngroupStoryboardGrid}
+                                onGenerate={onGenerateStoryboardGrid}
+                                onCancelGeneration={onCancelStoryboardGrid}
+                                batchRunning={storyboardBatchRunning}
                             />
                         </>
                     ) : (

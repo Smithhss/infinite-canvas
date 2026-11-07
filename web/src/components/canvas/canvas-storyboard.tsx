@@ -387,19 +387,16 @@ export function CanvasStoryboard({ projectId, nodes, onLocateNode, onSelectNodes
                         panelStyle={collapsed.image ? { flex: "0 0 2.5rem" } : collapsed.video ? { flex: "1 1 0", minHeight: 112 } : { flex: `0 0 ${layout.imageRatio * 100}%`, minHeight: 112 }}
                     >
                         {items.image.length ? (
-                            <div className="grid gap-1.5 p-1.5 [grid-template-columns:repeat(auto-fill,minmax(88px,1fr))]">
+                            <div className="grid gap-x-1.5 gap-y-6 p-1.5 [grid-template-columns:repeat(auto-fill,minmax(78px,1fr))]">
                                 {items.image.map((item) => (
                                     <div key={item.id} className="relative min-w-0">
-                                        <button type="button" onClick={() => setDetail(item)} className="group block w-full min-w-0 overflow-hidden rounded-lg text-left transition hover:bg-white/[0.035]" style={{ background: theme.toolbar.panel }}>
-                                            <span className="relative flex aspect-square items-center justify-center overflow-hidden" style={{ background: theme.canvas.background }}>
+                                        <button type="button" onClick={() => setDetail(item)} title={itemMeta(item)} className="group block w-full min-w-0 overflow-hidden rounded-md text-left transition hover:bg-black/5 dark:hover:bg-white/5">
+                                            <span className="relative flex aspect-square items-center justify-center overflow-hidden rounded-md" style={{ background: theme.canvas.background }}>
                                                 {mediaUrl(item) ? <img src={mediaUrl(item)} alt={item.title} className="size-full object-contain" /> : <ImageIcon className="size-7 opacity-30" />}
                                                 <StatusBadge item={item} theme={theme} />
                                             </span>
-                                            <span className="block px-1.5 pb-1 pt-1">
+                                            <span className="block px-0.5 pt-1.5">
                                                 <ItemHeading item={item} theme={theme} compact />
-                                                <span className="mt-0.5 block truncate text-[10px]" style={{ color: theme.node.muted }}>
-                                                    {itemMeta(item)}
-                                                </span>
                                             </span>
                                         </button>
                                         <SelectionToggle checked={selectedItemIds.has(item.id)} theme={theme} onClick={() => toggleSelected(item.id)} />

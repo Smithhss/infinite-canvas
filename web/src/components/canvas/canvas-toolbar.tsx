@@ -95,7 +95,7 @@ export function CanvasToolbar({
     return (
         <div ref={rootRef} className="pointer-events-none absolute bottom-[84px] left-4 right-4 z-50 flex justify-center sm:bottom-5 sm:left-[300px] sm:right-4" data-canvas-bottom-toolbar>
             {tip ? <DockTip label={tip} x={tipX} theme={theme} /> : null}
-            <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex h-11 max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border px-1.5 backdrop-blur-md [&>*]:shrink-0" style={dockStyle}>
+            <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex h-12 max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border px-1.5 backdrop-blur-md sm:h-11 [&>*]:shrink-0" style={dockStyle}>
                 <ToolbarButton
                     id={`tool-${canvasTool}`}
                     label={t(`canvas.toolbar.${canvasTool}`)}
@@ -327,7 +327,7 @@ function ToolbarButton({
         <Button
             type="text"
             aria-label={label}
-            className="!h-8 !w-8 !min-w-8 !p-0"
+            className="h-10! w-10! min-w-10! p-0! sm:h-8! sm:w-8! sm:min-w-8!"
             disabled={disabled}
             style={active ? activeStyle : hovered === id && !disabled ? hoverStyle : { color: danger ? "#f87171" : theme.toolbar.item, opacity: disabled ? 0.35 : 1 }}
             icon={children}

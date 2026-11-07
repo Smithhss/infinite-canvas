@@ -41,7 +41,7 @@
 | S3 | 画布视觉收口：工具条、节点、分组、点阵、缩放控件 | 已完成（浮层默认切换待用户确认） |
 | S4 | 故事板与资产视图密度对齐 | 已完成 |
 | S5 | 生图 / 视频工作台布局对齐 | 已完成（节点生图面板与视频参数弹层对齐） |
-| S6 | 390 宽移动端与触控 | 进行中（横向溢出与节点面板已处理，触控区待定） |
+| S6 | 390 宽移动端与触控 | 已完成（横向溢出、底部面板与 40px 触控均已处理） |
 | S7 | 回归门禁：单测、类型、构建、双主题截图 | 已完成 |
 
 ## 分阶段清单
@@ -93,11 +93,11 @@
 - [x] 390×844 / DPR 3 全页无横向溢出（`/`、`/image`、画布工作流、画布工作台四条路由 scrollWidth 均为 390）
 - [x] 节点生成面板在 640px 以下改为底部面板：390 实测面板 374×354 落在视口内，标题胶囊 + 40px 关闭按钮，底部模型/参数/发送自动换行
 - [x] 触控点击区不小于 40px（首刀）：`<640px` 下顶部导航菜单、Agent、主题/语言/配置图标、公告关闭、首页页头三个文字入口、画布菜单均放大到 40px，桌面保持原密度
-- [ ] 触控点击区剩余：画布底部 dock 工具仍为 32px、Agent 面板页签 32px；这两处按钮数量多，需先定横向滚动或分组方案再放大
+- [x] 触控点击区收尾：`<640px` 画布底部 dock 工具放大到 40×40 并保持横向滚动（390 实测 356/631），Agent 面板页签 40×48；桌面回落 dock 32×32、页签 32×48，390 与 1440 均无页面横向溢出
 
 ### S7 回归门禁
 
-- [x] `bun test` 499/499（web 303 + canvas-agent 196）、`bun run typecheck`、`bun run build`、`git diff --check`
+- [x] `bun test` 495/495（web 303 + canvas-agent 192）、`bun run typecheck`、`bun run build`、`git diff --check`
 - [x] 1440 / 1024 / 390 截图对照：首页深浅色、经典故事板、节点面板、视频弹层、390 底部面板；1024 首页与故事板无横向溢出
 
 ## 本轮执行记录
@@ -113,4 +113,5 @@
 | 2026-11-07 | S5 收尾 | 视频参数弹层 336×428、顺序与 LibTV 一致 | `docs/superpowers/audits/assets/infinite-canvas-s5-video-popover-1440x900.png` |
 | 2026-11-07 | S6 首刀 | 390 底部面板 374×354、参数行换行、关闭 40px | `docs/superpowers/audits/assets/infinite-canvas-s6-mobile-sheet-390x844.png` |
 | 2026-11-07 | S6 触控 | 头部/页头/画布菜单 640px 以下 40px | `docs/superpowers/audits/assets/infinite-canvas-s6-header-390x844.png`、`infinite-canvas-s6-canvas-header-390x844.png` |
+| 2026-11-07 | S6 触控收尾 | dock 40px 横向滚动、Agent 页签 40px，桌面 32px | `docs/superpowers/audits/assets/infinite-canvas-s6-dock-tabs-390x844-dpr3.png`、`infinite-canvas-s6-agent-tabs-390x844-dpr3.png`、`infinite-canvas-s6-dock-tabs-1440x900.png` |
 | 2026-11-07 | S7 | 门禁全绿 + 1024 对照无溢出 | `docs/superpowers/audits/assets/infinite-canvas-s7-home-1024x768.png`、`infinite-canvas-s7-storyboard-1024x768.png` |

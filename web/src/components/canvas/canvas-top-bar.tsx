@@ -310,7 +310,7 @@ export function CanvasTopBar({
                     ) : null}
                     <Button
                         type="text"
-                        className="!h-8 !rounded-md !px-2 !text-xs !font-medium"
+                        className="!h-8 !rounded-md !px-2 !text-xs !font-medium max-sm:!h-10 max-sm:!min-w-10 max-sm:!px-0"
                         style={{ background: agentOpen ? theme.toolbar.activeBg : "transparent", color: theme.node.text }}
                         icon={<Bot className="size-4" />}
                         onClick={onToggleAgent}

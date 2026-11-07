@@ -585,7 +585,7 @@ function PromptComposer({
                 <div className="flex items-start gap-2 px-4 pt-4 sm:px-5">
                     <button
                         type="button"
-                        className="grid size-9 shrink-0 place-items-center rounded-full border border-stone-200 text-stone-600 transition hover:border-stone-300 hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/5"
+                        className="grid size-9 shrink-0 place-items-center rounded-full border border-stone-200 text-stone-600 transition hover:border-stone-300 hover:bg-stone-100 max-sm:size-10 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/5"
                         onClick={onUpload}
                         title={t("workbench.upload")}
                         aria-label={t("workbench.upload")}
@@ -625,26 +625,26 @@ function PromptComposer({
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-1.5 border-t border-stone-100 px-3 py-2.5 sm:px-4 dark:border-white/5">
-                    <StudioModelPicker compact config={config} value={model} onChange={(value) => updateConfig("imageModel", value)} capability="image" onMissingConfig={() => openConfigDialog(false)} className="!h-9 !w-auto !min-w-0 !max-w-[13rem] !rounded-full !border-transparent !bg-stone-100 !px-2.5 !text-xs !shadow-none hover:!bg-stone-200/70 dark:!bg-white/[0.06] dark:hover:!bg-white/10" />
+                    <StudioModelPicker compact config={config} value={model} onChange={(value) => updateConfig("imageModel", value)} capability="image" onMissingConfig={() => openConfigDialog(false)} className="!h-9 !w-auto !min-w-0 !max-w-[13rem] !rounded-full !border-transparent !bg-stone-100 !px-2.5 !text-xs !shadow-none max-sm:!h-10 hover:!bg-stone-200/70 dark:!bg-white/[0.06] dark:hover:!bg-white/10" />
                     <ImageParameterPopover config={config} updateConfig={updateConfig} />
                     <span className="mx-1 hidden h-5 w-px bg-stone-200 sm:block dark:bg-white/10" />
                     <Tooltip title={t("workbench.viewPrompts")}>
-                        <button type="button" className="grid size-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-white/5 dark:hover:text-white" onClick={onOpenPrompts} aria-label={t("workbench.viewPrompts")}>
+                        <button type="button" className="grid size-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 max-sm:size-10 dark:text-stone-400 dark:hover:bg-white/5 dark:hover:text-white" onClick={onOpenPrompts} aria-label={t("workbench.viewPrompts")}>
                             <BookOpen className="size-4" />
                         </button>
                     </Tooltip>
                     <Tooltip title={t("workbench.viewAssets")}>
-                        <button type="button" className="grid size-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-white/5 dark:hover:text-white" onClick={onOpenAssets} aria-label={t("workbench.viewAssets")}>
+                        <button type="button" className="grid size-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 max-sm:size-10 dark:text-stone-400 dark:hover:bg-white/5 dark:hover:text-white" onClick={onOpenAssets} aria-label={t("workbench.viewAssets")}>
                             <FolderPlus className="size-4" />
                         </button>
                     </Tooltip>
                     <Tooltip title={t("workbench.clipboard")}>
-                        <button type="button" className="grid size-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-white/5 dark:hover:text-white" onClick={onClipboard} aria-label={t("workbench.clipboard")}>
+                        <button type="button" className="grid size-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 max-sm:size-10 dark:text-stone-400 dark:hover:bg-white/5 dark:hover:text-white" onClick={onClipboard} aria-label={t("workbench.clipboard")}>
                             <ClipboardPaste className="size-4" />
                         </button>
                     </Tooltip>
                     <Tooltip title={t("workbench.logs")}>
-                        <button type="button" className="grid size-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-white/5 dark:hover:text-white" onClick={onOpenHistory} aria-label={t("workbench.logs")}>
+                        <button type="button" className="grid size-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 max-sm:size-10 dark:text-stone-400 dark:hover:bg-white/5 dark:hover:text-white" onClick={onOpenHistory} aria-label={t("workbench.logs")}>
                             <History className="size-4" />
                         </button>
                     </Tooltip>
@@ -667,7 +667,7 @@ function PromptComposer({
                 <span aria-hidden="true">·</span>
                 <span>{t("imageWorkbench.imageCount", { count: config.count })}</span>
                 <span aria-hidden="true">·</span>
-                <ImageParameterPopover config={config} updateConfig={updateConfig} triggerClassName="transition hover:text-stone-700 dark:hover:text-stone-300" triggerContent={t("workbench.adjust")} />
+                <ImageParameterPopover config={config} updateConfig={updateConfig} triggerClassName="transition hover:text-stone-700 max-sm:inline-flex max-sm:h-10 max-sm:items-center max-sm:px-2 dark:hover:text-stone-300" triggerContent={t("workbench.adjust")} />
             </div>
         </div>
     );
@@ -692,7 +692,7 @@ function ImageParameterPopover({ config, updateConfig, triggerClassName, trigger
         >
             <button
                 type="button"
-                className={triggerClassName || "flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-stone-600 transition hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-white/5"}
+                className={triggerClassName || "flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-stone-600 transition hover:bg-stone-100 max-sm:h-10 dark:text-stone-300 dark:hover:bg-white/5"}
                 aria-label={t("workbench.settings")}
                 title={t("workbench.settings")}
             >

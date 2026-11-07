@@ -1670,7 +1670,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                         </span>
                         <div className="hidden text-base font-semibold leading-5 @min-[560px]:block">Agent</div>
                         <Tooltip title={t("agent.panel.connectionSettings", { status: connectionStatus })} placement="bottom">
-                            <Button size="small" type="text" className="!h-8 !w-8 !min-w-8 !px-0 @min-[560px]:!w-auto @min-[560px]:!min-w-0 @min-[560px]:!px-[7px]" aria-label={t("agent.panel.connectionSettingsLabel", { status: connectionStatus })} icon={<PlugZap className="size-3.5" style={{ color: connectionStatusColor }} />} onClick={() => setAgentState({ activeTab: "setup" })}>
+                            <Button size="small" type="text" className="!h-8 !w-8 !min-w-8 !px-0 max-sm:!h-10 max-sm:!w-10 max-sm:!min-w-10 @min-[560px]:!w-auto @min-[560px]:!min-w-0 @min-[560px]:!px-[7px]" aria-label={t("agent.panel.connectionSettingsLabel", { status: connectionStatus })} icon={<PlugZap className="size-3.5" style={{ color: connectionStatusColor }} />} onClick={() => setAgentState({ activeTab: "setup" })}>
                                 <span className="hidden @min-[560px]:inline">{connectionStatus}</span>
                             </Button>
                         </Tooltip>
@@ -1691,13 +1691,13 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
                     <>
                         {providerCapabilities.history ? (
                             <Tooltip title={t("agent.history.newThread")} placement="bottom">
-                                <Button size="small" type="text" className="!h-8 !w-8 !min-w-8 !px-0 @min-[560px]:!w-auto @min-[560px]:!min-w-0 @min-[560px]:!px-[7px]" aria-label={t("agent.history.newThread")} disabled={!connected || loadingThreads || sending || waiting || conversationBusy} icon={<Plus className="size-3.5" />} onClick={startNewThread}>
+                                <Button size="small" type="text" className="!h-8 !w-8 !min-w-8 !px-0 max-sm:!h-10 max-sm:!w-10 max-sm:!min-w-10 @min-[560px]:!w-auto @min-[560px]:!min-w-0 @min-[560px]:!px-[7px]" aria-label={t("agent.history.newThread")} disabled={!connected || loadingThreads || sending || waiting || conversationBusy} icon={<Plus className="size-3.5" />} onClick={startNewThread}>
                                     <span className="hidden @min-[560px]:inline">{t("agent.history.newThread")}</span>
                                 </Button>
                             </Tooltip>
                         ) : null}
                         <Tooltip title={t("agent.panel.collapse")}>
-                            <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8" aria-label={t("agent.panel.collapseLabel")} style={{ color: theme.node.muted }} icon={<PanelRightClose className="size-4" />} onClick={closePanel} />
+                            <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8 max-sm:!h-10 max-sm:!w-10 max-sm:!min-w-10" aria-label={t("agent.panel.collapseLabel")} style={{ color: theme.node.muted }} icon={<PanelRightClose className="size-4" />} onClick={closePanel} />
                         </Tooltip>
                     </>
                 }

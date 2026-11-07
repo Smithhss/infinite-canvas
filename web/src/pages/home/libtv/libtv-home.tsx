@@ -163,9 +163,9 @@ export function LibtvHome() {
 
 function SectionHeader({ title, action, onAction }: { title: string; action: string; onAction: () => void }) {
     return (
-        <div className="mt-7 mb-3 flex h-8 items-center gap-2 pl-2">
+        <div className="mt-7 mb-3 flex h-8 items-center gap-2 pl-2 max-sm:h-10">
             <h2 className="text-[16px] font-medium">{title}</h2>
-            <button type="button" onClick={onAction} className={cn("ml-auto text-[12px] text-stone-500 transition hover:text-stone-900 dark:text-stone-400 dark:hover:text-white")}>
+            <button type="button" onClick={onAction} className={cn("ml-auto text-[12px] text-stone-500 transition hover:text-stone-900 max-sm:inline-flex max-sm:h-10 max-sm:items-center max-sm:px-2 dark:text-stone-400 dark:hover:text-white")}>
                 {action}
             </button>
         </div>

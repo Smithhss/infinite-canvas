@@ -111,12 +111,12 @@ export function AgentConnectView({
                     </div>
                     <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3" style={{ borderColor: status.border }}>
                         {phase === "connected" ? (
-                            <Button type="primary" className="!h-8 !px-3" onClick={onOpenChat}>
+                            <Button type="primary" className="!h-8 !px-3 max-sm:!h-10" onClick={onOpenChat}>
                                 {t("agent.connect.startChat")}
                             </Button>
                         ) : phase === "not-detected" ? (
                             <>
-                                <Button type="primary" className="!h-8 !px-3" icon={<Copy className="size-3.5" />} onClick={copyInstallPrompt}>
+                                <Button type="primary" className="!h-8 !px-3 max-sm:!h-10" icon={<Copy className="size-3.5" />} onClick={copyInstallPrompt}>
                                     {t("agent.connect.installPromptAction")}
                                 </Button>
                                 <TextAction icon={<TerminalSquare className="size-3.5" />} onClick={() => setInstallManualOpen((open) => !open)}>
@@ -125,7 +125,7 @@ export function AgentConnectView({
                             </>
                         ) : phase === "installed" ? (
                             <>
-                                <Button type="primary" className="!h-8 !px-3" icon={<Copy className="size-3.5" />} onClick={copyOpenPrompt}>
+                                <Button type="primary" className="!h-8 !px-3 max-sm:!h-10" icon={<Copy className="size-3.5" />} onClick={copyOpenPrompt}>
                                     {t("agent.connect.copyOpenPrompt")}
                                 </Button>
                                 <TextAction icon={<RefreshCw className="size-3.5" />} onClick={onReconnect}>
@@ -134,7 +134,7 @@ export function AgentConnectView({
                             </>
                         ) : phase === "failed" ? (
                             <>
-                                <Button type="primary" className="!h-8 !px-3" icon={<RefreshCw className="size-3.5" />} onClick={pluginDetected ? onReconnect : copyInstallPrompt}>
+                                <Button type="primary" className="!h-8 !px-3 max-sm:!h-10" icon={<RefreshCw className="size-3.5" />} onClick={pluginDetected ? onReconnect : copyInstallPrompt}>
                                     {t(pluginDetected ? "agent.connect.retry" : "agent.connect.installPromptAction")}
                                 </Button>
                                 <TextAction icon={<PlugZap className="size-3.5" />} onClick={() => setConnectionOpen(true)}>
@@ -159,7 +159,7 @@ export function AgentConnectView({
                         <div className="overflow-hidden rounded-xl border" style={{ borderColor: theme.node.stroke }}>
                             <GuideStep number={1} title={t("agent.connect.stepInstallTitle")} text={t("agent.connect.stepInstallText")} theme={theme}>
                                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                                    <Button size="small" className="!h-8 !px-3" icon={<Copy className="size-3.5" />} onClick={copyInstallPrompt}>
+                                    <Button size="small" className="!h-8 !px-3 max-sm:!h-10" icon={<Copy className="size-3.5" />} onClick={copyInstallPrompt}>
                                         {t("agent.connect.installPromptAction")}
                                     </Button>
                                     <TextAction icon={<TerminalSquare className="size-3.5" />} onClick={() => setInstallManualOpen((open) => !open)}>
@@ -235,7 +235,7 @@ export function AgentConnectView({
                                 <span className="text-[11px] leading-4" style={{ color: theme.node.muted }}>
                                     {t("agent.connect.autoDiscover")}
                                 </span>
-                                <Button className="!h-8 shrink-0 !px-3" size="small" type={enabled ? "default" : "primary"} icon={<PlugZap className="size-3.5" />} onClick={onToggleEnabled}>
+                                <Button className="!h-8 shrink-0 !px-3 max-sm:!h-10" size="small" type={enabled ? "default" : "primary"} icon={<PlugZap className="size-3.5" />} onClick={onToggleEnabled}>
                                     {t(enabled ? "agent.connect.disconnect" : "agent.connect.connect")}
                                 </Button>
                             </div>
@@ -332,7 +332,7 @@ function CommandRow({ command, label, onCopy, theme, copyLabel }: { command: str
             <div className="flex items-start gap-2">
                 <code className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[11px] leading-5">{command}</code>
                 <Tooltip title={copyLabel}>
-                    <Button size="small" type="text" className="!h-6 !w-6 !min-w-6" icon={<Copy className="size-3.5" />} onClick={onCopy} aria-label={copyLabel} />
+                    <Button size="small" type="text" className="!h-6 !w-6 !min-w-6 max-sm:!h-10 max-sm:!w-10 max-sm:!min-w-10" icon={<Copy className="size-3.5" />} onClick={onCopy} aria-label={copyLabel} />
                 </Tooltip>
             </div>
         </div>
@@ -341,7 +341,7 @@ function CommandRow({ command, label, onCopy, theme, copyLabel }: { command: str
 
 function TextAction({ children, icon, onClick }: { children: ReactNode; icon?: ReactNode; onClick: () => void }) {
     return (
-        <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md px-1.5 text-[11px] font-medium transition hover:bg-black/5 dark:hover:bg-white/10" onClick={onClick}>
+        <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md px-1.5 text-[11px] font-medium transition hover:bg-black/5 max-sm:h-10 dark:hover:bg-white/10" onClick={onClick}>
             {icon}
             {children}
         </button>

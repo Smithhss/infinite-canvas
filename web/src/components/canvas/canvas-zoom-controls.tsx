@@ -32,7 +32,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, onFitView, i
                 <Tooltip title={isMiniMapOpen ? t("canvas.miniMapClose") : t("canvas.miniMapOpen")}>
                     <Button
                         type="text"
-                        className="!h-8 !w-8 !min-w-8 !p-0"
+                        className="!h-8 !w-8 !min-w-8 !p-0 max-sm:!h-10 max-sm:!w-10 max-sm:!min-w-10"
                         style={isMiniMapOpen ? activeStyle : { color: theme.toolbar.item }}
                         icon={<Compass className="size-4" />}
                         onClick={onToggleMiniMap}
@@ -40,15 +40,15 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, onFitView, i
                     />
                 </Tooltip>
                 <Tooltip title={t("canvas.resetView")}>
-                    <Button type="text" className="!h-8 !w-8 !min-w-8 !p-0" style={{ color: theme.toolbar.item }} icon={<Focus className="size-4" />} onClick={onReset} aria-label={t("canvas.resetView")} />
+                    <Button type="text" className="!h-8 !w-8 !min-w-8 !p-0 max-sm:!h-10 max-sm:!w-10 max-sm:!min-w-10" style={{ color: theme.toolbar.item }} icon={<Focus className="size-4" />} onClick={onReset} aria-label={t("canvas.resetView")} />
                 </Tooltip>
                 <Tooltip title={t("canvas.fitView")}>
-                    <Button type="text" className="!h-8 !w-8 !min-w-8 !p-0" style={{ color: theme.toolbar.item }} icon={<Maximize2 className="size-4" />} onClick={onFitView} aria-label={t("canvas.fitView")} />
+                    <Button type="text" className="!h-8 !w-8 !min-w-8 !p-0 max-sm:!h-10 max-sm:!w-10 max-sm:!min-w-10" style={{ color: theme.toolbar.item }} icon={<Maximize2 className="size-4" />} onClick={onFitView} aria-label={t("canvas.fitView")} />
                 </Tooltip>
                 <Tooltip title={showConnections ? t("canvas.hideConnections") : t("canvas.showConnections")}>
                     <Button
                         type="text"
-                        className="!h-8 !w-8 !min-w-8 !p-0"
+                        className="!h-8 !w-8 !min-w-8 !p-0 max-sm:!h-10 max-sm:!w-10 max-sm:!min-w-10"
                         style={showConnections ? { color: theme.toolbar.item } : activeStyle}
                         icon={showConnections ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
                         onClick={onToggleConnections}
@@ -80,7 +80,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, onFitView, i
                 >
                     <button
                         type="button"
-                        className="flex h-8 min-w-14 items-center justify-end gap-0.5 rounded-md px-1 text-xs tabular-nums transition hover:bg-black/5 dark:hover:bg-white/10"
+                        className="flex h-8 min-w-14 items-center justify-end gap-0.5 rounded-md px-1 text-xs tabular-nums transition hover:bg-black/5 max-sm:h-10 dark:hover:bg-white/10"
                         style={{ color: theme.node.muted }}
                         aria-label={t("canvas.zoomPresets")}
                     >
@@ -91,7 +91,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, onFitView, i
                 <Tooltip title={t("canvas.shortcuts")}>
                     <Button
                         type="text"
-                        className="!h-8 !w-8 !min-w-8 !p-0"
+                        className="!h-8 !w-8 !min-w-8 !p-0 max-sm:!h-10 max-sm:!w-10 max-sm:!min-w-10"
                         style={shortcutsOpen ? activeStyle : { color: theme.toolbar.item }}
                         icon={<HelpCircle className="size-4" />}
                         onClick={() => setShortcutsOpen(true)}

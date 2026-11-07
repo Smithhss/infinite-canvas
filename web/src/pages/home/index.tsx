@@ -232,7 +232,7 @@ export default function IndexPage() {
                     <button
                         type="button"
                         onClick={() => document.getElementById("home-showcase")?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" })}
-                        className="mx-auto mt-2 inline-flex items-center gap-2 text-xs text-white/35 transition hover:text-white/70"
+                        className="mx-auto mt-2 inline-flex items-center gap-2 text-xs text-white/35 transition hover:text-white/70 max-sm:h-10 max-sm:px-3"
                     >
                         {t("home.exploreResults")}
                         <ArrowDown className="size-3.5" />
